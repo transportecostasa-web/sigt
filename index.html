@@ -264,7 +264,7 @@
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec"; // Paste your deployed GAS web app URL here
+const GAS_URL = ""; // Paste your deployed GAS web app URL here
 
 const MODULES = [
   { id: 1, icon: "🚚", label: "Inicio de Viaje",    short: "Viajes" },
@@ -303,15 +303,30 @@ function lsGet(k, def=null) { try { const v=localStorage.getItem(k); return v?JS
 function lsSet(k,v) { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} }
 
 // ─── GAS API LAYER ─────────────────────────────────────────────────────────
-async function gasCall(action, payload={}, token=null) {
+// GAS doGet is always CORS-open. We encode the full payload as a single
+// "p" query param (base64 JSON) to avoid query-string length limits and
+// to keep sensitive data out of plain-text query params.
+// Token is also passed as a URL param (no custom headers = no preflight).
+async function gasCall(action, payload={}) {
   if (!GAS_URL) {
     // Demo mode — use localStorage
     return mockApi(action, payload);
   }
-  const headers = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = "Bearer " + token;
-  const res = await fetch(GAS_URL, { method:"POST", headers, body: JSON.stringify({action, ...payload}) });
-  return res.json();
+  // Read token from current session in localStorage
+  const session = lsGet("sigt_session");
+  const token = session?.token || "";
+  const body = { action, ...payload };
+  // base64-encode so special chars don't break URL parsing
+  const p = btoa(unescape(encodeURIComponent(JSON.stringify(body))));
+  const url = `${GAS_URL}?p=${encodeURIComponent(p)}&t=${encodeURIComponent(token)}`;
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    const text = await res.text();
+    // GAS sometimes wraps response in a redirect; text should be JSON
+    return JSON.parse(text);
+  } catch(err) {
+    return { ok: false, error: "Error de red: " + err.message };
+  }
 }
 
 // ─── MOCK API (no GAS URL configured) ──────────────────────────────────────
