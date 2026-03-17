@@ -342,23 +342,16 @@ function initDB() {
   return {
     users, trips:[], entregas:[], rendiciones:[], auditLog:[],
     dropdowns:{
-      // TIPOS DE CARGA: col A=nombre, B=um, C=clasificacion, D=cantidad
-      // Reglas: "-" = ocultar campo | "" = input libre | texto = readonly
+      // Hoja "TIPO DE CARGA": col A=tipo, B=UM, C=clasificacion, D=cantidad
+      // Reglas: "-" = ocultar | "" = input libre | texto = readonly
       TIPOSDE_CARGA:[
         { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
         { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
         { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
         { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
       ],
-      // CARGAS = mercadería transportada (lista simple)
+      // Hoja "CARGAS": mercadería (lista simple)
       CARGAS_MERCANCIAS:["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE"],
-      // Backward-compat
-      CARGAS:[
-        { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
-        { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
-        { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
-        { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
-      ],
       CLIENTES:["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR","IMPORT HNOS"],
       LUGARES:["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
       CHOFERES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS","FERNANDEZ DIEGO"],
@@ -866,22 +859,8 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [saving,       setSaving]       = useState(false);
   const [errors,       setErrors]       = useState({});
 
-  // ── Lookup the selected row from the TIPOS DE CARGA sheet ─────────────────
-  // dropdowns.TIPOSDE_CARGA (populated by GAS) or dropdowns.CARGAS depending on
-  // how your sheet is mapped. We look in dropdowns.TIPOSDE_CARGA first, then
-  // fall back to dropdowns.CARGAS for backwards compatibility.
-  // Each row: { nombre: col A, um: col B, clasificacion: col C, cantidad: col D }
-  //
-  // Special rules read from the image:
-  //   col value empty ("")  → show editable numeric input
-  //   col value "-"         → hide the field entirely
-  //   col value has text    → show as readonly display
-  //
-  // CONTENEDOR rows: col A = "CONTENEDOR", col B = "40 PIES" / "20 PIES"
-  //   → we special-case this type: first show Pies selector,
-  //     then Clasificación selector, then UM readonly = "UN", Cantidad readonly = 1
-
-  const tiposSource = dropdowns.TIPOSDE_CARGA || dropdowns.TIPOS_DE_CARGA || dropdowns.CARGAS || [];
+  // Hoja "TIPO DE CARGA": col A=tipo, B=UM, C=clasificacion, D=cantidad
+  const tiposSource = dropdowns.TIPOSDE_CARGA || [];
 
   const isContenedor = tipoCarga === "CONTENEDOR";
 
@@ -1055,7 +1034,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                 Carga {errors.carga && <span className="form-error">{errors.carga}</span>}
               </label>
               <SearchableSelect
-                options={dropdowns.CARGAS_MERCANCIAS || []}
+                options={dropdowns.CARGAS_MERCANCIAS || dropdowns.CARGAS_LISTA || []}
                 value={carga}
                 onChange={v => setCarga(v)}
                 placeholder="Seleccioná mercadería..."
