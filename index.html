@@ -543,7 +543,49 @@ function App() {
   const notif = useNotifications();
 
   useEffect(() => {
-    if (session) gasCall("getDropdowns").then(r => { if (r.ok) setDropdowns(r.data); });
+    if (!session) return;
+    gasCall("getDropdowns").then(r => {
+      if (!r.ok) return;
+      const d = r.data || {};
+
+      // CARGAS: debe ser string[]. Si vino como objeto[] (schema viejo), extraer .nombre
+      let cargas = d.CARGAS || d.CARGAS_MERCANCIAS || [];
+      if (cargas.length && typeof cargas[0] === "object") {
+        cargas = cargas.map(c => c.nombre || c).filter(Boolean);
+      }
+      if (!cargas.length) {
+        cargas = ["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE","MADERA","MINERAL"];
+      }
+
+      // TIPO_DE_CARGA: {nombre,um,clasificacion,cantidad}[]. Puede venir con key vieja.
+      let tiposCarga = d.TIPO_DE_CARGA || d.TIPOSDE_CARGA || [];
+      if (!tiposCarga.length) {
+        tiposCarga = [
+          { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
+          { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
+          { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
+          { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
+        ];
+      }
+
+      // Listas simples — garantizar string[]
+      function toStrArr(arr) {
+        if (!arr || !arr.length) return [];
+        return arr.map(x => typeof x === "string" ? x : (x.nombre||x.name||String(x))).filter(Boolean);
+      }
+      function withFallback(arr, fallback) { const s = toStrArr(arr); return s.length ? s : fallback; }
+
+      setDropdowns({
+        CARGAS:        cargas,
+        TIPO_DE_CARGA: tiposCarga,
+        CLIENTES:      withFallback(d.CLIENTES,      ["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR"]),
+        LUGARES:       withFallback(d.LUGARES,       ["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","SANTA FE","ASUNCIÓN","MONTEVIDEO","SANTIAGO"]),
+        CHOFERES:      withFallback(d.CHOFERES,      ["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS"]),
+        CAMIONES:      withFallback(d.CAMIONES,      ["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"]),
+        SEMIS:         withFallback(d.SEMIS,         ["SEMI-001","SEMI-002","SEMI-003","SEMI-004"]),
+        COLABORADORES: withFallback(d.COLABORADORES, ["RODRIGUEZ JUAN","GARCIA PEDRO","PEREZ ANA","GOMEZ SOFIA"]),
+      });
+    });
   }, [session]);
 
   function handleLogin(user, token) {
@@ -1383,11 +1425,12 @@ function Module2({ session, canEdit, dropdowns, notif }) {
           : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Chofer</th><th>Responsable entrega</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th></tr></thead>
                 <tbody>
                   {entregas.map(e=>(
                     <tr key={e.id}>
                       <td>{fmtDate(e.fecha)}</td>
+                      <td style={{ fontWeight:500,color:"var(--text)" }}>{e.chofer||"—"}</td>
                       <td>{e.responsable}</td>
                       <td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td>
                       <td><span className="badge badge-blue">{e.moneda}</span></td>
@@ -1405,16 +1448,18 @@ function Module2({ session, canEdit, dropdowns, notif }) {
 }
 
 function EntregaForm({ dropdowns, onSave, onBack }) {
-  const [fecha,      setFecha]      = useState(nowISO());
-  const [responsable,setResponsable]= useState("");
-  const [monto,      setMonto]      = useState("");
-  const [moneda,     setMoneda]     = useState("ARS");
-  const [errors,     setErrors]     = useState({});
-  const [saving,     setSaving]     = useState(false);
+  const [fecha,       setFecha]       = useState(nowISO());
+  const [chofer,      setChofer]      = useState("");   // A QUIÉN se entrega
+  const [responsable, setResponsable] = useState("");   // QUIÉN entrega
+  const [monto,       setMonto]       = useState("");
+  const [moneda,      setMoneda]      = useState("ARS");
+  const [errors,      setErrors]      = useState({});
+  const [saving,      setSaving]      = useState(false);
 
   function validate() {
     const e={};
     if (!fecha)       e.fecha="Requerido";
+    if (!chofer)      e.chofer="Requerido";
     if (!responsable) e.responsable="Requerido";
     if (!monto)       e.monto="Requerido";
     setErrors(e); return Object.keys(e).length===0;
@@ -1422,7 +1467,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    await onSave({ fecha, responsable, monto, moneda });
+    await onSave({ fecha, chofer, responsable, monto, moneda });
     setSaving(false);
   }
   return (
@@ -1431,7 +1476,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
         <div><div className="module-title">Nueva Entrega de Plata</div></div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      <div className="card" style={{ maxWidth:520 }}>
+      <div className="card" style={{ maxWidth:560 }}>
         <div className="card-body">
           <div className="alert alert-info" style={{ marginBottom:16 }}>Los registros no pueden editarse una vez guardados.</div>
           <div className="form-group">
@@ -1439,9 +1484,24 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
             <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)}/>
           </div>
           <div className="form-group">
-            <label className="form-label">Responsable entrega {errors.responsable && <span className="form-error">{errors.responsable}</span>}</label>
-            {/* FIX #1 — hoja "COLABORADORES" col A */}
-            <SearchableSelect options={dropdowns.COLABORADORES||[]} value={responsable} onChange={setResponsable} placeholder="Buscar colaborador..."/>
+            <label className="form-label">
+              Chofer (destinatario) {errors.chofer && <span className="form-error">{errors.chofer}</span>}
+            </label>
+            <SearchableSelect
+              options={dropdowns.CHOFERES||[]}
+              value={chofer}
+              onChange={setChofer}
+              placeholder="A quién se entrega el dinero..."/>
+          </div>
+          <div className="form-group">
+            <label className="form-label">
+              Responsable de la entrega {errors.responsable && <span className="form-error">{errors.responsable}</span>}
+            </label>
+            <SearchableSelect
+              options={dropdowns.COLABORADORES||[]}
+              value={responsable}
+              onChange={setResponsable}
+              placeholder="Quién entrega el dinero..."/>
           </div>
           <div className="form-group">
             <label className="form-label">Monto {errors.monto && <span className="form-error">{errors.monto}</span>}</label>
@@ -1606,14 +1666,15 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
     return d.toISOString().slice(0,10);
   }, [dateTo]);
 
-  // FIX #3 — Filtrar entregas del chofer en el rango correcto (hasta el día anterior a la llegada)
+  // Filtro correcto: chofer === driver (campo nuevo en entrega) + rango de fechas
+  // Rango: desde mínima fecha inicio viaje hasta máxima fecha real llegada - 1 día (inclusive)
   const driverEntregas = useMemo(() => {
     if (!driver || !dateFrom) return [];
-    return entregas.filter(e => {
-      return e.responsable &&
-        e.fecha >= dateFrom &&
-        (!dateToMinus1 || e.fecha <= dateToMinus1);
-    });
+    return entregas.filter(e =>
+      e.chofer === driver &&
+      e.fecha >= dateFrom &&
+      (!dateToMinus1 || e.fecha <= dateToMinus1)
+    );
   }, [entregas, driver, dateFrom, dateToMinus1]);
 
   const entByCur = { ARS:[], CLP:[], USD:[] };
