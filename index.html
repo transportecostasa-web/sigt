@@ -11,413 +11,325 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0e0f11;
-    --bg2: #16181c;
-    --bg3: #1e2128;
-    --bg4: #252830;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --text: #e8eaf0;
-    --text2: #9aa0b0;
-    --text3: #5c6270;
-    --accent: #4f7fff;
-    --accent2: #3d6aff;
-    --accent-glow: rgba(79,127,255,0.18);
-    --success: #34c776;
-    --warning: #f5a623;
-    --danger: #e5484d;
-    --info: #67b8f4;
-    --sidebar-w: 220px;
-    --topbar-h: 52px;
-    --font: 'IBM Plex Sans', sans-serif;
-    --mono: 'IBM Plex Mono', monospace;
-    --radius: 8px;
-    --radius-lg: 12px;
+    --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2128;--bg4:#252830;
+    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+    --text:#e8eaf0;--text2:#9aa0b0;--text3:#5c6270;
+    --accent:#4f7fff;--accent2:#3d6aff;--accent-glow:rgba(79,127,255,0.18);
+    --success:#34c776;--warning:#f5a623;--danger:#e5484d;--info:#67b8f4;
+    --sidebar-w:220px;--topbar-h:52px;
+    --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+    --radius:8px;--radius-lg:12px;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; overflow: hidden; font-size: 14px; }
-  
-  /* Scrollbars */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;}
+  ::-webkit-scrollbar{width:5px;height:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
 
-  /* Layout */
-  .app { display: flex; flex-direction: column; height: 100vh; }
-  .topbar {
-    height: var(--topbar-h); background: var(--bg2); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
-    flex-shrink: 0; z-index: 100;
-  }
-  .topbar-title { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--text); display: flex; align-items: center; gap: 8px; }
-  .topbar-title span.mono { font-family: var(--mono); color: var(--accent); font-size: 11px; }
-  .wm-btns { display: flex; gap: 6px; }
-  .wm-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; }
-  .wm-btn.close { background: #e5484d; }
-  .wm-btn.min { background: #f5a623; }
-  .wm-btn.max { background: #34c776; }
-  
-  .body { display: flex; flex: 1; overflow: hidden; }
-  
+  .app{display:flex;flex-direction:column;height:100vh;}
+  .topbar{height:var(--topbar-h);background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:100;}
+  .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--text);display:flex;align-items:center;gap:8px;}
+  .topbar-title span.mono{font-family:var(--mono);color:var(--accent);font-size:11px;}
+  .wm-btns{display:flex;gap:6px;}
+  .wm-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;}
+  .wm-btn.close{background:#e5484d;}.wm-btn.min{background:#f5a623;}.wm-btn.max{background:#34c776;}
+  .body{display:flex;flex:1;overflow:hidden;}
+
   /* Sidebar */
-  .sidebar {
-    width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; flex-shrink: 0; transition: width 0.2s ease; overflow: hidden;
-  }
-  .sidebar.collapsed { width: 48px; }
-  .sidebar-header { height: 44px; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; border-bottom: 1px solid var(--border); }
-  .collapse-btn { background: none; border: none; color: var(--text3); cursor: pointer; padding: 4px; border-radius: 4px; }
-  .collapse-btn:hover { color: var(--text); background: var(--bg3); }
-  .sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
-  .nav-item {
-    display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer;
-    border-radius: 6px; margin: 1px 6px; white-space: nowrap; transition: background 0.1s;
-    font-size: 13px; color: var(--text2);
-  }
-  .nav-item:hover { background: var(--bg3); color: var(--text); }
-  .nav-item.active { background: var(--accent-glow); color: var(--accent); }
-  .nav-item .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 15px; }
-  .nav-item .nav-label { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
-  .nav-item .nav-num { font-family: var(--mono); font-size: 10px; color: var(--text3); flex-shrink: 0; }
-  .sidebar-footer { padding: 12px; border-top: 1px solid var(--border); }
-  .user-badge { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: var(--radius); background: var(--bg3); }
-  .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
-  .user-info { min-width: 0; }
-  .user-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .user-role { font-size: 10px; color: var(--text3); }
-  
-  /* Main content */
-  .main { flex: 1; overflow-y: auto; background: var(--bg); }
-  .module-container { padding: 24px; max-width: 1400px; }
-  
-  /* Auth screen */
-  .auth-screen {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: var(--bg);
-  }
-  .auth-card {
-    width: 380px; background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius-lg); padding: 36px; position: relative; overflow: hidden;
-  }
-  .auth-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, var(--accent), #a78bfa);
-  }
-  .auth-logo { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 8px; }
-  .auth-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
-  .auth-sub { font-size: 13px; color: var(--text2); margin-bottom: 28px; line-height: 1.5; }
-  
+  .sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;transition:width .2s ease;overflow:hidden;}
+  .sidebar.collapsed{width:48px;}
+  .sidebar-header{height:44px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;border-bottom:1px solid var(--border);}
+  .collapse-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;}
+  .collapse-btn:hover{color:var(--text);background:var(--bg3);}
+  .sidebar-nav{flex:1;padding:8px 0;overflow-y:auto;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;white-space:nowrap;transition:background .1s;font-size:13px;color:var(--text2);}
+  .nav-item:hover{background:var(--bg3);color:var(--text);}
+  .nav-item.active{background:var(--accent-glow);color:var(--accent);}
+  .nav-item .nav-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
+  .nav-item .nav-label{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;}
+  .nav-item .nav-num{font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;}
+  .sidebar-footer{padding:12px;border-top:1px solid var(--border);}
+  .user-badge{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--radius);background:var(--bg3);}
+  .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+  .user-info{min-width:0;}
+  .user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .user-role{font-size:10px;color:var(--text3);}
+
+  .main{flex:1;overflow-y:auto;background:var(--bg);}
+  .module-container{padding:24px;max-width:1400px;}
+
+  /* Auth */
+  .auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+  .auth-card{width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;position:relative;overflow:hidden;}
+  .auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),#a78bfa);}
+  .auth-logo{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;margin-bottom:8px;}
+  .auth-title{font-size:22px;font-weight:600;margin-bottom:4px;}
+  .auth-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.5;}
+
   /* Forms */
-  .form-group { margin-bottom: 16px; }
-  .form-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: block; }
-  .form-input, .form-select, .form-textarea {
-    width: 100%; background: var(--bg3); border: 1px solid var(--border2);
-    border-radius: var(--radius); padding: 9px 12px; color: var(--text); font-family: var(--font);
-    font-size: 13px; outline: none; transition: border-color 0.15s;
-    appearance: none; -webkit-appearance: none;
-  }
-  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-  .form-input::placeholder { color: var(--text3); }
-  .form-select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235c6270' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
-  .form-select option { background: var(--bg3); color: var(--text); }
-  .form-textarea { resize: vertical; min-height: 72px; }
-  .form-row { display: flex; gap: 12px; }
-  .form-row .form-group { flex: 1; }
-  .form-error { font-size: 11px; color: var(--danger); margin-top: 5px; }
-  .form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
-  
-  /** Buttons */
-  .btn {
-    padding: 9px 18px; border-radius: var(--radius); font-family: var(--font);
-    font-size: 13px; font-weight: 600; cursor: pointer; border: none;
-    transition: all 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
-  }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: var(--accent2); }
-  .btn-secondary { background: var(--bg4); color: var(--text); border: 1px solid var(--border2); }
-  .btn-secondary:hover:not(:disabled) { background: var(--bg3); border-color: var(--border2); }
-  .btn-danger { background: rgba(229,72,77,0.15); color: var(--danger); border: 1px solid rgba(229,72,77,0.3); }
-  .btn-danger:hover:not(:disabled) { background: rgba(229,72,77,0.25); }
-  .btn-success { background: rgba(52,199,118,0.15); color: var(--success); border: 1px solid rgba(52,199,118,0.3); }
-  .btn-success:hover:not(:disabled) { background: rgba(52,199,118,0.25); }
-  .btn-sm { padding: 5px 12px; font-size: 12px; }
-  .btn-icon { padding: 6px; width: 30px; height: 30px; justify-content: center; }
-  .btn-full { width: 100%; justify-content: center; }
-  
+  .form-group{margin-bottom:16px;}
+  .form-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:block;}
+  .form-input,.form-select,.form-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;appearance:none;-webkit-appearance:none;}
+  .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+  .form-input::placeholder{color:var(--text3);}
+  .form-select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235c6270' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;}
+  .form-select option{background:var(--bg3);color:var(--text);}
+  .form-textarea{resize:vertical;min-height:72px;}
+  .form-row{display:flex;gap:12px;}
+  .form-row .form-group{flex:1;}
+  .form-error{font-size:11px;color:var(--danger);margin-top:5px;}
+  .form-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+
+  /* Buttons */
+  .btn{padding:9px 18px;border-radius:var(--radius);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover:not(:disabled){background:var(--accent2);}
+  .btn-secondary{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
+  .btn-secondary:hover:not(:disabled){background:var(--bg3);}
+  .btn-danger{background:rgba(229,72,77,.15);color:var(--danger);border:1px solid rgba(229,72,77,.3);}
+  .btn-danger:hover:not(:disabled){background:rgba(229,72,77,.25);}
+  .btn-success{background:rgba(52,199,118,.15);color:var(--success);border:1px solid rgba(52,199,118,.3);}
+  .btn-success:hover:not(:disabled){background:rgba(52,199,118,.25);}
+  .btn-sm{padding:5px 12px;font-size:12px;}
+  .btn-icon{padding:6px;width:30px;height:30px;justify-content:center;}
+  .btn-full{width:100%;justify-content:center;}
+
   /* Cards */
-  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-  .card-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .card-body { padding: 20px; }
-  
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);}
+  .card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  .card-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .card-body{padding:20px;}
+
   /* Tables */
-  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  thead tr { background: var(--bg3); }
-  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
-  td { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text2); white-space: nowrap; }
-  tr:hover td { background: var(--bg3); }
-  
+  .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead tr{background:var(--bg3);}
+  th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+  td{padding:10px 14px;border-top:1px solid var(--border);color:var(--text2);white-space:nowrap;}
+  tr:hover td{background:var(--bg3);}
+
   /* Badges */
-  .badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-  .badge-blue { background: rgba(79,127,255,0.15); color: var(--accent); }
-  .badge-green { background: rgba(52,199,118,0.15); color: var(--success); }
-  .badge-yellow { background: rgba(245,166,35,0.15); color: var(--warning); }
-  .badge-red { background: rgba(229,72,77,0.15); color: var(--danger); }
-  .badge-gray { background: var(--bg4); color: var(--text2); }
-  
+  .badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+  .badge-blue{background:rgba(79,127,255,.15);color:var(--accent);}
+  .badge-green{background:rgba(52,199,118,.15);color:var(--success);}
+  .badge-yellow{background:rgba(245,166,35,.15);color:var(--warning);}
+  .badge-red{background:rgba(229,72,77,.15);color:var(--danger);}
+  .badge-gray{background:var(--bg4);color:var(--text2);}
+
   /* Alerts */
-  .alert { padding: 12px 16px; border-radius: var(--radius); font-size: 13px; margin-bottom: 16px; }
-  .alert-danger { background: rgba(229,72,77,0.1); border: 1px solid rgba(229,72,77,0.25); color: #f87171; }
-  .alert-success { background: rgba(52,199,118,0.1); border: 1px solid rgba(52,199,118,0.25); color: #4ade80; }
-  .alert-info { background: rgba(103,184,244,0.1); border: 1px solid rgba(103,184,244,0.25); color: var(--info); }
-  .alert-warning { background: rgba(245,166,35,0.1); border: 1px solid rgba(245,166,35,0.25); color: var(--warning); }
-  
-  /* Module header */
-  .module-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-  .module-title { font-size: 20px; font-weight: 600; }
-  .module-subtitle { font-size: 13px; color: var(--text2); margin-top: 3px; }
-  .module-actions { display: flex; gap: 8px; }
-  
-  /* Divider */
-  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
-  
-  /* Loading overlay */
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 999; }
-  .spinner { width: 32px; height: 32px; border: 3px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  
+  .alert{padding:12px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:16px;}
+  .alert-danger{background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.25);color:#f87171;}
+  .alert-success{background:rgba(52,199,118,.1);border:1px solid rgba(52,199,118,.25);color:#4ade80;}
+  .alert-info{background:rgba(103,184,244,.1);border:1px solid rgba(103,184,244,.25);color:var(--info);}
+  .alert-warning{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--warning);}
+
+  .module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+  .module-title{font-size:20px;font-weight:600;}
+  .module-subtitle{font-size:13px;color:var(--text2);margin-top:3px;}
+  .module-actions{display:flex;gap:8px;}
+  .divider{border:none;border-top:1px solid var(--border);margin:20px 0;}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;}
+  .spinner{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
   /* Segment cards */
-  .segment-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; }
-  .segment-header { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
-  .segment-body { padding: 16px; border-top: 1px solid var(--border); }
-  
+  .segment-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;}
+  .segment-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+  .segment-body{padding:16px;border-top:1px solid var(--border);}
+
+  /* KM total chip */
+  .km-total{display:inline-flex;align-items:center;gap:6px;background:var(--bg4);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-family:var(--mono);font-size:12px;color:var(--accent);}
+
   /* Tabs */
-  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  
-  /* Checkbox */
-  .checkbox-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; cursor: pointer; }
-  .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-  
-  /* Empty state */
-  .empty { text-align: center; padding: 48px 24px; color: var(--text3); }
-  .empty .empty-icon { font-size: 32px; margin-bottom: 12px; }
-  .empty p { font-size: 13px; }
-  
-  /* Section label */
-  .section-label { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
-  
-  /* Currency selector inline */
-  .input-with-currency { display: flex; gap: 0; }
-  .input-with-currency .form-input { border-radius: var(--radius) 0 0 var(--radius); border-right: none; }
-  .input-with-currency .form-select { width: 80px; flex-shrink: 0; border-radius: 0 var(--radius) var(--radius) 0; }
-  
-  /* Readonly field */
-  .field-readonly { background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; font-size: 13px; color: var(--text2); font-family: var(--mono); }
-  
-  /* Status badge map */
-  .status-standby { background: rgba(92,98,112,0.3); color: var(--text2); }
-  .status-en-curso { background: rgba(245,166,35,0.15); color: var(--warning); }
-  .status-completado { background: rgba(52,199,118,0.15); color: var(--success); }
-  .status-incompleto { background: rgba(229,72,77,0.15); color: var(--danger); }
-  .status-completo { background: rgba(52,199,118,0.15); color: var(--success); }
-  
-  /* Floating save bar */
-  .save-bar {
-    position: sticky; bottom: 0; background: var(--bg2); border-top: 1px solid var(--border);
-    padding: 12px 24px; display: flex; gap: 10px; justify-content: flex-end;
-    z-index: 50;
-  }
-  
-  /* Password strength */
-  .pw-strength { height: 3px; border-radius: 2px; margin-top: 6px; background: var(--bg4); }
-  .pw-strength-bar { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; }
-  
-  /* Tooltip */
-  .tooltip-wrap { position: relative; display: inline-flex; }
-  .tooltip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--bg4); border: 1px solid var(--border2); border-radius: 6px; padding: 5px 9px; font-size: 11px; white-space: nowrap; pointer-events: none; color: var(--text); z-index: 200; }
+  .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;}
+  .tab{padding:10px 16px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;}
+  .tab:hover{color:var(--text);}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 
-  /* Notification */
-  .notif { position: fixed; top: 60px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
-  .notif-item { padding: 12px 16px; border-radius: var(--radius); font-size: 13px; min-width: 260px; animation: slideIn 0.2s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-  @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  
-  /* Liquidar sticky bar */
-  .liquidar-bar {
-    position: sticky; bottom: 0; padding: 16px 24px; background: var(--bg2);
-    border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;
-    z-index: 50;
-  }
+  .checkbox-row{display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;}
+  .checkbox-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
+  .empty{text-align:center;padding:48px 24px;color:var(--text3);}
+  .empty .empty-icon{font-size:32px;margin-bottom:12px;}
+  .empty p{font-size:13px;}
+  .section-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
 
-  /* Read-only overlay for finalized trips */
-  .readonly-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(245,166,35,0.15); color: var(--warning); border: 1px solid rgba(245,166,35,0.3); border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .input-with-currency{display:flex;gap:0;}
+  .input-with-currency .form-input{border-radius:var(--radius) 0 0 var(--radius);border-right:none;}
+  .input-with-currency .form-select{width:80px;flex-shrink:0;border-radius:0 var(--radius) var(--radius) 0;}
+
+  .field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
+
+  .status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
+  .status-en-curso{background:rgba(245,166,35,.15);color:var(--warning);}
+  .status-completado{background:rgba(52,199,118,.15);color:var(--success);}
+  .status-incompleto{background:rgba(229,72,77,.15);color:var(--danger);}
+  .status-completo{background:rgba(52,199,118,.15);color:var(--success);}
+
+  .save-bar{position:sticky;bottom:0;background:var(--bg2);border-top:1px solid var(--border);padding:12px 24px;display:flex;gap:10px;justify-content:flex-end;z-index:50;}
+  .pw-strength{height:3px;border-radius:2px;margin-top:6px;background:var(--bg4);}
+  .pw-strength-bar{height:100%;border-radius:2px;transition:width .3s,background .3s;}
+
+  .notif{position:fixed;top:60px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+  .notif-item{padding:12px 16px;border-radius:var(--radius);font-size:13px;min-width:260px;animation:slideIn .2s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+  @keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+  .liquidar-bar{position:sticky;bottom:0;padding:16px 24px;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;z-index:50;}
+  .readonly-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(245,166,35,.15);color:var(--warning);border:1px solid rgba(245,166,35,.3);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;}
+
+  /* ── SEARCHABLE SELECT ── */
+  .ss-wrap{position:relative;width:100%;}
+  .ss-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 30px 9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;cursor:pointer;}
+  .ss-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+  .ss-input::placeholder{color:var(--text3);}
+  .ss-input:disabled{opacity:.5;cursor:not-allowed;}
+  .ss-chevron{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text3);font-size:10px;}
+  .ss-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);z-index:300;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+  .ss-option{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:background .1s;}
+  .ss-option:hover,.ss-option.focused{background:var(--bg4);color:var(--text);}
+  .ss-option.selected{color:var(--accent);}
+  .ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
 </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-// ─── CONFIG ────────────────────────────────────────────────────────────────
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec"; // Paste your deployed GAS web app URL here
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec";
 
 const MODULES = [
-  { id: 1, icon: "🚚", label: "Inicio de Viaje",    short: "Viajes" },
-  { id: 2, icon: "💵", label: "Entrega de Plata",   short: "Entregas" },
-  { id: 3, icon: "📊", label: "Rendición de Gastos",short: "Rendición" },
-  { id: 4, icon: "📦", label: "Módulo 4",            short: "Módulo 4" },
-  { id: 5, icon: "🏢", label: "Módulo 5",            short: "Módulo 5" },
-  { id: 6, icon: "🧾", label: "Módulo 6",            short: "Módulo 6" },
+  { id:1, icon:"🚚", label:"Inicio de Viaje",     short:"Viajes" },
+  { id:2, icon:"💵", label:"Entrega de Plata",    short:"Entregas" },
+  { id:3, icon:"📊", label:"Rendición de Gastos", short:"Rendición" },
+  { id:4, icon:"📦", label:"Extra Costos",         short:"Extra Costos" },
+  { id:5, icon:"🧾", label:"Facturación",          short:"Facturación" },
+  { id:6, icon:"👥", label:"RRHH",                 short:"RRHH" },
+  { id:7, icon:"🏗",  label:"Costos Fijos",         short:"Costos Fijos" },
 ];
 
 const PERMISSIONS = {
-  SOL:      { role: "Editor global",    mods: [1,2,3,4,5,6], edit: [1,2,3,4,5,6] },
-  PABLO:    { role: "Solo lectura",     mods: [1,2,3,4,5,6], edit: [] },
-  JAVIER:   { role: "Solo lectura",     mods: [1,2,3,4,5,6], edit: [] },
-  SEBASTIAN:{ role: "Editor parcial",   mods: [1,2,4,5],     edit: [1,2,4,5] },
-  ROLANDO:  { role: "Editor parcial",   mods: [2,3],         edit: [2,3] },
-  LUCIANA:  { role: "Editor parcial",   mods: [5,6],         edit: [5,6] },
+  SOL:      { role:"Editor global",  mods:[1,2,3,4,5,6,7], edit:[1,2,3,4,5,6,7] },
+  PABLO:    { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
+  JAVIER:   { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
+  SEBASTIAN:{ role:"Editor parcial", mods:[1,2,4,5],       edit:[1,2,4,5] },
+  ROLANDO:  { role:"Editor parcial", mods:[2,3],           edit:[2,3] },
+  LUCIANA:  { role:"Editor parcial", mods:[5,6],           edit:[5,6] },
 };
 
 const CURRENCIES = ["USD","ARS","CLP"];
 const EXPENSE_CATS = ["GAS-OIL","PEAJES","ADUANA","LASTRE","GOMERIA","TELEFONO","LAVADERO","COIMAS","ESTADIA","REVISION TECNICA","PARQUEADERO","OTRO"];
 const SEGMENT_STATUSES = ["stand by","en curso","completado"];
 
-// ─── SIMPLE HASH (demo — in prod use GAS Utilities.computeDigest) ──────────
+// Pies options for CONTENEDOR
+const PIES_OPTIONS = ["20","40"];
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
 function simpleHash(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const c = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + c; hash |= 0;
-  }
-  return hash.toString(16);
+  let h=0; for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);h=((h<<5)-h)+c;h|=0;} return h.toString(16);
 }
+function lsGet(k,def=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch{return def;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function fmtDate(d){if(!d)return"—";const dt=new Date(d);return dt.toLocaleDateString("es-AR");}
+function fmtDT(d){if(!d)return"—";const dt=new Date(d);return dt.toLocaleString("es-AR");}
+function nowISO(){return new Date().toISOString().slice(0,10);}
+function fmtKm(n){if(!n&&n!==0)return"—";return Number(n).toLocaleString("es-AR")+" km";}
 
-// ─── LOCAL STORAGE HELPERS ─────────────────────────────────────────────────
-function lsGet(k, def=null) { try { const v=localStorage.getItem(k); return v?JSON.parse(v):def; } catch { return def; } }
-function lsSet(k,v) { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} }
+function pwStrength(pw){
+  if(!pw)return{score:0,label:""};
+  let s=0;
+  if(pw.length>=6)s++;if(pw.length>=10)s++;
+  if(/[A-Z]/.test(pw)&&/[a-z]/.test(pw))s++;if(/[0-9]/.test(pw))s++;
+  const labels=["","Débil","Regular","Buena","Fuerte"];
+  const colors=["","var(--danger)","var(--warning)","var(--info)","var(--success)"];
+  return{score:s,label:labels[s],color:colors[s],pct:(s/4*100)+"%"};
+}
+function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
 
-// ─── GAS API LAYER ─────────────────────────────────────────────────────────
-// GAS doGet is always CORS-open. We encode the full payload as a single
-// "p" query param (base64 JSON) to avoid query-string length limits and
-// to keep sensitive data out of plain-text query params.
-// Token is also passed as a URL param (no custom headers = no preflight).
+// ─── GAS CALL ────────────────────────────────────────────────────────────────
 async function gasCall(action, payload={}) {
-  if (!GAS_URL) {
-    // Demo mode — use localStorage
-    return mockApi(action, payload);
-  }
-  // Read token from current session in localStorage
+  if (!GAS_URL) return mockApi(action, payload);
   const session = lsGet("sigt_session");
   const token = session?.token || "";
   const body = { action, ...payload };
-  // base64-encode so special chars don't break URL parsing
   const p = btoa(unescape(encodeURIComponent(JSON.stringify(body))));
   const url = `${GAS_URL}?p=${encodeURIComponent(p)}&t=${encodeURIComponent(token)}`;
   try {
-    const res = await fetch(url, { redirect: "follow" });
-    const text = await res.text();
-    // GAS sometimes wraps response in a redirect; text should be JSON
-    return JSON.parse(text);
+    const res = await fetch(url, { redirect:"follow" });
+    return JSON.parse(await res.text());
   } catch(err) {
-    return { ok: false, error: "Error de red: " + err.message };
+    return { ok:false, error:"Error de red: "+err.message };
   }
 }
 
-// ─── MOCK API (no GAS URL configured) ──────────────────────────────────────
+// ─── MOCK API ────────────────────────────────────────────────────────────────
 function mockApi(action, payload) {
   return new Promise(resolve => {
     setTimeout(() => {
       const db = lsGet("sigt_db", initDB());
-      let res = { ok: false };
-      
       if (action === "login") {
         const { username, password } = payload;
         const user = db.users.find(u => u.username === username.toUpperCase());
-        if (!user) return resolve({ ok: false, error: "Usuario no encontrado" });
-        const hash = simpleHash(password);
-        if (user.passwordHash !== hash) return resolve({ ok: false, error: "Contraseña incorrecta" });
-        const token = btoa(username.toUpperCase() + ":" + Date.now());
-        // Log login
-        db.auditLog.push({ id: Date.now(), user: username.toUpperCase(), action: "LOGIN", timestamp: new Date().toISOString(), details: {} });
+        if (!user) return resolve({ ok:false, error:"Usuario no encontrado" });
+        if (user.passwordHash !== simpleHash(password)) return resolve({ ok:false, error:"Contraseña incorrecta" });
+        const token = btoa(username.toUpperCase()+":"+Date.now());
+        db.auditLog.push({ id:Date.now(), user:username.toUpperCase(), action:"LOGIN", timestamp:new Date().toISOString(), details:{} });
         lsSet("sigt_db", db);
-        resolve({ ok: true, user: { username: user.username, mustChangePassword: user.mustChangePassword }, token });
-      }
-      else if (action === "changePassword") {
+        resolve({ ok:true, user:{ username:user.username, mustChangePassword:user.mustChangePassword }, token });
+      } else if (action === "changePassword") {
         const { username, oldPassword, newPassword } = payload;
         const user = db.users.find(u => u.username === username);
-        if (!user) return resolve({ ok: false, error: "Usuario no encontrado" });
-        if (user.passwordHash !== simpleHash(oldPassword)) return resolve({ ok: false, error: "Contraseña anterior incorrecta" });
+        if (!user) return resolve({ ok:false, error:"Usuario no encontrado" });
+        if (user.passwordHash !== simpleHash(oldPassword)) return resolve({ ok:false, error:"Contraseña anterior incorrecta" });
         user.passwordHash = simpleHash(newPassword);
         user.mustChangePassword = false;
-        db.auditLog.push({ id: Date.now(), user: username, action: "CHANGE_PASSWORD", timestamp: new Date().toISOString(), details: {} });
         lsSet("sigt_db", db);
-        resolve({ ok: true });
-      }
-      else if (action === "getDropdowns") {
-        resolve({ ok: true, data: db.dropdowns });
-      }
-      else if (action === "saveTrip") {
+        resolve({ ok:true });
+      } else if (action === "getDropdowns") {
+        resolve({ ok:true, data:db.dropdowns });
+      } else if (action === "saveTrip") {
         const { trip } = payload;
         const idx = db.trips.findIndex(t => t.id === trip.id);
         const now = new Date().toISOString();
         if (idx >= 0) {
-          const old = db.trips[idx];
-          db.auditLog.push({ id: Date.now(), user: payload.user, action: "EDIT_TRIP", timestamp: now, details: { tripId: trip.id } });
-          db.trips[idx] = { ...trip, updatedAt: now, updatedBy: payload.user, createdAt: old.createdAt, createdBy: old.createdBy };
+          db.trips[idx] = { ...trip, updatedAt:now, updatedBy:payload.user, createdAt:db.trips[idx].createdAt, createdBy:db.trips[idx].createdBy };
         } else {
-          db.auditLog.push({ id: Date.now(), user: payload.user, action: "CREATE_TRIP", timestamp: now, details: { tripId: trip.id } });
-          db.trips.push({ ...trip, createdAt: now, createdBy: payload.user });
+          db.trips.push({ ...trip, createdAt:now, createdBy:payload.user });
         }
         lsSet("sigt_db", db);
-        resolve({ ok: true });
-      }
-      else if (action === "finalizeTrip") {
+        resolve({ ok:true });
+      } else if (action === "finalizeTrip") {
         const idx = db.trips.findIndex(t => t.id === payload.tripId);
         if (idx >= 0) {
           db.trips[idx].status = "finalizado";
           db.trips[idx].finalizedAt = new Date().toISOString();
           db.trips[idx].finalizedBy = payload.user;
-          db.auditLog.push({ id: Date.now(), user: payload.user, action: "FINALIZE_TRIP", timestamp: new Date().toISOString(), details: { tripId: payload.tripId } });
           lsSet("sigt_db", db);
         }
-        resolve({ ok: true });
-      }
-      else if (action === "getTrips") {
-        resolve({ ok: true, data: db.trips });
-      }
-      else if (action === "saveEntrega") {
+        resolve({ ok:true });
+      } else if (action === "getTrips") {
+        resolve({ ok:true, data:db.trips });
+      } else if (action === "saveEntrega") {
         const now = new Date().toISOString();
-        const e = { ...payload.entrega, id: "ENT-" + Date.now(), createdAt: now, createdBy: payload.user };
+        const e = { ...payload.entrega, id:"ENT-"+Date.now(), createdAt:now, createdBy:payload.user };
         db.entregas.push(e);
-        db.auditLog.push({ id: Date.now(), user: payload.user, action: "CREATE_ENTREGA", timestamp: now, details: { id: e.id } });
         lsSet("sigt_db", db);
-        resolve({ ok: true });
-      }
-      else if (action === "getEntregas") {
-        resolve({ ok: true, data: db.entregas });
-      }
-      else if (action === "saveRendicion") {
+        resolve({ ok:true });
+      } else if (action === "getEntregas") {
+        resolve({ ok:true, data:db.entregas });
+      } else if (action === "saveRendicion") {
         const now = new Date().toISOString();
-        const r = { ...payload.rendicion, id: "RND-" + Date.now(), createdAt: now, createdBy: payload.user };
+        const r = { ...payload.rendicion, id:"RND-"+Date.now(), createdAt:now, createdBy:payload.user };
         db.rendiciones.push(r);
-        db.auditLog.push({ id: Date.now(), user: payload.user, action: "CREATE_RENDICION", timestamp: now, details: { id: r.id } });
         lsSet("sigt_db", db);
-        resolve({ ok: true });
-      }
-      else if (action === "getRendiciones") {
-        resolve({ ok: true, data: db.rendiciones });
-      }
-      else if (action === "getAuditLog") {
-        resolve({ ok: true, data: db.auditLog.slice().reverse().slice(0,200) });
-      }
-      else {
-        resolve({ ok: false, error: "Unknown action" });
+        resolve({ ok:true });
+      } else if (action === "getRendiciones") {
+        resolve({ ok:true, data:db.rendiciones });
+      } else if (action === "getAuditLog") {
+        resolve({ ok:true, data:db.auditLog.slice().reverse().slice(0,200) });
+      } else {
+        resolve({ ok:false, error:"Unknown action" });
       }
     }, 180);
   });
@@ -425,34 +337,28 @@ function mockApi(action, payload) {
 
 function initDB() {
   const users = Object.keys(PERMISSIONS).map(u => ({
-    username: u,
-    passwordHash: simpleHash(u), // initial password = username
-    mustChangePassword: true,
+    username:u, passwordHash:simpleHash(u), mustChangePassword:true
   }));
   return {
-    users,
-    trips: [],
-    entregas: [],
-    rendiciones: [],
-    auditLog: [],
-    dropdowns: {
-      CARGAS: [
-        { nombre: "VACIO", tipo: "-", um: "-", clasificacion: "-", cantidad: "-" },
-        { nombre: "GRANEL", tipo: "CEREAL", um: "TN", clasificacion: "", cantidad: "" },
-        { nombre: "CONTENEDOR", tipo: "CARGA GENERAL", um: "UN", clasificacion: "", cantidad: "" },
-        { nombre: "CISTERNA", tipo: "LIQUIDO", um: "LT", clasificacion: "", cantidad: "" },
+    users, trips:[], entregas:[], rendiciones:[], auditLog:[],
+    dropdowns:{
+      CARGAS:[
+        { nombre:"VACIO",      tipo:"-",            um:"-",  clasificacion:"-",             cantidad:"-"  },
+        { nombre:"GRANEL",     tipo:"CEREAL",        um:"TN", clasificacion:"MINERAL",       cantidad:"30" },
+        { nombre:"CONTENEDOR", tipo:"CARGA GENERAL", um:"UN", clasificacion:"REFRIGERADO",   cantidad:""   },
+        { nombre:"CISTERNA",   tipo:"LIQUIDO",       um:"LT", clasificacion:"",              cantidad:""   },
       ],
-      CLIENTES: ["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR","IMPORT HNOS"],
-      LUGARES: ["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
-      CHOFERES: ["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS","FERNANDEZ DIEGO"],
-      CAMIONES: ["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"],
-      SEMIS: ["SEMI-001","SEMI-002","SEMI-003","SEMI-004"],
-      COLABORADORES: ["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","PEREZ ANA","GOMEZ SOFIA"],
+      CLIENTES:["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR","IMPORT HNOS"],
+      LUGARES:["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
+      CHOFERES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS","FERNANDEZ DIEGO"],
+      CAMIONES:["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"],
+      SEMIS:["SEMI-001","SEMI-002","SEMI-003","SEMI-004"],
+      COLABORADORES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","PEREZ ANA","GOMEZ SOFIA"],
     }
   };
 }
 
-// ─── NOTIFICATIONS ──────────────────────────────────────────────────────────
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 function useNotifications() {
   const [items, setItems] = useState([]);
   const add = useCallback((msg, type="success") => {
@@ -463,138 +369,6 @@ function useNotifications() {
   return { items, add };
 }
 
-// ─── TRIP ID GENERATOR ──────────────────────────────────────────────────────
-function generateTripId(trips, hasInternational) {
-  const prefix = hasInternational ? "INT" : "NAC";
-  const existing = trips.filter(t => t.id.startsWith(prefix));
-  const seq = (existing.length + 1).toString().padStart(4, "0");
-  const sub = Math.floor(Math.random()*9000+1000).toString();
-  return `${prefix}-${seq}-${sub}`;
-}
-
-// ─── PASSWORD STRENGTH ──────────────────────────────────────────────────────
-function pwStrength(pw) {
-  if (!pw) return { score: 0, label: "" };
-  let s = 0;
-  if (pw.length >= 6) s++;
-  if (pw.length >= 10) s++;
-  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
-  if (/[0-9]/.test(pw)) s++;
-  const labels = ["","Débil","Regular","Buena","Fuerte"];
-  const colors = ["","var(--danger)","var(--warning)","var(--info)","var(--success)"];
-  return { score: s, label: labels[s], color: colors[s], pct: (s/4*100)+"%" };
-}
-
-function isAlphanumeric(pw) { return /^[a-zA-Z0-9]+$/.test(pw); }
-
-// ─── DATE FORMAT ────────────────────────────────────────────────────────────
-function fmtDate(d) { if (!d) return "—"; const dt=new Date(d); return dt.toLocaleDateString("es-AR"); }
-function fmtDT(d) { if (!d) return "—"; const dt=new Date(d); return dt.toLocaleString("es-AR"); }
-function nowISO() { return new Date().toISOString().slice(0,10); }
-
-// ─── STATUS BADGE ───────────────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const map = {
-    "stand by": "badge badge-gray status-standby",
-    "en curso": "badge badge-yellow status-en-curso",
-    "completado": "badge badge-green status-completado",
-    "incompleto": "badge badge-red status-incompleto",
-    "completo": "badge badge-green status-completo",
-    "finalizado": "badge badge-blue",
-    "activo": "badge badge-blue",
-  };
-  return <span className={map[status]||"badge badge-gray"}>{status}</span>;
-}
-
-// ─── APP ROOT ───────────────────────────────────────────────────────────────
-function App() {
-  const [session, setSession] = useState(() => lsGet("sigt_session"));
-  const [mustChangePw, setMustChangePw] = useState(false);
-  const [activeModule, setActiveModule] = useState(1);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [dropdowns, setDropdowns] = useState(null);
-  const notif = useNotifications();
-
-  useEffect(() => {
-    if (session) {
-      gasCall("getDropdowns", {}).then(r => { if (r.ok) setDropdowns(r.data); });
-    }
-  }, [session]);
-
-  function handleLogin(user, token) {
-    const s = { username: user.username, token };
-    lsSet("sigt_session", s);
-    setSession(s);
-    if (user.mustChangePassword) setMustChangePw(true);
-    else {
-      const perms = PERMISSIONS[user.username];
-      setActiveModule(perms?.mods[0] || 1);
-    }
-  }
-
-  function handlePasswordChanged() {
-    setMustChangePw(false);
-    const perms = PERMISSIONS[session?.username];
-    setActiveModule(perms?.mods[0] || 1);
-    notif.add("Contraseña actualizada correctamente");
-  }
-
-  function handleLogout() {
-    lsSet("sigt_session", null);
-    setSession(null);
-    setMustChangePw(false);
-  }
-
-  if (!session) return <>
-    <LoginScreen onLogin={handleLogin} />
-    <Notifications items={notif.items} />
-  </>;
-
-  if (mustChangePw) return <>
-    <ChangePasswordScreen username={session.username} onDone={handlePasswordChanged} />
-    <Notifications items={notif.items} />
-  </>;
-
-  const perms = PERMISSIONS[session.username] || { mods: [], edit: [] };
-  const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
-  const canEdit = (modId) => perms.edit.includes(modId);
-
-  return (
-    <div className="app">
-      <TopBar onLogout={handleLogout} />
-      <div className="body">
-        <Sidebar
-          open={sidebarOpen}
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-          modules={visibleMods}
-          active={activeModule}
-          onSelect={setActiveModule}
-          username={session.username}
-          role={perms.role}
-        />
-        <main className="main">
-          {dropdowns ? (
-            <ModuleRenderer
-              moduleId={activeModule}
-              session={session}
-              canEdit={canEdit(activeModule)}
-              dropdowns={dropdowns}
-              notif={notif}
-            />
-          ) : (
-            <div style={{ padding: 32, textAlign: "center", color: "var(--text3)" }}>
-              <div className="spinner" style={{ margin: "0 auto 12px" }} />
-              <div>Cargando datos...</div>
-            </div>
-          )}
-        </main>
-      </div>
-      <Notifications items={notif.items} />
-    </div>
-  );
-}
-
-// ─── NOTIFICATIONS COMPONENT ────────────────────────────────────────────────
 function Notifications({ items }) {
   return (
     <div className="notif">
@@ -607,14 +381,211 @@ function Notifications({ items }) {
   );
 }
 
-// ─── TOPBAR ─────────────────────────────────────────────────────────────────
+// ─── TRIP ID ──────────────────────────────────────────────────────────────────
+function generateTripId(trips, hasInternational) {
+  const prefix = hasInternational ? "INT" : "NAC";
+  const seq = (trips.filter(t => t.id && t.id.startsWith(prefix)).length + 1).toString().padStart(4,"0");
+  const sub = Math.floor(Math.random()*9000+1000).toString();
+  return `${prefix}-${seq}-${sub}`;
+}
+
+// ─── STATUS BADGE ─────────────────────────────────────────────────────────────
+function StatusBadge({ status }) {
+  const map = {
+    "stand by":"badge badge-gray status-standby",
+    "en curso":"badge badge-yellow status-en-curso",
+    "completado":"badge badge-green status-completado",
+    "incompleto":"badge badge-red status-incompleto",
+    "completo":"badge badge-green status-completo",
+    "finalizado":"badge badge-blue",
+    "activo":"badge badge-blue",
+  };
+  return <span className={map[status]||"badge badge-gray"}>{status}</span>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEARCHABLE SELECT — reusable combobox
+// options: string[] | { value, label }[]
+// ═══════════════════════════════════════════════════════════════════════════════
+function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar...", disabled=false, id }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen]   = useState(false);
+  const [focusIdx, setFocusIdx] = useState(-1);
+  const wrapRef   = useRef(null);
+  const inputRef  = useRef(null);
+  const listRef   = useRef(null);
+
+  // Normalise options to {value, label}
+  const opts = useMemo(() => options.map(o =>
+    typeof o === "string" ? { value:o, label:o } : o
+  ), [options]);
+
+  // Label shown in input when closed
+  const selectedLabel = useMemo(() => {
+    const found = opts.find(o => o.value === value);
+    return found ? found.label : "";
+  }, [value, opts]);
+
+  // Filtered list while typing
+  const filtered = useMemo(() => {
+    if (!query.trim()) return opts;
+    const q = query.toLowerCase();
+    return opts.filter(o => o.label.toLowerCase().includes(q));
+  }, [query, opts]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handle(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false); setQuery(""); setFocusIdx(-1);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  // Scroll focused option into view
+  useEffect(() => {
+    if (focusIdx >= 0 && listRef.current) {
+      const el = listRef.current.children[focusIdx];
+      if (el) el.scrollIntoView({ block:"nearest" });
+    }
+  }, [focusIdx]);
+
+  function openDropdown() {
+    if (disabled) return;
+    setOpen(true);
+    setQuery("");
+    setFocusIdx(opts.findIndex(o => o.value === value));
+    setTimeout(() => inputRef.current && inputRef.current.select(), 0);
+  }
+
+  function select(val) {
+    onChange(val);
+    setOpen(false);
+    setQuery("");
+    setFocusIdx(-1);
+  }
+
+  function handleKeyDown(e) {
+    if (!open) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDropdown(); } return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setFocusIdx(i => Math.min(i+1, filtered.length-1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setFocusIdx(i => Math.max(i-1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (focusIdx >= 0 && filtered[focusIdx]) select(filtered[focusIdx].value); }
+    else if (e.key === "Escape") { setOpen(false); setQuery(""); setFocusIdx(-1); }
+  }
+
+  const displayValue = open ? query : selectedLabel;
+
+  return (
+    <div className="ss-wrap" ref={wrapRef}>
+      <input
+        ref={inputRef}
+        id={id}
+        className="ss-input"
+        type="text"
+        value={displayValue}
+        placeholder={open ? "Escribir para filtrar..." : (selectedLabel || placeholder)}
+        disabled={disabled}
+        autoComplete="off"
+        onClick={openDropdown}
+        onFocus={openDropdown}
+        onChange={e => { setQuery(e.target.value); setFocusIdx(0); }}
+        onKeyDown={handleKeyDown}
+        readOnly={!open}
+      />
+      <span className="ss-chevron">{open ? "▲" : "▼"}</span>
+      {open && (
+        <div className="ss-dropdown" ref={listRef}>
+          {filtered.length === 0 ? (
+            <div className="ss-empty">Sin resultados</div>
+          ) : filtered.map((o, i) => (
+            <div
+              key={o.value}
+              className={`ss-option${i===focusIdx?" focused":""}${o.value===value?" selected":""}`}
+              onMouseDown={() => select(o.value)}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ═══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [session, setSession]     = useState(() => lsGet("sigt_session"));
+  const [mustChangePw, setMustChangePw] = useState(false);
+  const [activeModule, setActiveModule] = useState(1);
+  const [sidebarOpen, setSidebarOpen]   = useState(true);
+  const [dropdowns, setDropdowns]       = useState(null);
+  const notif = useNotifications();
+
+  useEffect(() => {
+    if (session) {
+      gasCall("getDropdowns").then(r => { if (r.ok) setDropdowns(r.data); });
+    }
+  }, [session]);
+
+  function handleLogin(user, token) {
+    const s = { username:user.username, token };
+    lsSet("sigt_session", s);
+    setSession(s);
+    if (user.mustChangePassword) setMustChangePw(true);
+    else setActiveModule(PERMISSIONS[user.username]?.mods[0] || 1);
+  }
+
+  function handlePasswordChanged() {
+    setMustChangePw(false);
+    setActiveModule(PERMISSIONS[session?.username]?.mods[0] || 1);
+    notif.add("Contraseña actualizada correctamente");
+  }
+
+  function handleLogout() { lsSet("sigt_session", null); setSession(null); setMustChangePw(false); }
+
+  if (!session) return <><LoginScreen onLogin={handleLogin} /><Notifications items={notif.items} /></>;
+  if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged} /><Notifications items={notif.items} /></>;
+
+  const perms = PERMISSIONS[session.username] || { mods:[], edit:[] };
+  const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
+  const canEdit = modId => perms.edit.includes(modId);
+
+  return (
+    <div className="app">
+      <TopBar onLogout={handleLogout} />
+      <div className="body">
+        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
+          modules={visibleMods} active={activeModule} onSelect={setActiveModule}
+          username={session.username} role={perms.role} />
+        <main className="main">
+          {dropdowns ? (
+            <ModuleRenderer moduleId={activeModule} session={session}
+              canEdit={canEdit(activeModule)} dropdowns={dropdowns} notif={notif} />
+          ) : (
+            <div style={{ padding:32, textAlign:"center", color:"var(--text3)" }}>
+              <div className="spinner" style={{ margin:"0 auto 12px" }} />
+              <div>Cargando datos...</div>
+            </div>
+          )}
+        </main>
+      </div>
+      <Notifications items={notif.items} />
+    </div>
+  );
+}
+
+// ─── TOPBAR ───────────────────────────────────────────────────────────────────
 function TopBar({ onLogout }) {
   return (
     <div className="topbar">
       <div className="topbar-title">
         <span className="mono">SIGT</span>
-        <span style={{ color: "var(--text3)" }}>|</span>
-        <span style={{ fontWeight: 400, color: "var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
+        <span style={{ color:"var(--text3)" }}>|</span>
+        <span style={{ fontWeight:400, color:"var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
       </div>
       <div className="wm-btns">
         <button className="wm-btn min" title="Minimizar" />
@@ -625,27 +596,18 @@ function TopBar({ onLogout }) {
   );
 }
 
-// ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) {
   return (
     <div className={`sidebar${open?"":" collapsed"}`}>
       <div className="sidebar-header">
-        <button className="collapse-btn" onClick={onToggle} title={open?"Colapsar":"Expandir"}>
-          {open ? "◀" : "▶"}
-        </button>
+        <button className="collapse-btn" onClick={onToggle}>{open?"◀":"▶"}</button>
       </div>
       <nav className="sidebar-nav">
         {modules.map(m => (
-          <div
-            key={m.id}
-            className={`nav-item${active===m.id?" active":""}`}
-            onClick={() => onSelect(m.id)}
-          >
+          <div key={m.id} className={`nav-item${active===m.id?" active":""}`} onClick={() => onSelect(m.id)}>
             <span className="nav-icon">{m.icon}</span>
-            {open && <>
-              <span className="nav-label">{m.short}</span>
-              <span className="nav-num">0{m.id}</span>
-            </>}
+            {open && <><span className="nav-label">{m.short}</span><span className="nav-num">0{m.id}</span></>}
           </div>
         ))}
       </nav>
@@ -664,18 +626,18 @@ function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) 
   );
 }
 
-// ─── LOGIN ───────────────────────────────────────────────────────────────────
+// ─── AUTH SCREENS ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!username || !password) return setError("Completá usuario y contraseña.");
     setLoading(true); setError("");
-    const r = await gasCall("login", { username: username.trim(), password });
+    const r = await gasCall("login", { username:username.trim(), password });
     setLoading(false);
     if (!r.ok) return setError(r.error || "Error de acceso.");
     onLogin(r.user, r.token);
@@ -696,10 +658,8 @@ function LoginScreen({ onLogin }) {
           <label className="form-label">Contraseña</label>
           <input type="password" className="form-input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••" />
         </div>
-        <button className="btn btn-primary btn-full" disabled={loading}>
-          {loading ? "Ingresando..." : "Ingresar"}
-        </button>
-        <div style={{ marginTop: 16, fontSize: 11, color: "var(--text3)", textAlign: "center" }}>
+        <button className="btn btn-primary btn-full" disabled={loading}>{loading?"Ingresando...":"Ingresar"}</button>
+        <div style={{ marginTop:16, fontSize:11, color:"var(--text3)", textAlign:"center" }}>
           Credenciales iniciales: usuario = contraseña (ej: SOL / SOL)
         </div>
       </form>
@@ -707,24 +667,22 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ─── CHANGE PASSWORD ─────────────────────────────────────────────────────────
 function ChangePasswordScreen({ username, onDone }) {
   const [old, setOld] = useState("");
-  const [nw, setNw] = useState("");
+  const [nw, setNw]   = useState("");
   const [rep, setRep] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
   const str = pwStrength(nw);
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
-    if (!old) return setError("Ingresá la contraseña anterior.");
-    if (nw.length < 6) return setError("La nueva contraseña debe tener al menos 6 caracteres.");
-    if (!isAlphanumeric(nw)) return setError("Solo se permiten letras y números.");
-    if (nw !== rep) return setError("Las contraseñas no coinciden.");
+    e.preventDefault(); setError("");
+    if (!old)            return setError("Ingresá la contraseña anterior.");
+    if (nw.length < 6)   return setError("Mínimo 6 caracteres.");
+    if (!isAlphanumeric(nw)) return setError("Solo letras y números.");
+    if (nw !== rep)      return setError("Las contraseñas no coinciden.");
     setLoading(true);
-    const r = await gasCall("changePassword", { username, oldPassword: old, newPassword: nw });
+    const r = await gasCall("changePassword", { username, oldPassword:old, newPassword:nw });
     setLoading(false);
     if (!r.ok) return setError(r.error || "Error al cambiar contraseña.");
     onDone();
@@ -732,10 +690,10 @@ function ChangePasswordScreen({ username, onDone }) {
 
   return (
     <div className="auth-screen">
-      <form className="auth-card" onSubmit={handleSubmit} style={{ width: 420 }}>
+      <form className="auth-card" onSubmit={handleSubmit} style={{ width:420 }}>
         <div className="auth-logo">SIGT v1.0</div>
         <div className="auth-title">Cambio de contraseña obligatorio</div>
-        <div className="auth-sub">Es tu primer ingreso. Establecé una nueva contraseña para continuar.</div>
+        <div className="auth-sub">Primer ingreso — establecé una nueva contraseña.</div>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="form-group">
           <label className="form-label">Usuario</label>
@@ -743,30 +701,25 @@ function ChangePasswordScreen({ username, onDone }) {
         </div>
         <div className="form-group">
           <label className="form-label">Contraseña anterior</label>
-          <input type="password" className="form-input" value={old} onChange={e=>setOld(e.target.value)} placeholder="Contraseña actual" autoFocus />
+          <input type="password" className="form-input" value={old} onChange={e=>setOld(e.target.value)} autoFocus />
         </div>
         <div className="form-group">
           <label className="form-label">Nueva contraseña</label>
           <input type="password" className="form-input" value={nw} onChange={e=>setNw(e.target.value)} placeholder="Mínimo 6 caracteres alfanuméricos" />
-          {nw && <>
-            <div className="pw-strength"><div className="pw-strength-bar" style={{ width: str.pct, background: str.color }} /></div>
-            <div className="form-hint" style={{ color: str.color }}>{str.label}</div>
-          </>}
+          {nw && <><div className="pw-strength"><div className="pw-strength-bar" style={{ width:str.pct, background:str.color }} /></div><div className="form-hint" style={{ color:str.color }}>{str.label}</div></>}
         </div>
         <div className="form-group">
-          <label className="form-label">Repetir nueva contraseña</label>
-          <input type="password" className="form-input" value={rep} onChange={e=>setRep(e.target.value)} placeholder="Repetir contraseña" />
-          {rep && nw !== rep && <div className="form-error">Las contraseñas no coinciden</div>}
+          <label className="form-label">Repetir contraseña</label>
+          <input type="password" className="form-input" value={rep} onChange={e=>setRep(e.target.value)} />
+          {rep && nw !== rep && <div className="form-error">No coinciden</div>}
         </div>
-        <button className="btn btn-primary btn-full" disabled={loading}>
-          {loading ? "Guardando..." : "Cambiar contraseña"}
-        </button>
+        <button className="btn btn-primary btn-full" disabled={loading}>{loading?"Guardando...":"Cambiar contraseña"}</button>
       </form>
     </div>
   );
 }
 
-// ─── MODULE RENDERER ─────────────────────────────────────────────────────────
+// ─── MODULE RENDERER ──────────────────────────────────────────────────────────
 function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
   const props = { session, canEdit, dropdowns, notif };
   if (moduleId === 1) return <Module1 {...props} />;
@@ -774,20 +727,17 @@ function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
   if (moduleId === 3) return <Module3 {...props} />;
   return (
     <div className="module-container">
-      <div className="empty">
-        <div className="empty-icon">🔧</div>
-        <p>Módulo {moduleId} — próximamente</p>
-      </div>
+      <div className="empty"><div className="empty-icon">🔧</div><p>Módulo {moduleId} — próximamente</p></div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 1 — INICIO DE VIAJE
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 function Module1({ session, canEdit, dropdowns, notif }) {
-  const [view, setView] = useState("list"); // list | form | history
-  const [trips, setTrips] = useState([]);
+  const [view, setView]       = useState("list");
+  const [trips, setTrips]     = useState([]);
   const [editTrip, setEditTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [histView, setHistView] = useState(false);
@@ -796,43 +746,32 @@ function Module1({ session, canEdit, dropdowns, notif }) {
 
   async function loadTrips() {
     setLoading(true);
-    const r = await gasCall("getTrips", {});
+    const r = await gasCall("getTrips");
     if (r.ok) setTrips(r.data);
     setLoading(false);
   }
 
-  function openNew() { setEditTrip(null); setView("form"); }
-  function openEdit(trip) { setEditTrip(trip); setView("form"); }
-  function openHistory() { setView("history"); }
-
   async function handleSave(tripData) {
-    const r = await gasCall("saveTrip", { trip: tripData, user: session.username });
+    const r = await gasCall("saveTrip", { trip:tripData, user:session.username });
     if (r.ok) { notif.add("Viaje guardado"); loadTrips(); setView("list"); }
     else notif.add(r.error || "Error al guardar", "error");
   }
 
   async function handleFinalize(tripId) {
-    const r = await gasCall("finalizeTrip", { tripId, user: session.username });
+    const r = await gasCall("finalizeTrip", { tripId, user:session.username });
     if (r.ok) { notif.add("Viaje finalizado"); loadTrips(); setView("list"); }
     else notif.add(r.error || "Error al finalizar", "error");
   }
 
   if (view === "form") return (
-    <TripForm
-      trip={editTrip}
-      trips={trips}
-      dropdowns={dropdowns}
-      canEdit={canEdit}
-      session={session}
-      onSave={handleSave}
-      onFinalize={handleFinalize}
-      onBack={() => setView("list")}
-    />
+    <TripForm trip={editTrip} trips={trips} dropdowns={dropdowns}
+      canEdit={canEdit} session={session}
+      onSave={handleSave} onFinalize={handleFinalize} onBack={() => setView("list")} />
   );
 
   const active = trips.filter(t => t.status !== "finalizado");
-  const hist = trips.filter(t => t.status === "finalizado");
-  const shown = histView ? hist : active;
+  const hist   = trips.filter(t => t.status === "finalizado");
+  const shown  = histView ? hist : active;
 
   return (
     <div className="module-container">
@@ -842,94 +781,105 @@ function Module1({ session, canEdit, dropdowns, notif }) {
           <div className="module-subtitle">{histView ? "Historial de viajes finalizados" : `${active.length} viaje(s) activo(s)`}</div>
         </div>
         <div className="module-actions">
-          <button className={`btn btn-secondary btn-sm`} onClick={() => setHistView(!histView)}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setHistView(!histView)}>
             {histView ? "← Activos" : "Ver Historial"}
           </button>
-          {!histView && canEdit && <button className="btn btn-primary btn-sm" onClick={openNew}>+ Nuevo Viaje</button>}
+          {!histView && canEdit && <button className="btn btn-primary btn-sm" onClick={() => { setEditTrip(null); setView("form"); }}>+ Nuevo Viaje</button>}
         </div>
       </div>
 
-      {loading ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{margin:"0 auto"}} /></div> : (
-        shown.length === 0 ? (
-          <div className="empty">
-            <div className="empty-icon">{histView?"📂":"🚚"}</div>
-            <p>{histView ? "No hay viajes finalizados." : "No hay viajes activos. Creá uno nuevo."}</p>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>ID Viaje</th>
-                  <th>Carga</th>
-                  <th>Cliente</th>
-                  <th>Monto Factura</th>
-                  <th>Tramos</th>
-                  <th>Estado doc.</th>
+      {loading
+        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
+        : shown.length === 0
+          ? <div className="empty"><div className="empty-icon">{histView?"📂":"🚚"}</div><p>{histView?"No hay viajes finalizados.":"No hay viajes activos. Creá uno nuevo."}</p></div>
+          : (
+            <div className="table-wrap">
+              <table>
+                <thead><tr>
+                  <th></th><th>ID Viaje</th><th>Carga</th><th>Cliente</th><th>Monto Factura</th><th>Tramos</th><th>KM total</th><th>Estado doc.</th>
                   {histView && <th>Finalizado</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map(t => (
-                  <tr key={t.id}>
-                    <td>
-                      <button className="btn btn-secondary btn-icon btn-sm" onClick={() => openEdit(t)} title="Ver / Editar">
-                        🔍
-                      </button>
-                    </td>
-                    <td><span style={{ fontFamily:"var(--mono)", fontSize:12 }}>{t.id}</span></td>
-                    <td>{t.carga}</td>
-                    <td>{t.cliente}</td>
-                    <td>{t.montoFactura} {t.moneda}</td>
-                    <td><span className="badge badge-gray">{(t.segments||[]).length}</span></td>
-                    <td><StatusBadge status={t.statusDoc||"incompleto"} /></td>
-                    {histView && <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDate(t.finalizedAt)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
+                </tr></thead>
+                <tbody>
+                  {shown.map(t => {
+                    const totalKm = (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0);
+                    return (
+                      <tr key={t.id}>
+                        <td><button className="btn btn-secondary btn-icon btn-sm" onClick={() => { setEditTrip(t); setView("form"); }} title="Ver / Editar">🔍</button></td>
+                        <td><span style={{ fontFamily:"var(--mono)", fontSize:12 }}>{t.id}</span></td>
+                        <td>{t.carga}</td>
+                        <td>{t.cliente}</td>
+                        <td>{t.montoFactura} {t.moneda}</td>
+                        <td><span className="badge badge-gray">{(t.segments||[]).length}</span></td>
+                        <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{totalKm > 0 ? totalKm.toLocaleString("es-AR") : "—"}</td>
+                        <td><StatusBadge status={t.statusDoc||"incompleto"} /></td>
+                        {histView && <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDate(t.finalizedAt)}</td>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+      }
     </div>
   );
 }
 
-// ─── TRIP FORM ───────────────────────────────────────────────────────────────
+// ─── TRIP FORM ────────────────────────────────────────────────────────────────
 function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize, onBack }) {
   const isFinalized = trip?.status === "finalizado";
-  const readonly = !canEdit || isFinalized;
-  const isNew = !trip;
+  const readonly    = !canEdit || isFinalized;
+  const isNew       = !trip;
 
-  const [id] = useState(() => trip?.id || generateTripId(trips, false));
-  const [carga, setCarga] = useState(trip?.carga || "");
-  const [tipoCarga, setTipoCarga] = useState(trip?.tipoCarga || "");
-  const [um, setUm] = useState(trip?.um || "");
+  const [id]           = useState(() => trip?.id || generateTripId(trips, false));
+  const [carga, setCarga]             = useState(trip?.carga || "");
+  const [tipoCarga, setTipoCarga]     = useState(trip?.tipoCarga || "");
+  const [um, setUm]                   = useState(trip?.um || "");
   const [clasificacion, setClasificacion] = useState(trip?.clasificacion || "");
-  const [cantidad, setCantidad] = useState(trip?.cantidad || "");
+  const [cantidad, setCantidad]       = useState(trip?.cantidad || "");
+  const [pies, setPies]               = useState(trip?.pies || "");
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
-  const [moneda, setMoneda] = useState(trip?.moneda || "USD");
-  const [cliente, setCliente] = useState(trip?.cliente || "");
-  const [segments, setSegments] = useState(trip?.segments || [newSegment(1)]);
-  const [numMIC, setNumMIC] = useState(trip?.numMIC || "");
-  const [fechaMIC, setFechaMIC] = useState(trip?.fechaMIC || "");
-  const [numCRT, setNumCRT] = useState(trip?.numCRT || "");
-  const [fechaCRT, setFechaCRT] = useState(trip?.fechaCRT || "");
-  const [statusDoc, setStatusDoc] = useState(trip?.statusDoc || "incompleto");
-  const [obsDoc, setObsDoc] = useState(trip?.obsDoc || "");
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [moneda, setMoneda]           = useState(trip?.moneda || "USD");
+  const [cliente, setCliente]         = useState(trip?.cliente || "");
+  const [segments, setSegments]       = useState(trip?.segments || [makeSegment(id, 1)]);
+  const [numMIC, setNumMIC]           = useState(trip?.numMIC || "");
+  const [fechaMIC, setFechaMIC]       = useState(trip?.fechaMIC || "");
+  const [numCRT, setNumCRT]           = useState(trip?.numCRT || "");
+  const [fechaCRT, setFechaCRT]       = useState(trip?.fechaCRT || "");
+  const [statusDoc, setStatusDoc]     = useState(trip?.statusDoc || "incompleto");
+  const [obsDoc, setObsDoc]           = useState(trip?.obsDoc || "");
+  const [saving, setSaving]           = useState(false);
+  const [errors, setErrors]           = useState({});
 
-  const cargaData = dropdowns.CARGAS.find(c => c.nombre === carga);
-  const tipos = dropdowns.CARGAS.filter(c => c.nombre !== carga).map(c => c.tipo).filter(Boolean);
+  // ── carga metadata ──
+  const cargaRow = dropdowns.CARGAS.find(c => c.nombre === carga);
+  const isContenedor = carga === "CONTENEDOR";
 
-  function newSegment(seq) {
-    return { segId: `TRM-${id}-${seq.toString().padStart(2,"0")}`, desde:"", fechaInicio:"", hasta:"", fechaLlegadaPrevista:"", chofer:"", tractor:"", semi:"", fechaLlegadaReal:"", kmPrevistos:0, status:"stand by", observaciones:"" };
+  // Auto-fill UM/clasificacion/cantidad when carga changes
+  useEffect(() => {
+    if (!cargaRow) return;
+    setUm(cargaRow.um !== "-" ? cargaRow.um : "");
+    setClasificacion(cargaRow.clasificacion !== "-" ? cargaRow.clasificacion : "");
+    setCantidad(cargaRow.cantidad !== "-" ? cargaRow.cantidad : "");
+    if (!isContenedor) setPies("");
+  }, [carga]);
+
+  // ── KM total (reactive) ──
+  const totalKm = useMemo(() =>
+    segments.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0)
+  , [segments]);
+
+  function makeSegment(tripId, seq) {
+    return {
+      segId:`TRM-${tripId}-${String(seq).padStart(2,"0")}`,
+      desde:"", fechaInicio:"", hasta:"", fechaLlegadaPrevista:"",
+      chofer:"", tractor:"", semi:"", fechaLlegadaReal:"",
+      kmPrevistos:0, status:"stand by", observaciones:""
+    };
   }
 
   function addSegment() {
-    setSegments(p => [...p, newSegment(p.length + 1)]);
+    setSegments(p => [...p, makeSegment(id, p.length + 1)]);
   }
   function removeSegment(i) {
     if (segments.length <= 1) return;
@@ -941,11 +891,11 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
 
   function validate() {
     const e = {};
-    if (!carga) e.carga = "Requerido";
+    if (!carga)                        e.carga = "Requerido";
     if (carga !== "VACIO" && !montoFactura) e.montoFactura = "Requerido";
-    if (!cliente) e.cliente = "Requerido";
-    if (!numMIC) e.numMIC = "Requerido";
-    if (!fechaCRT) e.fechaCRT = "Requerido";
+    if (!cliente)                      e.cliente = "Requerido";
+    if (!numMIC)                       e.numMIC = "Requerido";
+    if (!fechaCRT)                     e.fechaCRT = "Requerido";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -953,19 +903,25 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, montoFactura, moneda, cliente, segments, numMIC, fechaMIC, numCRT, fechaCRT, statusDoc, obsDoc, status: trip?.status || "activo" };
+    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, pies,
+      montoFactura, moneda, cliente, segments, numMIC, fechaMIC,
+      numCRT, fechaCRT, statusDoc, obsDoc, status:trip?.status||"activo" };
     await onSave(data);
     setSaving(false);
   }
 
   async function handleFinalize() {
     if (!validate()) return;
-    const allDone = segments.every(s => s.status === "completado");
-    if (!allDone) { alert("Todos los tramos deben estar en estado 'completado' para finalizar."); return; }
-    const hasEmpty = segments.some(s => !s.desde || !s.hasta || !s.chofer || !s.tractor || !s.fechaLlegadaReal);
-    if (hasEmpty) { alert("Completá todos los campos de los tramos antes de finalizar."); return; }
+    if (!segments.every(s => s.status === "completado")) {
+      alert("Todos los tramos deben estar en estado 'completado'."); return;
+    }
+    if (segments.some(s => !s.desde || !s.hasta || !s.chofer || !s.tractor || !s.fechaLlegadaReal)) {
+      alert("Completá todos los campos de los tramos."); return;
+    }
     setSaving(true);
-    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, montoFactura, moneda, cliente, segments, numMIC, fechaMIC, numCRT, fechaCRT, statusDoc: "completo", obsDoc, status: "finalizado" };
+    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, pies,
+      montoFactura, moneda, cliente, segments, numMIC, fechaMIC,
+      numCRT, fechaCRT, statusDoc:"completo", obsDoc, status:"finalizado" };
     await onSave(data);
     await onFinalize(id);
     setSaving(false);
@@ -977,68 +933,121 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         <div>
           <div className="module-title">
             {isNew ? "Nuevo Viaje" : `Viaje ${id}`}
-            {isFinalized && <span className="readonly-badge" style={{ marginLeft: 10 }}>🔒 Finalizado</span>}
+            {isFinalized && <span className="readonly-badge" style={{ marginLeft:10 }}>🔒 Finalizado</span>}
           </div>
-          <div className="module-subtitle" style={{ fontFamily:"var(--mono)", fontSize:12 }}>{id}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:4 }}>
+            <span style={{ fontFamily:"var(--mono)", fontSize:12, color:"var(--text3)" }}>{id}</span>
+            {/* ── KM TOTAL CHIP ── always visible ── */}
+            <span className="km-total">
+              📍 KM totales: {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km
+            </span>
+          </div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* CARD 1 */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header">
-          <div className="card-title">📋 Información General del Viaje</div>
-        </div>
+      {/* ── CARD 1: Información general ── */}
+      <div className="card" style={{ marginBottom:16 }}>
+        <div className="card-header"><div className="card-title">📋 Información General del Viaje</div></div>
         <div className="card-body">
-          <div className="form-row">
-            <div className="form-group" style={{ maxWidth: 200 }}>
+
+          <div className="form-row" style={{ marginBottom:0 }}>
+            <div className="form-group" style={{ maxWidth:200 }}>
               <label className="form-label">ID Viaje</label>
               <div className="field-readonly">{id}</div>
             </div>
           </div>
+
+          {/* Carga + Tipo de Carga */}
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Carga {errors.carga && <span className="form-error">{errors.carga}</span>}</label>
-              <select className="form-select" value={carga} onChange={e=>setCarga(e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.CARGAS.map(c => <option key={c.nombre} value={c.nombre}>{c.nombre}</option>)}
-              </select>
+              <SearchableSelect
+                options={dropdowns.CARGAS.map(c => c.nombre)}
+                value={carga}
+                onChange={v => { setCarga(v); setTipoCarga(""); }}
+                placeholder="Seleccioná carga..."
+                disabled={readonly}
+              />
             </div>
-            {cargaData && cargaData.tipo !== "-" && (
+
+            {cargaRow && cargaRow.tipo !== "-" && (
               <div className="form-group">
                 <label className="form-label">Tipo de Carga</label>
-                <select className="form-select" value={tipoCarga} onChange={e=>setTipoCarga(e.target.value)} disabled={readonly}>
-                  <option value="">Seleccioná...</option>
-                  {dropdowns.CARGAS.filter(c=>c.tipo&&c.tipo!=="-").map(c=><option key={c.tipo} value={c.tipo}>{c.tipo}</option>)}
-                </select>
+                <SearchableSelect
+                  options={[...new Set(dropdowns.CARGAS.filter(c=>c.tipo&&c.tipo!=="-").map(c=>c.tipo))]}
+                  value={tipoCarga}
+                  onChange={setTipoCarga}
+                  placeholder="Seleccioná tipo..."
+                  disabled={readonly}
+                />
               </div>
             )}
           </div>
-          {cargaData && carga !== "VACIO" && (
+
+          {/* Dynamic fields based on carga selection */}
+          {cargaRow && carga !== "VACIO" && (
             <div className="form-row">
-              {cargaData.um !== "-" && (
+              {/* UM */}
+              {cargaRow.um !== "-" && (
                 <div className="form-group">
                   <label className="form-label">Unidad de Medida</label>
-                  {cargaData.um ? <div className="field-readonly">{cargaData.um}</div> :
-                    <input className="form-input" type="number" value={um} onChange={e=>setUm(e.target.value)} disabled={readonly} />}
+                  {cargaRow.um
+                    ? <div className="field-readonly">{um || cargaRow.um}</div>
+                    : <input className="form-input" type="text" value={um} onChange={e=>setUm(e.target.value)} disabled={readonly} placeholder="UM" />
+                  }
                 </div>
               )}
-              {cargaData.clasificacion !== "-" && (
-                <div className="form-group">
-                  <label className="form-label">Clasificación</label>
-                  {cargaData.clasificacion ? <div className="field-readonly">{cargaData.clasificacion}</div> :
-                    <input className="form-input" value={clasificacion} onChange={e=>setClasificacion(e.target.value)} disabled={readonly} />}
-                </div>
-              )}
-              {cargaData.cantidad !== "-" && (
-                <div className="form-group">
-                  <label className="form-label">Cantidad</label>
-                  {cargaData.cantidad ? <div className="field-readonly">{cargaData.cantidad}</div> :
-                    <input className="form-input" type="number" value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} />}
-                </div>
+
+              {/* CONTENEDOR: Pies selector + Clasificación */}
+              {isContenedor ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Pies</label>
+                    <SearchableSelect
+                      options={PIES_OPTIONS}
+                      value={pies}
+                      onChange={setPies}
+                      placeholder="20 / 40"
+                      disabled={readonly}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Clasificación</label>
+                    <SearchableSelect
+                      options={["REFRIGERADO","NO REFRIGERADO"]}
+                      value={clasificacion}
+                      onChange={setClasificacion}
+                      placeholder="Tipo..."
+                      disabled={readonly}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {cargaRow.clasificacion !== "-" && (
+                    <div className="form-group">
+                      <label className="form-label">Clasificación</label>
+                      {cargaRow.clasificacion
+                        ? <div className="field-readonly">{clasificacion || cargaRow.clasificacion}</div>
+                        : <input className="form-input" value={clasificacion} onChange={e=>setClasificacion(e.target.value)} disabled={readonly} />
+                      }
+                    </div>
+                  )}
+                  {cargaRow.cantidad !== "-" && (
+                    <div className="form-group">
+                      <label className="form-label">Cantidad</label>
+                      {cargaRow.cantidad
+                        ? <div className="field-readonly">{cantidad || cargaRow.cantidad}</div>
+                        : <input className="form-input" type="number" value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} />
+                      }
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
+
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
@@ -1051,38 +1060,49 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
             <div className="form-group">
               <label className="form-label">Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
-              <select className="form-select" value={cliente} onChange={e=>setCliente(e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.CLIENTES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <SearchableSelect
+                options={dropdowns.CLIENTES}
+                value={cliente}
+                onChange={setCliente}
+                placeholder="Buscar cliente..."
+                disabled={readonly}
+              />
             </div>
           </div>
         </div>
       </div>
 
-      {/* CARD 2 — Segments */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* ── CARD 2: Tramos ── */}
+      <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
-          <div className="card-title">🗺 Tramos del Viaje</div>
-          {!readonly && (
-            <div style={{ display:"flex", gap:6 }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => removeSegment(segments.length-1)}>− Tramo</button>
-              <button className="btn btn-primary btn-sm" onClick={addSegment}>+ Tramo</button>
-            </div>
-          )}
+          <div className="card-title">
+            🗺 Tramos del Viaje
+            <span className="km-total" style={{ marginLeft:8 }}>
+              {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km totales
+            </span>
+          </div>
         </div>
         <div className="card-body">
           {segments.map((seg, i) => (
-            <SegmentCard key={i} seg={seg} idx={i} dropdowns={dropdowns} readonly={readonly} onChange={(k,v)=>updateSeg(i,k,v)} />
+            <SegmentCard
+              key={seg.segId}
+              seg={seg}
+              idx={i}
+              total={segments.length}
+              dropdowns={dropdowns}
+              readonly={readonly}
+              onChange={(k,v) => updateSeg(i,k,v)}
+              onRemove={() => removeSegment(i)}
+              onAdd={addSegment}
+              isLast={i === segments.length - 1}
+            />
           ))}
         </div>
       </div>
 
-      {/* CARD 3 — Documentation */}
-      <div className="card" style={{ marginBottom: 80 }}>
-        <div className="card-header">
-          <div className="card-title">📄 Documentación</div>
-        </div>
+      {/* ── CARD 3: Documentación ── */}
+      <div className="card" style={{ marginBottom:80 }}>
+        <div className="card-header"><div className="card-title">📄 Documentación</div></div>
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
@@ -1121,37 +1141,60 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       {!readonly && (
         <div className="save-bar">
           <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-          <button className="btn btn-success" onClick={handleFinalize} disabled={saving}>🏁 Finalizar Viaje</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
+          <button className="btn btn-success"   onClick={handleFinalize} disabled={saving}>🏁 Finalizar Viaje</button>
+          <button className="btn btn-primary"   onClick={handleSave}     disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
         </div>
       )}
     </div>
   );
 }
 
-function SegmentCard({ seg, idx, dropdowns, readonly, onChange }) {
+// ─── SEGMENT CARD ─────────────────────────────────────────────────────────────
+// Props: seg, idx, total, dropdowns, readonly, onChange, onRemove, onAdd, isLast
+function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove, onAdd, isLast }) {
   const [open, setOpen] = useState(true);
+
   return (
     <div className="segment-card">
-      <div className="segment-header" onClick={() => setOpen(!open)}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+      {/* Header — click to collapse, action buttons on right */}
+      <div className="segment-header">
+        <div onClick={() => setOpen(!open)} style={{ flex:1, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
           <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--text3)" }}>{seg.segId}</span>
-          <span style={{ fontSize:12, color:"var(--text2)" }}>{seg.desde || "Desde ?"} → {seg.hasta || "Hasta ?"}</span>
+          <span style={{ fontSize:12, color:"var(--text2)" }}>{seg.desde||"Desde ?"} → {seg.hasta||"Hasta ?"}</span>
+          {seg.kmPrevistos > 0 && (
+            <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--accent)" }}>{Number(seg.kmPrevistos).toLocaleString("es-AR")} km</span>
+          )}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           <StatusBadge status={seg.status} />
-          <span style={{ color:"var(--text3)", fontSize:12 }}>{open?"▲":"▼"}</span>
+          {/* Botón eliminar en CADA tramo (si hay más de 1 y no es readonly) */}
+          {!readonly && total > 1 && (
+            <button
+              className="btn btn-danger btn-sm btn-icon"
+              onClick={e => { e.stopPropagation(); onRemove(); }}
+              title="Eliminar tramo"
+            >✕</button>
+          )}
+          {/* Botón agregar SOLO en el último tramo */}
+          {!readonly && isLast && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={e => { e.stopPropagation(); onAdd(); }}
+              title="Agregar tramo"
+            >+ Tramo</button>
+          )}
+          <span onClick={() => setOpen(!open)} style={{ color:"var(--text3)", fontSize:12, cursor:"pointer", userSelect:"none" }}>
+            {open?"▲":"▼"}
+          </span>
         </div>
       </div>
+
       {open && (
         <div className="segment-body">
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Desde</label>
-              <select className="form-select" value={seg.desde} onChange={e=>onChange("desde",e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.LUGARES.map(l=><option key={l} value={l}>{l}</option>)}
-              </select>
+              <SearchableSelect options={dropdowns.LUGARES} value={seg.desde} onChange={v=>onChange("desde",v)} placeholder="Origen..." disabled={readonly} />
             </div>
             <div className="form-group">
               <label className="form-label">Fecha inicio</label>
@@ -1159,10 +1202,7 @@ function SegmentCard({ seg, idx, dropdowns, readonly, onChange }) {
             </div>
             <div className="form-group">
               <label className="form-label">Hasta</label>
-              <select className="form-select" value={seg.hasta} onChange={e=>onChange("hasta",e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.LUGARES.map(l=><option key={l} value={l}>{l}</option>)}
-              </select>
+              <SearchableSelect options={dropdowns.LUGARES} value={seg.hasta} onChange={v=>onChange("hasta",v)} placeholder="Destino..." disabled={readonly} />
             </div>
             <div className="form-group">
               <label className="form-label">Fecha prevista llegada</label>
@@ -1172,24 +1212,15 @@ function SegmentCard({ seg, idx, dropdowns, readonly, onChange }) {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Chofer</label>
-              <select className="form-select" value={seg.chofer} onChange={e=>onChange("chofer",e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.CHOFERES.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+              <SearchableSelect options={dropdowns.CHOFERES} value={seg.chofer} onChange={v=>onChange("chofer",v)} placeholder="Buscar chofer..." disabled={readonly} />
             </div>
             <div className="form-group">
               <label className="form-label">Tractor</label>
-              <select className="form-select" value={seg.tractor} onChange={e=>onChange("tractor",e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.CAMIONES.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+              <SearchableSelect options={dropdowns.CAMIONES} value={seg.tractor} onChange={v=>onChange("tractor",v)} placeholder="Buscar tractor..." disabled={readonly} />
             </div>
             <div className="form-group">
               <label className="form-label">Semi</label>
-              <select className="form-select" value={seg.semi} onChange={e=>onChange("semi",e.target.value)} disabled={readonly}>
-                <option value="">Seleccioná...</option>
-                {dropdowns.SEMIS.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+              <SearchableSelect options={dropdowns.SEMIS} value={seg.semi} onChange={v=>onChange("semi",v)} placeholder="Buscar semi..." disabled={readonly} />
             </div>
             <div className="form-group">
               <label className="form-label">Fecha real llegada</label>
@@ -1197,14 +1228,24 @@ function SegmentCard({ seg, idx, dropdowns, readonly, onChange }) {
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group" style={{ maxWidth:150 }}>
+            <div className="form-group" style={{ maxWidth:180 }}>
               <label className="form-label">Km previstos</label>
-              <div className="field-readonly">{seg.kmPrevistos || "—"}</div>
+              {readonly
+                ? <div className="field-readonly">{fmtKm(seg.kmPrevistos)}</div>
+                : <input
+                    className="form-input"
+                    type="number"
+                    min="0"
+                    value={seg.kmPrevistos || ""}
+                    placeholder="0"
+                    onChange={e => onChange("kmPrevistos", Number(e.target.value) || 0)}
+                  />
+              }
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
               <select className="form-select" value={seg.status} onChange={e=>onChange("status",e.target.value)} disabled={readonly}>
-                {SEGMENT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+                {SEGMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="form-group" style={{ flex:3 }}>
@@ -1218,31 +1259,29 @@ function SegmentCard({ seg, idx, dropdowns, readonly, onChange }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 2 — ENTREGA DE PLATA
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 function Module2({ session, canEdit, dropdowns, notif }) {
-  const [view, setView] = useState("list");
+  const [view, setView]       = useState("list");
   const [entregas, setEntregas] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadEntregas(); }, []);
   async function loadEntregas() {
     setLoading(true);
-    const r = await gasCall("getEntregas", {});
+    const r = await gasCall("getEntregas");
     if (r.ok) setEntregas(r.data);
     setLoading(false);
   }
 
   async function handleSave(data) {
-    const r = await gasCall("saveEntrega", { entrega: data, user: session.username });
+    const r = await gasCall("saveEntrega", { entrega:data, user:session.username });
     if (r.ok) { notif.add("Entrega registrada"); loadEntregas(); setView("list"); }
     else notif.add(r.error || "Error al guardar", "error");
   }
 
-  if (view === "form") return (
-    <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={() => setView("list")} />
-  );
+  if (view === "form") return <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={() => setView("list")} />;
 
   return (
     <div className="module-container">
@@ -1253,50 +1292,48 @@ function Module2({ session, canEdit, dropdowns, notif }) {
         </div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setView("form")}>+ Nueva Entrega</button>}
       </div>
-      {loading ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}} /></div> : (
-        entregas.length === 0 ? (
-          <div className="empty"><div className="empty-icon">💵</div><p>No hay entregas registradas.</p></div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr>
-                <th>Fecha</th><th>Responsable</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th>
-              </tr></thead>
-              <tbody>
-                {entregas.map(e => (
-                  <tr key={e.id}>
-                    <td>{fmtDate(e.fecha)}</td>
-                    <td>{e.responsable}</td>
-                    <td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td>
-                    <td><span className="badge badge-blue">{e.moneda}</span></td>
-                    <td style={{ fontSize:11, color:"var(--text3)" }}>{e.createdBy}</td>
-                    <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      )}
+      {loading
+        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
+        : entregas.length === 0
+          ? <div className="empty"><div className="empty-icon">💵</div><p>No hay entregas registradas.</p></div>
+          : (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th></tr></thead>
+                <tbody>
+                  {entregas.map(e => (
+                    <tr key={e.id}>
+                      <td>{fmtDate(e.fecha)}</td>
+                      <td>{e.responsable}</td>
+                      <td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td>
+                      <td><span className="badge badge-blue">{e.moneda}</span></td>
+                      <td style={{ fontSize:11, color:"var(--text3)" }}>{e.createdBy}</td>
+                      <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+      }
     </div>
   );
 }
 
 function EntregaForm({ dropdowns, onSave, onBack }) {
-  const [fecha, setFecha] = useState(nowISO());
+  const [fecha, setFecha]         = useState(nowISO());
   const [responsable, setResponsable] = useState("");
-  const [monto, setMonto] = useState("");
-  const [moneda, setMoneda] = useState("ARS");
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
+  const [monto, setMonto]         = useState("");
+  const [moneda, setMoneda]       = useState("ARS");
+  const [errors, setErrors]       = useState({});
+  const [saving, setSaving]       = useState(false);
 
   function validate() {
     const e = {};
-    if (!fecha) e.fecha = "Requerido";
+    if (!fecha)       e.fecha = "Requerido";
     if (!responsable) e.responsable = "Requerido";
-    if (!monto) e.monto = "Requerido";
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    if (!monto)       e.monto = "Requerido";
+    setErrors(e); return Object.keys(e).length === 0;
   }
 
   async function handleSave() {
@@ -1312,7 +1349,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
         <div><div className="module-title">Nueva Entrega de Plata</div></div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      <div className="card" style={{ maxWidth: 520 }}>
+      <div className="card" style={{ maxWidth:520 }}>
         <div className="card-body">
           <div className="alert alert-info" style={{ marginBottom:16 }}>Los registros no pueden editarse una vez guardados.</div>
           <div className="form-group">
@@ -1321,17 +1358,14 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           </div>
           <div className="form-group">
             <label className="form-label">Responsable entrega {errors.responsable && <span className="form-error">{errors.responsable}</span>}</label>
-            <select className="form-select" value={responsable} onChange={e=>setResponsable(e.target.value)}>
-              <option value="">Seleccioná...</option>
-              {dropdowns.COLABORADORES.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
+            <SearchableSelect options={dropdowns.COLABORADORES} value={responsable} onChange={setResponsable} placeholder="Buscar colaborador..." />
           </div>
           <div className="form-group">
             <label className="form-label">Monto {errors.monto && <span className="form-error">{errors.monto}</span>}</label>
             <div className="input-with-currency">
               <input className="form-input" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00" />
               <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)}>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
@@ -1345,35 +1379,31 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 3 — RENDICIÓN DE GASTOS
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 function Module3({ session, canEdit, dropdowns, notif }) {
-  const [trips, setTrips] = useState([]);
-  const [entregas, setEntregas] = useState([]);
+  const [trips, setTrips]           = useState([]);
+  const [entregas, setEntregas]     = useState([]);
   const [rendiciones, setRendiciones] = useState([]);
   const [selectedDriver, setSelectedDriver] = useState("");
   const [selectedSegIds, setSelectedSegIds] = useState([]);
-  const [view, setView] = useState("list"); // list | form
-  const [loading, setLoading] = useState(true);
+  const [view, setView]             = useState("list");
+  const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      gasCall("getTrips",{}),
-      gasCall("getEntregas",{}),
-      gasCall("getRendiciones",{})
-    ]).then(([t,e,r]) => {
-      if (t.ok) setTrips(t.data);
-      if (e.ok) setEntregas(e.data);
-      if (r.ok) setRendiciones(r.data);
-      setLoading(false);
-    });
+    Promise.all([gasCall("getTrips"), gasCall("getEntregas"), gasCall("getRendiciones")])
+      .then(([t,e,r]) => {
+        if (t.ok) setTrips(t.data);
+        if (e.ok) setEntregas(e.data);
+        if (r.ok) setRendiciones(r.data);
+        setLoading(false);
+      });
   }, []);
 
-  // Unsettled segments = from active trips, not yet in any rendicion
   const settledSegIds = useMemo(() => {
     const s = new Set();
-    rendiciones.forEach(r => (r.segments||[]).forEach(seg => s.add(seg.segId)));
+    rendiciones.forEach(r => (r.segments||[]).forEach(sg => s.add(sg.segId)));
     return s;
   }, [rendiciones]);
 
@@ -1382,96 +1412,82 @@ function Module3({ session, canEdit, dropdowns, notif }) {
     trips.forEach(trip => {
       if (trip.status === "finalizado" || trip.status === "activo") {
         (trip.segments||[]).forEach(seg => {
-          if (!settledSegIds.has(seg.segId)) {
-            segs.push({ ...seg, tripId: trip.id, tripMonto: trip.montoFactura, tripMoneda: trip.moneda });
-          }
+          if (!settledSegIds.has(seg.segId))
+            segs.push({ ...seg, tripId:trip.id, tripMonto:trip.montoFactura, tripMoneda:trip.moneda });
         });
       }
     });
     return segs;
   }, [trips, settledSegIds]);
 
-  const filteredSegs = selectedDriver ? unsettledSegs.filter(s => s.chofer === selectedDriver) : unsettledSegs;
-  const allDrivers = [...new Set(unsettledSegs.map(s => s.chofer).filter(Boolean))];
+  const filtered    = selectedDriver ? unsettledSegs.filter(s => s.chofer === selectedDriver) : unsettledSegs;
+  const allDrivers  = [...new Set(unsettledSegs.map(s => s.chofer).filter(Boolean))];
+  const selectedSegs = filtered.filter(s => selectedSegIds.includes(s.segId));
 
   function toggleSeg(segId) {
     setSelectedSegIds(p => p.includes(segId) ? p.filter(x=>x!==segId) : [...p, segId]);
   }
 
-  const selectedSegs = filteredSegs.filter(s => selectedSegIds.includes(s.segId));
-
   async function handleSave(data) {
-    const r = await gasCall("saveRendicion", { rendicion: data, user: session.username });
+    const r = await gasCall("saveRendicion", { rendicion:data, user:session.username });
     if (r.ok) {
-      notif.add("Rendición guardada");
-      setView("list");
-      setSelectedSegIds([]);
-      // reload
-      Promise.all([gasCall("getTrips",{}),gasCall("getRendiciones",{})]).then(([t,r])=>{
-        if(t.ok) setTrips(t.data);
-        if(r.ok) setRendiciones(r.data);
+      notif.add("Rendición guardada"); setView("list"); setSelectedSegIds([]);
+      Promise.all([gasCall("getTrips"), gasCall("getRendiciones")]).then(([t,r]) => {
+        if (t.ok) setTrips(t.data);
+        if (r.ok) setRendiciones(r.data);
       });
     } else notif.add(r.error||"Error","error");
   }
 
   if (view === "form") return (
-    <RendicionForm
-      segs={selectedSegs}
-      driver={selectedDriver}
-      entregas={entregas}
-      onSave={handleSave}
-      onBack={() => setView("list")}
-      session={session}
-    />
+    <RendicionForm segs={selectedSegs} driver={selectedDriver} entregas={entregas}
+      onSave={handleSave} onBack={() => setView("list")} session={session} />
   );
 
   return (
-    <div className="module-container" style={{ paddingBottom: 0 }}>
+    <div className="module-container" style={{ paddingBottom:0 }}>
       <div className="module-header">
         <div>
           <div className="module-title">📊 Rendición de Gastos</div>
           <div className="module-subtitle">Seleccioná tramos para liquidar</div>
         </div>
       </div>
-      <div className="form-row" style={{ marginBottom: 16, maxWidth: 320 }}>
+      <div style={{ marginBottom:16, maxWidth:320 }}>
         <div className="form-group" style={{ margin:0 }}>
-          <label className="form-label">Chofer</label>
-          <select className="form-select" value={selectedDriver} onChange={e=>{ setSelectedDriver(e.target.value); setSelectedSegIds([]); }}>
-            <option value="">Todos los choferes</option>
-            {allDrivers.map(d=><option key={d} value={d}>{d}</option>)}
-          </select>
+          <label className="form-label">Filtrar por chofer</label>
+          <SearchableSelect
+            options={["", ...allDrivers].map(d => ({ value:d, label:d||"Todos los choferes" }))}
+            value={selectedDriver}
+            onChange={v => { setSelectedDriver(v); setSelectedSegIds([]); }}
+            placeholder="Todos los choferes"
+          />
         </div>
       </div>
-      {loading ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}} /></div> :
-        filteredSegs.length === 0 ? (
-          <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes de rendición.</p></div>
-        ) : (
-          <div style={{ maxHeight: "calc(100vh - 300px)", overflowY:"auto" }}>
-            <div className="table-wrap">
-              <table>
-                <thead><tr>
-                  <th></th><th>Tramo</th><th>Viaje</th><th>Chofer</th><th>Desde</th><th>Hasta</th><th>Fecha inicio</th><th>Estado</th>
-                </tr></thead>
-                <tbody>
-                  {filteredSegs.map(s => (
-                    <tr key={s.segId}>
-                      <td>
-                        <input type="checkbox" checked={selectedSegIds.includes(s.segId)} onChange={()=>toggleSeg(s.segId)} />
-                      </td>
-                      <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.segId}</td>
-                      <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.tripId}</td>
-                      <td>{s.chofer}</td>
-                      <td>{s.desde}</td>
-                      <td>{s.hasta}</td>
-                      <td>{fmtDate(s.fechaInicio)}</td>
-                      <td><StatusBadge status={s.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {loading
+        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
+        : filtered.length === 0
+          ? <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes de rendición.</p></div>
+          : (
+            <div style={{ maxHeight:"calc(100vh - 300px)", overflowY:"auto" }}>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th></th><th>Tramo</th><th>Viaje</th><th>Chofer</th><th>Desde</th><th>Hasta</th><th>Fecha inicio</th><th>Estado</th></tr></thead>
+                  <tbody>
+                    {filtered.map(s => (
+                      <tr key={s.segId}>
+                        <td><input type="checkbox" checked={selectedSegIds.includes(s.segId)} onChange={() => toggleSeg(s.segId)} /></td>
+                        <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.segId}</td>
+                        <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.tripId}</td>
+                        <td>{s.chofer}</td><td>{s.desde}</td><td>{s.hasta}</td>
+                        <td>{fmtDate(s.fechaInicio)}</td>
+                        <td><StatusBadge status={s.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )
+          )
       }
       {canEdit && selectedSegIds.length > 0 && (
         <div className="liquidar-bar">
@@ -1483,80 +1499,51 @@ function Module3({ session, canEdit, dropdowns, notif }) {
   );
 }
 
-// ─── RENDICION FORM ──────────────────────────────────────────────────────────
+// ─── RENDICION FORM ───────────────────────────────────────────────────────────
 function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
   const rendId = "RND-" + Date.now();
-  const [segMonto, setSegMonto] = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"ARS"}}),{}));
-  const [expenses, setExpenses] = useState([{ cat: "GAS-OIL", monto:"", moneda:"ARS" }]);
-  const [fuelRows, setFuelRows] = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
-  const [kmReales, setKmReales] = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
+  const [segMonto, setSegMonto]     = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"ARS"}}),{}));
+  const [expenses, setExpenses]     = useState([{ cat:"GAS-OIL", monto:"", moneda:"ARS" }]);
+  const [fuelRows, setFuelRows]     = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
+  const [kmReales, setKmReales]     = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
   const [adelanto, setAdelantoMonto] = useState("");
   const [adelantoMoneda, setAdelantoMoneda] = useState("ARS");
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [saving, setSaving]         = useState(false);
 
-  // Date range for entregas
-  const allDates = segs.map(s => [s.fechaInicio, s.fechaLlegadaPrevista]).flat().filter(Boolean).sort();
+  const allDates = segs.map(s=>[s.fechaInicio,s.fechaLlegadaPrevista]).flat().filter(Boolean).sort();
   const dateFrom = allDates[0];
-  const dateTo = allDates[allDates.length-1];
-  
+  const dateTo   = allDates[allDates.length-1];
+
   const driverEntregas = driver ? entregas.filter(e => {
     const d = e.fecha;
-    return e.responsable && (d >= (dateFrom||"") && d < (dateTo||"9999")) &&
-      segs.some(s=>s.chofer===driver||!driver);
+    return e.responsable && (d>=(dateFrom||"")&&d<(dateTo||"9999"));
   }) : [];
 
-  // Grouped by currency
-  const entregasByCur = { ARS:[], CLP:[], USD:[] };
-  driverEntregas.forEach(e => { if (entregasByCur[e.moneda]) entregasByCur[e.moneda].push(e); });
-  const entregaTotals = { ARS: entregasByCur.ARS.reduce((s,e)=>s+Number(e.monto),0), CLP: entregasByCur.CLP.reduce((s,e)=>s+Number(e.monto),0), USD: entregasByCur.USD.reduce((s,e)=>s+Number(e.monto),0) };
+  const entByCur = { ARS:[], CLP:[], USD:[] };
+  driverEntregas.forEach(e => { if (entByCur[e.moneda]) entByCur[e.moneda].push(e); });
+  const entTotals = { ARS:entByCur.ARS.reduce((s,e)=>s+Number(e.monto),0), CLP:entByCur.CLP.reduce((s,e)=>s+Number(e.monto),0), USD:entByCur.USD.reduce((s,e)=>s+Number(e.monto),0) };
 
-  // Segment monto total
   const totalSegARS = segs.reduce((s,seg)=>{
-    const m = segMonto[seg.segId];
-    if (!m?.monto) return s;
+    const m = segMonto[seg.segId]; if (!m?.monto) return s;
     const v = Number(m.monto);
-    if (m.moneda==="ARS") return s+v;
-    if (m.moneda==="USD") return s+v*1000;
-    if (m.moneda==="CLP") return s+v*1.1;
-    return s;
+    return s + (m.moneda==="ARS"?v:m.moneda==="USD"?v*1000:v*1.1);
   },0);
 
-  const tripTotal = segs[0]?.tripMonto ? Number(segs[0].tripMonto) * (segs[0].tripMoneda==="USD"?1000:1) : Infinity;
-
-  // Expenses total
-  const expTotal = { ARS: expenses.filter(e=>e.moneda==="ARS").reduce((s,e)=>s+Number(e.monto||0),0),
-    USD: expenses.filter(e=>e.moneda==="USD").reduce((s,e)=>s+Number(e.monto||0),0),
-    CLP: expenses.filter(e=>e.moneda==="CLP").reduce((s,e)=>s+Number(e.monto||0),0) };
-
-  // Fuel calcs
-  const totalLitros = fuelRows.reduce((s,r)=>s+Number(r.litros||0),0);
-  const totalKmReales = Object.values(kmReales).reduce((s,v)=>s+Number(v||0),0);
-  const consumo = totalKmReales>0 ? ((totalLitros/totalKmReales)*100).toFixed(2) : "—";
-
-  // Driver settlement
-  const DRIVER_PCT = 0.13;
-  const driverPct = totalSegARS * DRIVER_PCT;
-  const adelantoARS = Number(adelanto||0) * (adelantoMoneda==="USD"?1000:adelantoMoneda==="CLP"?1.1:1);
-  const expTotalARS = expTotal.ARS + expTotal.USD*1000 + expTotal.CLP*1.1;
-  const entTotalARS = entregaTotals.ARS + entregaTotals.USD*1000 + entregaTotals.CLP*1.1;
-  const driverBalance = driverPct - adelantoARS;
-  const netBalance = entTotalARS - expTotalARS;
-
-  function addExpense() { setExpenses(p=>[...p,{cat:"GAS-OIL",monto:"",moneda:"ARS"}]); }
-  function removeExpense(i) { setExpenses(p=>p.filter((_,idx)=>idx!==i)); }
-  function updateExpense(i,k,v) { setExpenses(p=>{ const n=[...p]; n[i]={...n[i],[k]:v}; return n; }); }
-  function addFuel() { setFuelRows(p=>[...p,{fecha:"",proveedor:"",litros:"",total:""}]); }
-  function removeFuel(i) { setFuelRows(p=>p.filter((_,idx)=>idx!==i)); }
-  function updateFuel(i,k,v) { setFuelRows(p=>{ const n=[...p]; n[i]={...n[i],[k]:v}; return n; }); }
+  const tripTotal = segs[0]?.tripMonto ? Number(segs[0].tripMonto)*(segs[0].tripMoneda==="USD"?1000:1) : Infinity;
+  const expTotal  = { ARS:expenses.filter(e=>e.moneda==="ARS").reduce((s,e)=>s+Number(e.monto||0),0), USD:expenses.filter(e=>e.moneda==="USD").reduce((s,e)=>s+Number(e.monto||0),0), CLP:expenses.filter(e=>e.moneda==="CLP").reduce((s,e)=>s+Number(e.monto||0),0) };
+  const totalLitros    = fuelRows.reduce((s,r)=>s+Number(r.litros||0),0);
+  const totalKmReales  = Object.values(kmReales).reduce((s,v)=>s+Number(v||0),0);
+  const consumo        = totalKmReales>0 ? ((totalLitros/totalKmReales)*100).toFixed(2) : "—";
+  const driverPct      = totalSegARS * 0.13;
+  const adelantoARS    = Number(adelanto||0)*(adelantoMoneda==="USD"?1000:adelantoMoneda==="CLP"?1.1:1);
+  const expTotalARS    = expTotal.ARS + expTotal.USD*1000 + expTotal.CLP*1.1;
+  const entTotalARS    = entTotals.ARS + entTotals.USD*1000 + entTotals.CLP*1.1;
+  const driverBalance  = driverPct - adelantoARS;
 
   async function handleSave() {
     setSaving(true);
-    const data = {
-      id: rendId, driver, segMonto, expenses, fuelRows, kmReales, adelanto, adelantoMoneda,
-      segments: segs, totals: { totalSegARS, driverPct, adelantoARS, driverBalance, entTotalARS, expTotalARS }
-    };
-    await onSave(data);
+    await onSave({ id:rendId, driver, segMonto, expenses, fuelRows, kmReales, adelanto, adelantoMoneda, segments:segs,
+      totals:{ totalSegARS, driverPct, adelantoARS, driverBalance, entTotalARS, expTotalARS } });
     setSaving(false);
   }
 
@@ -1570,12 +1557,12 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* Segments preloaded */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Tramos */}
+      <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header"><div className="card-title">🗺 Tramos incluidos</div></div>
         <div className="card-body">
           {segs.map(s => (
-            <div key={s.segId} style={{ marginBottom: 16 }}>
+            <div key={s.segId} style={{ marginBottom:16 }}>
               <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
                 <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--text3)" }}>{s.segId}</span>
                 <span style={{ fontSize:12 }}>{s.desde} → {s.hasta}</span>
@@ -1589,13 +1576,13 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
                   </div>
                 ))}
               </div>
-              <div className="form-row" style={{ marginTop:8, maxWidth:300 }}>
+              <div className="form-row" style={{ marginTop:8, maxWidth:320 }}>
                 <div className="form-group">
                   <label className="form-label">Monto tramo *</label>
                   <div className="input-with-currency">
                     <input className="form-input" type="number" value={segMonto[s.segId]?.monto||""} onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],monto:e.target.value}}))} placeholder="0.00" />
-                    <select className="form-select" style={{width:80}} value={segMonto[s.segId]?.moneda||"ARS"} onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],moneda:e.target.value}}))}>
-                      {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                    <select className="form-select" style={{ width:80 }} value={segMonto[s.segId]?.moneda||"ARS"} onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],moneda:e.target.value}}))}>
+                      {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
@@ -1605,29 +1592,29 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
                 </div>
               </div>
               {totalSegARS > tripTotal && (
-                <div className="alert alert-danger" style={{ marginTop:8 }}>⚠️ El total de tramos supera el monto de factura. Disponible: {(tripTotal - totalSegARS + (segMonto[s.segId]?.monto?Number(segMonto[s.segId].monto):0)).toLocaleString("es-AR")}</div>
+                <div className="alert alert-danger" style={{ marginTop:8 }}>⚠️ Total supera monto de factura.</div>
               )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Entregas section */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Entregas */}
+      <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header"><div className="card-title">💵 Dinero entregado al chofer</div></div>
         <div className="card-body">
           <div className="form-hint" style={{ marginBottom:12 }}>Período: {fmtDate(dateFrom)} — {fmtDate(dateTo)}</div>
-          {CURRENCIES.map(cur => entregasByCur[cur].length > 0 && (
+          {CURRENCIES.map(cur => entByCur[cur].length > 0 && (
             <div key={cur} style={{ marginBottom:16 }}>
               <div className="section-label">{cur}</div>
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th></tr></thead>
                   <tbody>
-                    {entregasByCur[cur].map(e => (
-                      <tr key={e.id}><td>{fmtDate(e.fecha)}</td><td>{e.responsable}</td><td style={{fontFamily:"var(--mono)"}}>{Number(e.monto).toLocaleString("es-AR")}</td></tr>
+                    {entByCur[cur].map(e => (
+                      <tr key={e.id}><td>{fmtDate(e.fecha)}</td><td>{e.responsable}</td><td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td></tr>
                     ))}
-                    <tr><td colSpan={2} style={{fontWeight:600,color:"var(--text)"}}>Subtotal {cur}</td><td style={{fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{entregaTotals[cur].toLocaleString("es-AR")}</td></tr>
+                    <tr><td colSpan={2} style={{ fontWeight:600, color:"var(--text)" }}>Subtotal {cur}</td><td style={{ fontFamily:"var(--mono)", fontWeight:600, color:"var(--text)" }}>{entTotals[cur].toLocaleString("es-AR")}</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1637,31 +1624,31 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
         </div>
       </div>
 
-      {/* Expenses */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Gastos */}
+      <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">📋 Gastos</div>
-          <button className="btn btn-secondary btn-sm" onClick={addExpense}>+ Gasto</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setExpenses(p=>[...p,{cat:"GAS-OIL",monto:"",moneda:"ARS"}])}>+ Gasto</button>
         </div>
         <div className="card-body">
           {expenses.map((e,i) => (
             <div key={i} className="form-row" style={{ alignItems:"flex-end", marginBottom:8 }}>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Categoría</label>
-                <select className="form-select" value={e.cat} onChange={x=>updateExpense(i,"cat",x.target.value)}>
-                  {EXPENSE_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                <select className="form-select" value={e.cat} onChange={x=>{ const n=[...expenses];n[i]={...n[i],cat:x.target.value};setExpenses(n); }}>
+                  {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Monto</label>
                 <div className="input-with-currency">
-                  <input className="form-input" type="number" value={e.monto} onChange={x=>updateExpense(i,"monto",x.target.value)} placeholder="0.00" />
-                  <select className="form-select" style={{width:80}} value={e.moneda} onChange={x=>updateExpense(i,"moneda",x.target.value)}>
-                    {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                  <input className="form-input" type="number" value={e.monto} onChange={x=>{ const n=[...expenses];n[i]={...n[i],monto:x.target.value};setExpenses(n); }} placeholder="0.00" />
+                  <select className="form-select" style={{ width:80 }} value={e.moneda} onChange={x=>{ const n=[...expenses];n[i]={...n[i],moneda:x.target.value};setExpenses(n); }}>
+                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
-              <button className="btn btn-danger btn-sm btn-icon" onClick={()=>removeExpense(i)}>✕</button>
+              <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setExpenses(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
             </div>
           ))}
           <div style={{ display:"flex", gap:16, justifyContent:"flex-end", borderTop:"1px solid var(--border)", paddingTop:12, marginTop:8 }}>
@@ -1671,48 +1658,48 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
         </div>
       </div>
 
-      {/* Fuel */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Combustible */}
+      <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">⛽ Combustible</div>
-          <button className="btn btn-secondary btn-sm" onClick={addFuel}>+ Carga</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setFuelRows(p=>[...p,{fecha:"",proveedor:"",litros:"",total:""}])}>+ Carga</button>
         </div>
         <div className="card-body">
           {fuelRows.map((f,i) => (
             <div key={i} className="form-row" style={{ alignItems:"flex-end", marginBottom:8 }}>
               <div className="form-group">
                 <label className="form-label">Fecha</label>
-                <input type="date" className="form-input" value={f.fecha} onChange={e=>updateFuel(i,"fecha",e.target.value)} />
+                <input type="date" className="form-input" value={f.fecha} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],fecha:e.target.value};setFuelRows(n); }} />
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Proveedor</label>
-                <input className="form-input" value={f.proveedor} onChange={e=>updateFuel(i,"proveedor",e.target.value)} />
+                <input className="form-input" value={f.proveedor} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:e.target.value};setFuelRows(n); }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Litros</label>
-                <input className="form-input" type="number" value={f.litros} onChange={e=>updateFuel(i,"litros",e.target.value)} />
+                <input className="form-input" type="number" value={f.litros} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],litros:e.target.value};setFuelRows(n); }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Total factura</label>
-                <input className="form-input" type="number" value={f.total} onChange={e=>updateFuel(i,"total",e.target.value)} />
+                <input className="form-input" type="number" value={f.total} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],total:e.target.value};setFuelRows(n); }} />
               </div>
               <div className="form-group" style={{ maxWidth:100 }}>
                 <label className="form-label">$/L</label>
                 <div className="field-readonly">{f.litros&&f.total?(Number(f.total)/Number(f.litros)).toFixed(2):"—"}</div>
               </div>
-              <button className="btn btn-danger btn-sm btn-icon" onClick={()=>removeFuel(i)}>✕</button>
+              <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setFuelRows(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
             </div>
           ))}
           <div style={{ display:"flex", gap:24, borderTop:"1px solid var(--border)", paddingTop:12, marginTop:8 }}>
             <span style={{ fontSize:13, color:"var(--text2)" }}>Total litros: <strong>{totalLitros.toLocaleString("es-AR")}</strong></span>
-            <span style={{ fontSize:13, color:"var(--text2)" }}>Km reales totales: <strong>{totalKmReales.toLocaleString("es-AR")}</strong></span>
+            <span style={{ fontSize:13, color:"var(--text2)" }}>Km reales: <strong>{totalKmReales.toLocaleString("es-AR")}</strong></span>
             <span style={{ fontSize:13, color:"var(--text2)" }}>Consumo: <strong>{consumo} L/100km</strong></span>
           </div>
         </div>
       </div>
 
-      {/* Final liquidation */}
-      <div className="card" style={{ marginBottom: 80 }}>
+      {/* Liquidación */}
+      <div className="card" style={{ marginBottom:80 }}>
         <div className="card-header"><div className="card-title">💰 Liquidación final — {driver}</div></div>
         <div className="card-body">
           <div className="form-row" style={{ maxWidth:320, marginBottom:16 }}>
@@ -1720,8 +1707,8 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               <label className="form-label">Adelanto sueldo</label>
               <div className="input-with-currency">
                 <input className="form-input" type="number" value={adelanto} onChange={e=>setAdelantoMonto(e.target.value)} placeholder="0.00" />
-                <select className="form-select" style={{width:80}} value={adelantoMoneda} onChange={e=>setAdelantoMoneda(e.target.value)}>
-                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                <select className="form-select" style={{ width:80 }} value={adelantoMoneda} onChange={e=>setAdelantoMoneda(e.target.value)}>
+                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
             </div>
@@ -1734,9 +1721,9 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               ["Total gastos", -expTotalARS, false],
               ["Saldo chofer (% − adelanto)", driverBalance, true],
             ].map(([l,v,bold]) => (
-              <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop: bold?"1px solid var(--border)":"none", paddingTop: bold?10:0 }}>
-                <span style={{ fontSize:13, color: bold?"var(--text)":"var(--text2)", fontWeight: bold?600:400 }}>{l}</span>
-                <span style={{ fontFamily:"var(--mono)", fontSize:14, fontWeight: bold?600:400, color: v<0?"var(--danger)":bold?"var(--success)":"var(--text2)" }}>
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:bold?"1px solid var(--border)":"none", paddingTop:bold?10:0 }}>
+                <span style={{ fontSize:13, color:bold?"var(--text)":"var(--text2)", fontWeight:bold?600:400 }}>{l}</span>
+                <span style={{ fontFamily:"var(--mono)", fontSize:14, fontWeight:bold?600:400, color:v<0?"var(--danger)":bold?"var(--success)":"var(--text2)" }}>
                   {v<0?"-":""}{Math.abs(v).toLocaleString("es-AR")} ARS
                 </span>
               </div>
@@ -1753,7 +1740,7 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
   );
 }
 
-// ─── RENDER ──────────────────────────────────────────────────────────────────
+// ─── RENDER ───────────────────────────────────────────────────────────────────
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
