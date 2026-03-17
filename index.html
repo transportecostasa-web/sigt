@@ -160,8 +160,12 @@ tr:hover td{background:var(--bg3);}
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
+
+// Dirección del servidor Google Apps Script.
+// Si está vacía (""), el sistema usa el mock local (datos en el navegador).
+// Para pasar a producción: pegar la URL /exec del backend desplegado.
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec";
-  
+
 // Lista de todos los módulos del sistema.
 // "id" es el número de módulo, "short" es el nombre que aparece en el menú lateral.
 // Para agregar un módulo nuevo: añadir una entrada acá y crear su componente Module_N más abajo.
@@ -178,7 +182,7 @@ const MODULES = [
 // Permisos por usuario.
 // "mods": qué módulos puede VER (aparecen en el menú lateral).
 // "edit": en cuáles puede EDITAR (en el resto solo lee).
-// Para cambiar permisos: modificar los arrays de cada usuario. 
+// Para cambiar permisos: modificar los arrays de cada usuario.
 const PERMISSIONS = {
   SOL:      { role:"Editor global",  mods:[1,2,3,4,5,6,7], edit:[1,2,3,4,5,6,7] },
   PABLO:    { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
@@ -191,19 +195,23 @@ const PERMISSIONS = {
 // Divisas disponibles en todos los campos de dinero del sistema.
 const CURRENCIES = ["USD","ARS","CLP"];
 
-// FIX #7 — categorías exactas según spec
+// Categorías de gastos disponibles en la Rendición de Gastos (Módulo 3).
+// El orden aquí es el orden que aparece en el desplegable.
 const EXPENSE_CATS = [
   "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
   "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
   "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
 ];
 
+// Estados posibles de un tramo de viaje.
 const SEGMENT_STATUSES = ["stand by","en curso","completado"];
 
-// Países que NO son Argentina — para detectar tramos internacionales
+// Lista de países limítrofes que NO son Argentina.
+// Se usa para detectar si un viaje cruza la frontera y debe llevar prefijo INT en el ID.
 const PAISES_EXTRANJEROS = ["PARAGUAY","BRASIL","CHILE","URUGUAY","BOLIVIA","PERÚ","COLOMBIA","ARGENTINA NO"];
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
+
 // Convierte una contraseña en un código irreversible (hash).
 // Nunca se guarda la contraseña real — solo este código.
 // Solo se usa en el mock local; el servidor real usa SHA-256 de Google.
@@ -214,10 +222,12 @@ function simpleHash(str){
 
 // Lee un dato guardado en la memoria del navegador (localStorage).
 // Si no existe o hay error, devuelve el valor por defecto (def).
+// Ej: lsGet("sigt_session") → { username:"SOL", token:"abc..." }
 function lsGet(k,def=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch{return def;}}
 
 // Guarda un dato en la memoria del navegador (localStorage).
 // Persiste aunque se cierre la pestaña, hasta que se borre el caché.
+// Ej: lsSet("sigt_session", { username:"SOL", token:"abc..." })
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 
 // Convierte una fecha técnica ("2025-03-17") al formato argentino ("17/03/2025").
@@ -233,27 +243,27 @@ function fmtDT(d){if(!d)return"—";return new Date(d).toLocaleString("es-AR");}
 function nowISO(){return new Date().toISOString().slice(0,10);}
 
 // Formatea un número como kilómetros con separador de miles.
+// Ej: fmtKm(1240) → "1.240 km" | fmtKm(null) → "—"
 function fmtKm(n){if(!n&&n!==0)return"—";return Number(n).toLocaleString("es-AR")+" km";}
 
-// Formatea un número como dinero con separador de miles y un decimal.
+// Formatea un número como dinero con separador de miles y dos decimales.
+// Ej: fmtNum(1234567.5) → "1.234.567,50" | fmtNum("") → "—"
+// Se usa para mostrar montos en tablas y resúmenes (no en campos de entrada).
 function fmtNum(n){
   if(n===null||n===undefined||n==="")return"—";
-  return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:1});
+  return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
 // Helpers internos usados por el componente MoneyInput (ver más abajo).
 // parseMoneyInput: convierte "1.234,56" → 1234.56 (número puro)
 // formatMoneyDisplay: agrega puntos de miles mientras el usuario escribe
-// Guarda internamente el valor numérico puro, muestra "1.234.567"
 function parseMoneyInput(raw){
-  // quitar todo excepto dígitos y coma decimal
   const clean = String(raw).replace(/\./g,"").replace(",",".");
   const n = parseFloat(clean);
   return isNaN(n) ? "" : n;
 }
 function formatMoneyDisplay(raw){
-  // raw es string del input — aplicar solo separador de miles, sin decimales forzados
-  const digits = String(raw).replace(/[^\d,]/g,"");  // mantener dígitos y coma
+  const digits = String(raw).replace(/[^\d,]/g,"");
   const parts  = digits.split(",");
   const intPart= parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,".");
   return parts.length>1 ? intPart+","+parts[1] : intPart;
@@ -278,18 +288,23 @@ function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
 
 // Detecta si un lugar está fuera de Argentina.
 // Busca el nombre del lugar dentro de la lista de países extranjeros
+// y de ciudades conocidas fuera del país.
+// Se llama para cada origen y destino de un tramo al crear el ID del viaje.
+// Ej: isLugarExtranjero("ASUNCIÓN") → true | isLugarExtranjero("ROSARIO") → false
 function isLugarExtranjero(lugar, lugares) {
   if (!lugar) return false;
   const l = lugar.toUpperCase();
-  // Si el dato de lugares viene enriquecido con país {nombre, pais}
-  // lo usamos; si no, inferimos del nombre del lugar.
   if (PAISES_EXTRANJEROS.some(p => l.includes(p))) return true;
-  // Ciudades conocidas fuera de Argentina:
   const ciudadesExt = ["ASUNCIÓN","MONTEVIDEO","SANTIAGO","SÃO PAULO","RIO DE JANEIRO","LA PAZ","LIMA","BOGOTÁ","SANTA CRUZ","ENCARNACIÓN","CIUDAD DEL ESTE"];
   return ciudadesExt.some(c => l.includes(c));
 }
 
-// FIX #1 — generateTripId: NAC si todos dentro de AR, INT si hay tramo internacional
+// Genera el ID automático de un viaje nuevo.
+// Formato: NAC-0001-7342 o INT-0001-7342
+//   NAC = todos los tramos dentro de Argentina
+//   INT = al menos un tramo cruza la frontera
+//   0001 = correlativo según cuántos viajes NAC o INT ya existen
+//   7342 = número aleatorio para evitar duplicados si dos personas crean viajes al mismo tiempo
 function generateTripId(trips, segments, lugares) {
   const hasInt = (segments||[]).some(s =>
     isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares)
@@ -305,6 +320,7 @@ function generateTripId(trips, segments, lugares) {
 // según los tramos que tiene actualmente.
 // Se llama automáticamente cada vez que el usuario modifica los orígenes/destinos
 // de los tramos, para que el ID se actualice solo.
+// Ej: si el usuario agrega un tramo con destino ASUNCIÓN → el ID cambia de NAC a INT
 function recalcPrefix(id, segments, lugares) {
   const hasInt = (segments||[]).some(s =>
     isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares)
@@ -315,11 +331,25 @@ function recalcPrefix(id, segments, lugares) {
   return id.replace(oldPrefix, newPrefix);
 }
 
-// FIX #2 — ID tramo: DESDE-HASTA-SEQ
+// Contador global de tramos — persiste en localStorage para ser incremental
+// entre sesiones y viajes distintos.
+function nextGlobalSegSeq() {
+  const curr = Number(lsGet("sigt_seg_seq", 0));
+  const next = curr + 1;
+  lsSet("sigt_seg_seq", next);
+  return next;
+}
+
+// Genera el ID automático de un tramo.
+// Formato: TR-001-00001
+//   TR    = prefijo fijo
+//   001   = número de tramo dentro del viaje (posición en el array, 3 dígitos)
+//   00001 = contador global incremental de tramos (5 dígitos, crece con cada nuevo tramo creado)
+// El contador global evita IDs duplicados entre distintos viajes.
 function makeSegmentId(tripId, desde, hasta, seq) {
-  const d = (desde || "???").replace(/\s+/g,"-").slice(0,6).toUpperCase();
-  const h = (hasta  || "???").replace(/\s+/g,"-").slice(0,6).toUpperCase();
-  return `${d}-${h}-${String(seq).padStart(2,"0")}`;
+  const local  = String(seq).padStart(3,"0");
+  const global = String(nextGlobalSegSeq()).padStart(5,"0");
+  return `TR-${local}-${global}`;
 }
 
 // Tabla de distancias viales aproximadas entre ciudades (en km por carretera).
@@ -342,6 +372,30 @@ function getKmPrevistos(desde, hasta) {
   const key1 = `${desde.toUpperCase()}|${hasta.toUpperCase()}`;
   const key2 = `${hasta.toUpperCase()}|${desde.toUpperCase()}`;
   return KM_TABLE[key1] || KM_TABLE[key2] || null;
+}
+
+// ─── CACHÉ EN MEMORIA ────────────────────────────────────────────────────────
+// Almacena los datos ya cargados del servidor para no volver a pedirlos
+// cada vez que el usuario cambia de módulo.
+// Los datos se invalidan (borran) solo cuando se guarda algo nuevo.
+// Estructura: { trips: [...] | null, entregas: [...] | null, rendiciones: [...] | null }
+const _cache = { trips: null, entregas: null, rendiciones: null };
+
+// Invalida una o varias claves del caché para forzar recarga en la próxima consulta.
+function invalidateCache(...keys) {
+  keys.forEach(k => { if (k in _cache) _cache[k] = null; });
+}
+
+// Versión cacheada de gasCall para lecturas de colecciones.
+// Si los datos ya están en memoria, los devuelve sin llamar al servidor.
+// Si no están (null), los busca en el servidor y los guarda en caché.
+async function cachedGet(action, cacheKey) {
+  if (_cache[cacheKey] !== null && _cache[cacheKey] !== undefined) {
+    return { ok: true, data: _cache[cacheKey] };
+  }
+  const r = await gasCall(action);
+  if (r.ok) _cache[cacheKey] = r.data;
+  return r;
 }
 
 // ─── GAS CALL ────────────────────────────────────────────────────────────────
@@ -461,16 +515,21 @@ function mockApi(action, payload) {
 // vienen de las hojas de Google Sheets configuradas en el spreadsheet de config.
 function initDB() {
   const users = Object.keys(PERMISSIONS).map(u => ({
-    username:u, passwordHash:simpleHash(u), mustChangePassword:true
+    username:u,
+    passwordHash:simpleHash(u), // contraseña inicial = nombre de usuario
+    mustChangePassword:true     // obliga a cambiar la contraseña en el primer ingreso
   }));
   return {
-    users, trips:[], entregas:[], rendiciones:[], auditLog:[],
+    users,
+    trips:[],        // viajes (Módulo 1)
+    entregas:[],     // entregas de dinero (Módulo 2)
+    rendiciones:[],  // rendiciones de gastos (Módulo 3)
+    auditLog:[],     // historial de todas las acciones del sistema
     dropdowns:{
-      // FIX #1 — hoja "CARGAS" col A: mercadería (lista simple de strings)
+      // Mercadería transportada — viene de la hoja "CARGAS" col A
       CARGAS:["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE","MADERA","MINERAL"],
-      // FIX #1 — hoja "TIPO DE CARGA" col A-D
-      // col A=tipo, B=UM, C=clasificacion, D=cantidad
-      // "" en D = input libre | "-" = ocultar campo
+      // Método de transporte — viene de la hoja "TIPO DE CARGA" col A-D
+      // cantidad "" = el usuario debe ingresar el número | "-" = campo no aplica, se oculta
       TIPO_DE_CARGA:[
         { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
         { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
@@ -482,13 +541,21 @@ function initDB() {
       CHOFERES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS","FERNANDEZ DIEGO"],
       CAMIONES:["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"],
       SEMIS:["SEMI-001","SEMI-002","SEMI-003","SEMI-004"],
-      // hoja "COLABORADORES" col A
       COLABORADORES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","PEREZ ANA","GOMEZ SOFIA"],
+      // Hoja "CATEGORIA_GASTOS" col A — categorías para la tabla de gastos de rendición
+      CATEGORIA_GASTOS:[
+        "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
+        "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
+        "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
+      ],
+      // Hoja "ESTACIONES_COMBUSTIBLES" col A — proveedores de combustible
+      ESTACIONES_COMBUSTIBLES:["YPF","SHELL","AXION","PUMA","OTRO"],
     }
   };
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+
 // Hook que maneja los mensajes emergentes (las cajitas que aparecen arriba a la derecha).
 // Devuelve: { items: lista de mensajes activos, add: función para mostrar uno nuevo }
 // Uso: notif.add("Viaje guardado")          → cajita verde
@@ -540,19 +607,25 @@ function StatusBadge({ status }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SEARCHABLE SELECT
-// options: string[] | { value, label }[]
 // Desplegable reutilizable con búsqueda por texto. Se usa en todos los campos
 // que tienen lista de opciones: cargas, clientes, lugares, choferes, etc.
+//
+// Props que recibe:
+//   options     — lista de opciones: puede ser ["ROSARIO","CÓRDOBA"] o [{value, label}]
+//   value       — la opción actualmente seleccionada
+//   onChange    — función que se llama cuando el usuario elige una opción
+//   placeholder — texto gris que se muestra cuando no hay nada seleccionado
+//   disabled    — si es true, el campo queda bloqueado (modo lectura)
 // ═══════════════════════════════════════════════════════════════════════════════
 function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar...", disabled=false }) {
-  const [query, setQuery]     = useState("");
-  const [open, setOpen]       = useState(false);
-  const [focusIdx, setFocusIdx] = useState(-1);
-  const wrapRef  = useRef(null);
-  const inputRef = useRef(null);
-  const listRef  = useRef(null);
+  const [query, setQuery]     = useState("");   // texto que escribe el usuario para filtrar
+  const [open, setOpen]       = useState(false); // si el panel de opciones está visible
+  const [focusIdx, setFocusIdx] = useState(-1);  // qué opción está resaltada con el teclado
+  const wrapRef  = useRef(null); // referencia al contenedor, para detectar clics afuera
+  const inputRef = useRef(null); // referencia al input, para seleccionar el texto al abrir
+  const listRef  = useRef(null); // referencia a la lista, para hacer scroll automático
 
- // Normaliza las opciones: si vienen como strings simples, las convierte a {value, label}
+  // Normaliza las opciones: si vienen como strings simples, las convierte a {value, label}
   const opts = useMemo(() => options.map(o =>
     typeof o === "string" ? { value:o, label:o } : o
   ), [options]);
@@ -565,11 +638,10 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 
   // Las opciones filtradas según lo que escribe el usuario
   const filtered = useMemo(() => {
-    if (!query.trim()) return opts;
+    if (!query.trim()) return opts; // sin texto → muestra todas
     const q = query.toLowerCase();
     return opts.filter(o => o.label.toLowerCase().includes(q));
   }, [query, opts]);
-
 
   // Cierra el desplegable si el usuario hace clic en cualquier parte fuera del componente
   useEffect(() => {
@@ -603,7 +675,6 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
     onChange(val); setOpen(false); setQuery(""); setFocusIdx(-1);
   }
 
- 
   // Navegación con teclado: flechas arriba/abajo, Enter para seleccionar, Escape para cerrar
   function handleKeyDown(e) {
     if (!open) { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); openDropdown(); } return; }
@@ -649,8 +720,7 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MONEY INPUT — input con separador de miles automático
-// value: número o string numérico | onChange(numericValue: number|"")
+// MONEY INPUT
 // Campo de texto para ingresar montos de dinero con formato argentino automático.
 // Muestra puntos de miles mientras se escribe (1234567 → 1.234.567).
 // Acepta coma como decimal (1.234,56).
@@ -666,16 +736,16 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={} }) {
   // "display" es lo que el usuario ve en pantalla (con puntos de miles).
   // "value" es el número puro que se guarda en el estado del formulario.
+  // Son dos cosas separadas: el display puede ser "1.234.567" mientras value es 1234567.
   const [display, setDisplay] = useState(() => {
     if (value===""||value===null||value===undefined) return "";
     return Number(value).toLocaleString("es-AR");
   });
-  
+
   // Si el valor cambia desde afuera (ej: cuando se resetea el formulario),
   // actualiza el display para que coincida con el nuevo valor.
   useEffect(() => {
     if (value===""||value===null||value===undefined) { setDisplay(""); return; }
-    // Solo reformat si el valor numérico cambió desde afuera
     const current = parseRaw(display);
     if (current !== Number(value)) {
       setDisplay(Number(value).toLocaleString("es-AR"));
@@ -683,15 +753,13 @@ function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={}
   }, [value]);
 
   // Convierte el texto que ve el usuario al número puro interno.
+  // "1.234.567" → 1234567  |  "1.234,56" → 1234.56
   function parseRaw(str) {
-    // "1.234.567" → 1234567  |  "1.234,56" → 1234.56
     const s = String(str).trim();
     if (!s) return NaN;
-    // Si tiene coma, es decimal: quitar puntos de miles, reemplazar coma por punto
     if (s.includes(",")) {
       return parseFloat(s.replace(/\./g,"").replace(",","."));
     }
-    // Sin coma: puntos son separadores de miles
     return parseFloat(s.replace(/\./g,""));
   }
 
@@ -701,24 +769,20 @@ function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={}
   // 3. Actualiza el display con el formato y llama a onChange con el número puro
   function handleChange(e) {
     const raw = e.target.value;
-    // Permitir solo: dígitos, punto, coma
     const filtered = raw.replace(/[^\d.,]/g,"");
-    // Evitar doble separador decimal
     const parts = filtered.split(/[,]/);
     if (parts.length > 2) return; // más de una coma → ignorar
-
-    // Formatear parte entera con puntos de miles
-    const intStr = parts[0].replace(/\./g,""); // quitar puntos viejos
+    const intStr = parts[0].replace(/\./g,"");
     const formatted = intStr.replace(/\B(?=(\d{3})+(?!\d))/g,".");
     const result = parts.length===2 ? formatted+","+parts[1] : formatted;
-
     setDisplay(result);
     const numeric = parseRaw(result);
     onChange(isNaN(numeric) ? "" : numeric);
   }
 
+  // Cuando el usuario sale del campo: limpia el formato para que quede prolijo.
+  // Ej: si escribió "1.234." (con punto al final), lo deja como "1.234"
   function handleBlur() {
-    // Al salir del campo: reformat limpio
     const numeric = parseRaw(display);
     if (!isNaN(numeric) && display!=="") {
       setDisplay(numeric.toLocaleString("es-AR"));
@@ -752,16 +816,12 @@ function App() {
   // session: datos del usuario logueado { username, token }, o null si no hay sesión.
   // Se inicializa leyendo del localStorage para recordar la sesión entre recargas.
   const [session, setSession]           = useState(() => lsGet("sigt_session"));
-
   // mustChangePw: true cuando el usuario ingresó por primera vez y debe cambiar contraseña.
   const [mustChangePw, setMustChangePw] = useState(false);
-
   // activeModule: número del módulo actualmente visible (1=Viajes, 2=Entregas, etc.)
   const [activeModule, setActiveModule] = useState(1);
-
   // sidebarOpen: si el panel lateral está expandido o colapsado
   const [sidebarOpen, setSidebarOpen]   = useState(true);
-
   // dropdowns: objeto con todas las listas de opciones para los desplegables.
   // null mientras se están cargando desde el servidor.
   const [dropdowns, setDropdowns]       = useState(null);
@@ -777,7 +837,8 @@ function App() {
       if (!r.ok) return;
       const d = r.data || {};
 
-      // CARGAS: debe ser string[]. Si vino como objeto[] (schema viejo), extraer .nombre
+      // CARGAS: debe llegar como lista de strings. Si por algún error llega como
+      // lista de objetos (schema viejo), extrae solo el campo "nombre".
       let cargas = d.CARGAS || d.CARGAS_MERCANCIAS || [];
       if (cargas.length && typeof cargas[0] === "object") {
         cargas = cargas.map(c => c.nombre || c).filter(Boolean);
@@ -786,7 +847,8 @@ function App() {
         cargas = ["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE","MADERA","MINERAL"];
       }
 
-      // TIPO_DE_CARGA: {nombre,um,clasificacion,cantidad}[]. Puede venir con key vieja.
+      // TIPO_DE_CARGA: debe llegar como lista de objetos {nombre,um,clasificacion,cantidad}.
+      // Intenta también la key vieja "TIPOSDE_CARGA" por compatibilidad hacia atrás.
       let tiposCarga = d.TIPO_DE_CARGA || d.TIPOSDE_CARGA || [];
       if (!tiposCarga.length) {
         tiposCarga = [
@@ -797,11 +859,13 @@ function App() {
         ];
       }
 
-      // Listas simples — garantizar string[]
+      // Para las listas simples: si un elemento vino como objeto en lugar de string,
+      // intenta extraer el campo "nombre" o "name".
       function toStrArr(arr) {
         if (!arr || !arr.length) return [];
         return arr.map(x => typeof x === "string" ? x : (x.nombre||x.name||String(x))).filter(Boolean);
       }
+      // Si la lista del servidor está vacía, usa la lista de fallback.
       function withFallback(arr, fallback) { const s = toStrArr(arr); return s.length ? s : fallback; }
 
       setDropdowns({
@@ -813,6 +877,16 @@ function App() {
         CAMIONES:      withFallback(d.CAMIONES,      ["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"]),
         SEMIS:         withFallback(d.SEMIS,         ["SEMI-001","SEMI-002","SEMI-003","SEMI-004"]),
         COLABORADORES: withFallback(d.COLABORADORES, ["RODRIGUEZ JUAN","GARCIA PEDRO","PEREZ ANA","GOMEZ SOFIA"]),
+        // Categorías de gastos desde hoja "CATEGORIA_GASTOS" col A
+        CATEGORIA_GASTOS: withFallback(d.CATEGORIA_GASTOS, [
+          "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
+          "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
+          "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
+        ]),
+        // Proveedores de combustible desde hoja "ESTACIONES_COMBUSTIBLES" col A
+        ESTACIONES_COMBUSTIBLES: withFallback(d.ESTACIONES_COMBUSTIBLES, [
+          "YPF","SHELL","AXION","PUMA","OTRO"
+        ]),
       });
     });
   }, [session]);
@@ -827,7 +901,6 @@ function App() {
     else setActiveModule(PERMISSIONS[user.username]?.mods[0] || 1);
   }
 
-
   // Se llama cuando el usuario termina de cambiar su contraseña por primera vez.
   function handlePasswordChanged() {
     setMustChangePw(false);
@@ -838,7 +911,6 @@ function App() {
   // Cierra la sesión: borra el token del localStorage y resetea el estado.
   function handleLogout() { lsSet("sigt_session", null); setSession(null); setMustChangePw(false); }
 
-
   // Puntos de decisión: qué mostrar según el estado de sesión
   if (!session) return <><LoginScreen onLogin={handleLogin}/><Notifications items={notif.items}/></>;
   if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged}/><Notifications items={notif.items}/></>;
@@ -846,7 +918,7 @@ function App() {
   // Calcula qué módulos puede ver y editar el usuario logueado
   const perms = PERMISSIONS[session.username] || { mods:[], edit:[] };
   const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
-  const canEdit = modId => perms.edit.includes(modId);
+  const canEdit = modId => perms.edit.includes(modId); // devuelve true/false por módulo
 
   return (
     <div className="app">
@@ -872,8 +944,8 @@ function App() {
   );
 }
 
-
-// Barra superior fija. Muestra el título del sistema a la izquierda
+// Barra superior fija. Muestra el título del sistema a la izquierda y
+// los tres círculos de control a la derecha (rojo=cerrar sesión, amarillo y verde decorativos).
 // El botón rojo llama a onLogout, que borra la sesión y vuelve a la pantalla de login.
 function TopBar({ onLogout }) {
   return (
@@ -884,6 +956,8 @@ function TopBar({ onLogout }) {
         <span style={{ fontWeight:400, color:"var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
       </div>
       <div className="wm-btns">
+        <button className="wm-btn min" title="Minimizar"/>
+        <button className="wm-btn max" title="Maximizar"/>
         <button className="wm-btn close" title="Cerrar sesión" onClick={onLogout}/>
       </div>
     </div>
@@ -933,6 +1007,7 @@ function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) 
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
+
 // Pantalla de inicio de sesión. Es lo primero que ve el usuario al abrir la app.
 // Convierte el nombre de usuario a mayúsculas automáticamente mientras se escribe.
 // Al hacer clic en "Ingresar":
@@ -990,12 +1065,12 @@ function LoginScreen({ onLogin }) {
 // Muestra una barra de progreso de fortaleza mientras el usuario escribe la nueva contraseña.
 // Al completarse exitosamente llama a onDone, que lleva al usuario al módulo principal.
 function ChangePasswordScreen({ username, onDone }) {
-  const [old, setOld] = useState("");
-  const [nw, setNw]   = useState("");
-  const [rep, setRep] = useState("");
+  const [old, setOld] = useState("");  // contraseña anterior
+  const [nw, setNw]   = useState("");  // nueva contraseña
+  const [rep, setRep] = useState("");  // repetición de la nueva contraseña
   const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
-  const str = pwStrength(nw);
+  const str = pwStrength(nw); // calcula la fortaleza de la nueva contraseña en tiempo real
 
   async function handleSubmit(e) {
     e.preventDefault(); setError("");
@@ -1073,19 +1148,24 @@ function Module1({ session, canEdit, dropdowns, notif }) {
   useEffect(() => { loadTrips(); }, []);
   async function loadTrips() {
     setLoading(true);
-    const r = await gasCall("getTrips");
+    // Usa caché: si los datos ya están en memoria no hace llamada al servidor
+    const r = await cachedGet("getTrips", "trips");
     if (r.ok) setTrips(r.data);
     setLoading(false);
   }
   async function handleSave(tripData) {
     const r = await gasCall("saveTrip", { trip:tripData, user:session.username });
-    if (r.ok) { notif.add("Viaje guardado"); loadTrips(); setView("list"); }
-    else notif.add(r.error||"Error al guardar","error");
+    if (r.ok) {
+      invalidateCache("trips"); // fuerza recarga después de guardar
+      notif.add("Viaje guardado"); loadTrips(); setView("list");
+    } else notif.add(r.error||"Error al guardar","error");
   }
   async function handleFinalize(tripId) {
     const r = await gasCall("finalizeTrip", { tripId, user:session.username });
-    if (r.ok) { notif.add("Viaje finalizado"); loadTrips(); setView("list"); }
-    else notif.add(r.error||"Error al finalizar","error");
+    if (r.ok) {
+      invalidateCache("trips"); // fuerza recarga después de finalizar
+      notif.add("Viaje finalizado"); loadTrips(); setView("list");
+    } else notif.add(r.error||"Error al finalizar","error");
   }
 
   if (view==="form") return (
@@ -1672,14 +1752,17 @@ function Module2({ session, canEdit, dropdowns, notif }) {
   useEffect(() => { loadEntregas(); }, []);
   async function loadEntregas() {
     setLoading(true);
-    const r = await gasCall("getEntregas");
+    // Usa caché: si los datos ya están en memoria no hace llamada al servidor
+    const r = await cachedGet("getEntregas", "entregas");
     if (r.ok) setEntregas(r.data);
     setLoading(false);
   }
   async function handleSave(data) {
     const r = await gasCall("saveEntrega", { entrega:data, user:session.username });
-    if (r.ok) { notif.add("Entrega registrada"); loadEntregas(); setView("list"); }
-    else notif.add(r.error||"Error al guardar","error");
+    if (r.ok) {
+      invalidateCache("entregas"); // fuerza recarga después de guardar
+      notif.add("Entrega registrada"); loadEntregas(); setView("list");
+    } else notif.add(r.error||"Error al guardar","error");
   }
 
   if (view==="form") return <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={()=>setView("list")}/>;
@@ -1700,16 +1783,27 @@ function Module2({ session, canEdit, dropdowns, notif }) {
           : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Fecha</th><th>Chofer</th><th>Responsable entrega</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th></tr></thead>
+                <thead><tr>
+                  <th>Fecha</th><th>Chofer</th>
+                  <th style={{ textAlign:"right" }}>ARS</th>
+                  <th style={{ textAlign:"right" }}>CLP</th>
+                  <th style={{ textAlign:"right" }}>USD</th>
+                  <th>Fecha registro</th>
+                </tr></thead>
                 <tbody>
                   {entregas.map(e=>(
                     <tr key={e.id}>
                       <td>{fmtDate(e.fecha)}</td>
                       <td style={{ fontWeight:500,color:"var(--text)" }}>{e.chofer||"—"}</td>
-                      <td>{e.responsable}</td>
-                      <td style={{ fontFamily:"var(--mono)" }}>{fmtNum(e.monto)}</td>
-                      <td><span className="badge badge-blue">{e.moneda}</span></td>
-                      <td style={{ fontSize:11,color:"var(--text3)" }}>{e.createdBy}</td>
+                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
+                        {e.moneda==="ARS" ? fmtNum(e.monto) : ""}
+                      </td>
+                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
+                        {e.moneda==="CLP" ? fmtNum(e.monto) : ""}
+                      </td>
+                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
+                        {e.moneda==="USD" ? fmtNum(e.monto) : ""}
+                      </td>
                       <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
                     </tr>
                   ))}
@@ -1729,9 +1823,9 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   // Montos: una fila por divisa, el usuario activa las que necesita
   // { moneda, monto } — solo se guardan las que tengan monto > 0
   const [montos, setMontos] = useState([
+    { moneda:"USD", monto:"" },
     { moneda:"ARS", monto:"" },
     { moneda:"CLP", monto:"" },
-    { moneda:"USD", monto:"" },
   ]);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -1860,13 +1954,17 @@ function Module3({ session, canEdit, dropdowns, notif }) {
   const [loading,     setLoading]    = useState(true);
 
   useEffect(() => {
-    Promise.all([gasCall("getTrips"),gasCall("getEntregas"),gasCall("getRendiciones")])
-      .then(([t,e,r]) => {
-        if (t.ok) setTrips(t.data);
-        if (e.ok) setEntregas(e.data);
-        if (r.ok) setRendiciones(r.data);
-        setLoading(false);
-      });
+    // Usa caché para las tres colecciones — sin llamadas duplicadas al servidor
+    Promise.all([
+      cachedGet("getTrips","trips"),
+      cachedGet("getEntregas","entregas"),
+      cachedGet("getRendiciones","rendiciones")
+    ]).then(([t,e,r]) => {
+      if (t.ok) setTrips(t.data);
+      if (e.ok) setEntregas(e.data);
+      if (r.ok) setRendiciones(r.data);
+      setLoading(false);
+    });
   }, []);
 
   const settledIds = useMemo(() => {
@@ -1899,8 +1997,12 @@ function Module3({ session, canEdit, dropdowns, notif }) {
   async function handleSave(data) {
     const r = await gasCall("saveRendicion", { rendicion:data, user:session.username });
     if (r.ok) {
+      invalidateCache("trips","rendiciones"); // fuerza recarga después de guardar
       notif.add("Rendición guardada"); setView("list"); setSelSegIds([]);
-      Promise.all([gasCall("getTrips"),gasCall("getRendiciones")]).then(([t,r])=>{
+      Promise.all([
+        cachedGet("getTrips","trips"),
+        cachedGet("getRendiciones","rendiciones")
+      ]).then(([t,r])=>{
         if(t.ok)setTrips(t.data); if(r.ok)setRendiciones(r.data);
       });
     } else notif.add(r.error||"Error","error");
@@ -1908,6 +2010,7 @@ function Module3({ session, canEdit, dropdowns, notif }) {
 
   if (view==="form") return (
     <RendicionForm segs={selSegs} driver={selDriver} entregas={entregas}
+      dropdowns={dropdowns}
       onSave={handleSave} onBack={()=>setView("list")} session={session}/>
   );
 
@@ -1919,22 +2022,26 @@ function Module3({ session, canEdit, dropdowns, notif }) {
           <div className="module-subtitle">Seleccioná tramos para liquidar</div>
         </div>
       </div>
-      <div style={{ marginBottom:16, maxWidth:320 }}>
+      <div style={{ marginBottom:16, maxWidth:360 }}>
         <div className="form-group" style={{ margin:0 }}>
-          <label className="form-label">Filtrar por chofer</label>
+          <label className="form-label">Seleccioná un chofer para ver sus tramos</label>
           <SearchableSelect
-            options={["", ...allDrivers].map(d=>({ value:d, label:d||"Todos los choferes" }))}
+            options={allDrivers.map(d=>({ value:d, label:d }))}
             value={selDriver}
             onChange={v=>{ setSelDriver(v); setSelSegIds([]); }}
-            placeholder="Todos los choferes"
+            placeholder="Elegir chofer..."
           />
         </div>
       </div>
-      {loading
-        ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
-        : filtered.length===0
-          ? <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes de rendición.</p></div>
-          : (
+
+      {/* Mientras no se elija chofer: no mostrar nada */}
+      {!selDriver
+        ? <div className="empty"><div className="empty-icon">👤</div><p>Seleccioná un chofer para ver sus tramos pendientes.</p></div>
+        : loading
+          ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
+          : filtered.length===0
+            ? <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes para {selDriver}.</p></div>
+            : (
             <div style={{ maxHeight:"calc(100vh - 300px)", overflowY:"auto" }}>
               <div className="table-wrap">
                 <table>
@@ -1955,6 +2062,8 @@ function Module3({ session, canEdit, dropdowns, notif }) {
               </div>
             </div>
           )
+          }
+        )
       }
       {canEdit && selSegIds.length>0 && (
         <div className="liquidar-bar">
@@ -1967,11 +2076,20 @@ function Module3({ session, canEdit, dropdowns, notif }) {
 }
 
 // ─── RENDICION FORM ───────────────────────────────────────────────────────────
-function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
+function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, session }) {
   const rendId = "RND-" + Date.now();
 
   const [segMonto, setSegMonto]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"USD"}}),{}));
-  const [expenses, setExpenses]   = useState([{ cat:"GAS-OIL", monto:"", moneda:"ARS" }]);
+  // expenses: { cat, ARS, CLP, USD } — una fila por categoría, monto por divisa
+  // Se inicializa con las categorías del dropdown (o fallback) en cero.
+  const [expenses, setExpenses]   = useState(() => {
+    const cats = (dropdowns?.CATEGORIA_GASTOS) || [
+      "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
+      "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
+      "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
+    ];
+    return cats.map(cat => ({ cat, ARS:"", CLP:"", USD:"" }));
+  });
   const [fuelRows, setFuelRows]   = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
   const [kmReales, setKmReales]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
   // FIX #4 — devoluciones por moneda
@@ -2030,9 +2148,13 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
 
   const tripTotal = segs[0]?.tripMonto ? toARS(segs[0].tripMonto, segs[0].tripMoneda||"USD") : Infinity;
 
-  // Gastos
+  // Gastos — sumar por divisa a través de todas las categorías
   const expTotal = { ARS:0, CLP:0, USD:0 };
-  expenses.forEach(e=>{ expTotal[e.moneda] = (expTotal[e.moneda]||0)+Number(e.monto||0); });
+  expenses.forEach(e=>{
+    expTotal.ARS += Number(e.ARS||0);
+    expTotal.CLP += Number(e.CLP||0);
+    expTotal.USD += Number(e.USD||0);
+  });
   const expTotalARS = expTotal.ARS + toARS(expTotal.CLP,"CLP") + toARS(expTotal.USD,"USD");
 
   // Combustible
@@ -2052,6 +2174,7 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
 
   async function handleSave() {
     setSaving(true);
+    // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
     await onSave({
       id:rendId, driver, segMonto, expenses, fuelRows, kmReales, devolucion,
       segments:segs,
@@ -2188,41 +2311,20 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
         </div>
       </div>
 
-      {/* Gastos — FIX #7 categorías exactas */}
+      {/* Gastos — tabla por divisa, una fila por categoría */}
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">📋 Gastos</div>
-          <button className="btn btn-secondary btn-sm" onClick={()=>setExpenses(p=>[...p,{cat:"GAS-OIL",monto:"",moneda:"ARS"}])}>+ Gasto</button>
         </div>
         <div className="card-body">
-          {expenses.map((e,i)=>(
-            <div key={i} className="form-row" style={{ alignItems:"flex-end",marginBottom:8 }}>
-              <div className="form-group" style={{ flex:2 }}>
-                <label className="form-label">Categoría</label>
-                <select className="form-select" value={e.cat}
-                  onChange={x=>{ const n=[...expenses];n[i]={...n[i],cat:x.target.value};setExpenses(n); }}>
-                  {EXPENSE_CATS.map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex:2 }}>
-                <label className="form-label">Monto</label>
-                <div className="input-with-currency">
-                  <MoneyInput value={e.monto} onChange={v=>{ const n=[...expenses];n[i]={...n[i],monto:v};setExpenses(n); }} placeholder="0"/>
-                  <select className="form-select" style={{ width:80 }} value={e.moneda}
-                    onChange={x=>{ const n=[...expenses];n[i]={...n[i],moneda:x.target.value};setExpenses(n); }}>
-                    {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setExpenses(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
-            </div>
-          ))}
-          <div style={{ display:"flex",gap:16,justifyContent:"flex-end",borderTop:"1px solid var(--border)",paddingTop:12,marginTop:8,flexWrap:"wrap" }}>
-            {CURRENCIES.map(cur=>expTotal[cur]>0&&(
-              <span key={cur} style={{ fontSize:13,color:"var(--text2)" }}>{cur}: {fmtNum(expTotal[cur])} ({fmtNum(toARS(expTotal[cur],cur))} ARS)</span>
-            ))}
-            <span style={{ fontWeight:600 }}>Total ARS: {fmtNum(expTotalARS)}</span>
-          </div>
+          <GastosTabla
+            dropdowns={dropdowns}
+            expenses={expenses}
+            setExpenses={setExpenses}
+            expTotal={expTotal}
+            expTotalARS={expTotalARS}
+            toARS={toARS}
+          />
         </div>
       </div>
 
@@ -2246,8 +2348,13 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Proveedor</label>
-                <input className="form-input" value={f.proveedor}
-                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:e.target.value};setFuelRows(n); }}/>
+                {/* CAMBIO 7 — desplegable desde hoja "ESTACIONES_COMBUSTIBLES" */}
+                <SearchableSelect
+                  options={dropdowns?.ESTACIONES_COMBUSTIBLES||["YPF","SHELL","AXION","PUMA","OTRO"]}
+                  value={f.proveedor}
+                  onChange={v=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:v};setFuelRows(n); }}
+                  placeholder="Buscar estación..."
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Litros</label>
@@ -2337,6 +2444,76 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar Rendición"}</button>
       </div>
     </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GASTOS TABLA
+// Tabla de gastos por divisa. Cada fila = una categoría de gasto.
+// Columnas: Categoría | ARS | CLP | USD
+// Las categorías vienen del dropdown CATEGORIA_GASTOS (hoja Google Sheets).
+// Si una celda está vacía, no suma nada. El total por divisa se muestra al pie.
+// ═══════════════════════════════════════════════════════════════════════════════
+function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, toARS }) {
+  function updateCell(idx, cur, val) {
+    setExpenses(p => {
+      const n = [...p];
+      n[idx] = { ...n[idx], [cur]: val };
+      return n;
+    });
+  }
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Categoría</th>
+              <th style={{ textAlign:"right", width:140 }}>ARS</th>
+              <th style={{ textAlign:"right", width:140 }}>CLP</th>
+              <th style={{ textAlign:"right", width:140 }}>USD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {expenses.map((e,i) => (
+              <tr key={e.cat}>
+                <td style={{ color:"var(--text)", fontWeight:500 }}>{e.cat}</td>
+                {["ARS","CLP","USD"].map(cur => (
+                  <td key={cur} style={{ padding:"6px 8px" }}>
+                    <MoneyInput
+                      value={e[cur]}
+                      onChange={v => updateCell(i, cur, v)}
+                      placeholder=""
+                      style={{ textAlign:"right", fontSize:12, padding:"5px 8px" }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background:"var(--bg4)" }}>
+              <td style={{ fontWeight:600, color:"var(--text)", padding:"10px 14px" }}>Total</td>
+              {["ARS","CLP","USD"].map(cur => (
+                <td key={cur} style={{ fontFamily:"var(--mono)", fontWeight:600, color:"var(--text)", textAlign:"right", padding:"10px 14px" }}>
+                  {expTotal[cur] > 0 ? fmtNum(expTotal[cur]) : "—"}
+                  {expTotal[cur] > 0 && cur !== "ARS" && (
+                    <div style={{ fontSize:10, color:"var(--text3)", fontWeight:400 }}>
+                      ≈ {fmtNum(toARS(expTotal[cur], cur))} ARS
+                    </div>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style={{ textAlign:"right", fontWeight:600, fontSize:14, borderTop:"1px solid var(--border)", paddingTop:12, marginTop:12 }}>
+        Total gastos ARS equiv.: {fmtNum(expTotalARS)}
+      </div>
+    </>
   );
 }
 
