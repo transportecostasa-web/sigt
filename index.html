@@ -10,185 +10,148 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2128;--bg4:#252830;
-    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
-    --text:#e8eaf0;--text2:#9aa0b0;--text3:#5c6270;
-    --accent:#4f7fff;--accent2:#3d6aff;--accent-glow:rgba(79,127,255,0.18);
-    --success:#34c776;--warning:#f5a623;--danger:#e5484d;--info:#67b8f4;
-    --sidebar-w:220px;--topbar-h:52px;
-    --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
-    --radius:8px;--radius-lg:12px;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;}
-  ::-webkit-scrollbar{width:5px;height:5px;}
-  ::-webkit-scrollbar-track{background:transparent;}
-  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
-
-  .app{display:flex;flex-direction:column;height:100vh;}
-  .topbar{height:var(--topbar-h);background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:100;}
-  .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--text);display:flex;align-items:center;gap:8px;}
-  .topbar-title span.mono{font-family:var(--mono);color:var(--accent);font-size:11px;}
-  .wm-btns{display:flex;gap:6px;}
-  .wm-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;}
-  .wm-btn.close{background:#e5484d;}.wm-btn.min{background:#f5a623;}.wm-btn.max{background:#34c776;}
-  .body{display:flex;flex:1;overflow:hidden;}
-
-  /* Sidebar */
-  .sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;transition:width .2s ease;overflow:hidden;}
-  .sidebar.collapsed{width:48px;}
-  .sidebar-header{height:44px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;border-bottom:1px solid var(--border);}
-  .collapse-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;}
-  .collapse-btn:hover{color:var(--text);background:var(--bg3);}
-  .sidebar-nav{flex:1;padding:8px 0;overflow-y:auto;}
-  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;white-space:nowrap;transition:background .1s;font-size:13px;color:var(--text2);}
-  .nav-item:hover{background:var(--bg3);color:var(--text);}
-  .nav-item.active{background:var(--accent-glow);color:var(--accent);}
-  .nav-item .nav-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
-  .nav-item .nav-label{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;}
-  .nav-item .nav-num{font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;}
-  .sidebar-footer{padding:12px;border-top:1px solid var(--border);}
-  .user-badge{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--radius);background:var(--bg3);}
-  .user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
-  .user-info{min-width:0;}
-  .user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .user-role{font-size:10px;color:var(--text3);}
-
-  .main{flex:1;overflow-y:auto;background:var(--bg);}
-  .module-container{padding:24px;max-width:1400px;}
-
-  /* Auth */
-  .auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
-  .auth-card{width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;position:relative;overflow:hidden;}
-  .auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),#a78bfa);}
-  .auth-logo{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;margin-bottom:8px;}
-  .auth-title{font-size:22px;font-weight:600;margin-bottom:4px;}
-  .auth-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.5;}
-
-  /* Forms */
-  .form-group{margin-bottom:16px;}
-  .form-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:block;}
-  .form-input,.form-select,.form-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;appearance:none;-webkit-appearance:none;}
-  .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
-  .form-input::placeholder{color:var(--text3);}
-  .form-select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235c6270' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;}
-  .form-select option{background:var(--bg3);color:var(--text);}
-  .form-textarea{resize:vertical;min-height:72px;}
-  .form-row{display:flex;gap:12px;}
-  .form-row .form-group{flex:1;}
-  .form-error{font-size:11px;color:var(--danger);margin-top:5px;}
-  .form-hint{font-size:11px;color:var(--text3);margin-top:4px;}
-
-  /* Buttons */
-  .btn{padding:9px 18px;border-radius:var(--radius);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
-  .btn:disabled{opacity:.45;cursor:not-allowed;}
-  .btn-primary{background:var(--accent);color:#fff;}
-  .btn-primary:hover:not(:disabled){background:var(--accent2);}
-  .btn-secondary{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
-  .btn-secondary:hover:not(:disabled){background:var(--bg3);}
-  .btn-danger{background:rgba(229,72,77,.15);color:var(--danger);border:1px solid rgba(229,72,77,.3);}
-  .btn-danger:hover:not(:disabled){background:rgba(229,72,77,.25);}
-  .btn-success{background:rgba(52,199,118,.15);color:var(--success);border:1px solid rgba(52,199,118,.3);}
-  .btn-success:hover:not(:disabled){background:rgba(52,199,118,.25);}
-  .btn-sm{padding:5px 12px;font-size:12px;}
-  .btn-icon{padding:6px;width:30px;height:30px;justify-content:center;}
-  .btn-full{width:100%;justify-content:center;}
-
-  /* Cards */
-  .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);}
-  .card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
-  .card-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
-  .card-body{padding:20px;}
-
-  /* Tables */
-  .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
-  table{width:100%;border-collapse:collapse;font-size:13px;}
-  thead tr{background:var(--bg3);}
-  th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
-  td{padding:10px 14px;border-top:1px solid var(--border);color:var(--text2);white-space:nowrap;}
-  tr:hover td{background:var(--bg3);}
-
-  /* Badges */
-  .badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;}
-  .badge-blue{background:rgba(79,127,255,.15);color:var(--accent);}
-  .badge-green{background:rgba(52,199,118,.15);color:var(--success);}
-  .badge-yellow{background:rgba(245,166,35,.15);color:var(--warning);}
-  .badge-red{background:rgba(229,72,77,.15);color:var(--danger);}
-  .badge-gray{background:var(--bg4);color:var(--text2);}
-
-  /* Alerts */
-  .alert{padding:12px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:16px;}
-  .alert-danger{background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.25);color:#f87171;}
-  .alert-success{background:rgba(52,199,118,.1);border:1px solid rgba(52,199,118,.25);color:#4ade80;}
-  .alert-info{background:rgba(103,184,244,.1);border:1px solid rgba(103,184,244,.25);color:var(--info);}
-  .alert-warning{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--warning);}
-
-  .module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
-  .module-title{font-size:20px;font-weight:600;}
-  .module-subtitle{font-size:13px;color:var(--text2);margin-top:3px;}
-  .module-actions{display:flex;gap:8px;}
-  .divider{border:none;border-top:1px solid var(--border);margin:20px 0;}
-  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;}
-  .spinner{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg)}}
-
-  /* Segment cards */
-  .segment-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;}
-  .segment-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
-  .segment-body{padding:16px;border-top:1px solid var(--border);}
-
-  /* KM total chip */
-  .km-total{display:inline-flex;align-items:center;gap:6px;background:var(--bg4);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-family:var(--mono);font-size:12px;color:var(--accent);}
-
-  /* Tabs */
-  .tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;}
-  .tab{padding:10px 16px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;}
-  .tab:hover{color:var(--text);}
-  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-
-  .checkbox-row{display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;}
-  .checkbox-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
-  .empty{text-align:center;padding:48px 24px;color:var(--text3);}
-  .empty .empty-icon{font-size:32px;margin-bottom:12px;}
-  .empty p{font-size:13px;}
-  .section-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
-
-  .input-with-currency{display:flex;gap:0;}
-  .input-with-currency .form-input{border-radius:var(--radius) 0 0 var(--radius);border-right:none;}
-  .input-with-currency .form-select{width:80px;flex-shrink:0;border-radius:0 var(--radius) var(--radius) 0;}
-
-  .field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
-
-  .status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
-  .status-en-curso{background:rgba(245,166,35,.15);color:var(--warning);}
-  .status-completado{background:rgba(52,199,118,.15);color:var(--success);}
-  .status-incompleto{background:rgba(229,72,77,.15);color:var(--danger);}
-  .status-completo{background:rgba(52,199,118,.15);color:var(--success);}
-
-  .save-bar{position:sticky;bottom:0;background:var(--bg2);border-top:1px solid var(--border);padding:12px 24px;display:flex;gap:10px;justify-content:flex-end;z-index:50;}
-  .pw-strength{height:3px;border-radius:2px;margin-top:6px;background:var(--bg4);}
-  .pw-strength-bar{height:100%;border-radius:2px;transition:width .3s,background .3s;}
-
-  .notif{position:fixed;top:60px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;}
-  .notif-item{padding:12px 16px;border-radius:var(--radius);font-size:13px;min-width:260px;animation:slideIn .2s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);}
-  @keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
-
-  .liquidar-bar{position:sticky;bottom:0;padding:16px 24px;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;z-index:50;}
-  .readonly-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(245,166,35,.15);color:var(--warning);border:1px solid rgba(245,166,35,.3);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;}
-
-  /* ── SEARCHABLE SELECT ── */
-  .ss-wrap{position:relative;width:100%;}
-  .ss-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 30px 9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;cursor:pointer;}
-  .ss-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
-  .ss-input::placeholder{color:var(--text3);}
-  .ss-input:disabled{opacity:.5;cursor:not-allowed;}
-  .ss-chevron{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text3);font-size:10px;}
-  .ss-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);z-index:300;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);}
-  .ss-option{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:background .1s;}
-  .ss-option:hover,.ss-option.focused{background:var(--bg4);color:var(--text);}
-  .ss-option.selected{color:var(--accent);}
-  .ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
+:root{
+  --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2128;--bg4:#252830;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --text:#e8eaf0;--text2:#9aa0b0;--text3:#5c6270;
+  --accent:#4f7fff;--accent2:#3d6aff;--accent-glow:rgba(79,127,255,0.18);
+  --success:#34c776;--warning:#f5a623;--danger:#e5484d;--info:#67b8f4;
+  --sidebar-w:220px;--topbar-h:52px;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --radius:8px;--radius-lg:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+.app{display:flex;flex-direction:column;height:100vh;}
+.topbar{height:var(--topbar-h);background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:100;}
+.topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--text);display:flex;align-items:center;gap:8px;}
+.topbar-title span.mono{font-family:var(--mono);color:var(--accent);font-size:11px;}
+.wm-btns{display:flex;gap:6px;}
+.wm-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;}
+.wm-btn.close{background:#e5484d;}.wm-btn.min{background:#f5a623;}.wm-btn.max{background:#34c776;}
+.body{display:flex;flex:1;overflow:hidden;}
+.sidebar{width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;transition:width .2s ease;overflow:hidden;}
+.sidebar.collapsed{width:48px;}
+.sidebar-header{height:44px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;border-bottom:1px solid var(--border);}
+.collapse-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;}
+.collapse-btn:hover{color:var(--text);background:var(--bg3);}
+.sidebar-nav{flex:1;padding:8px 0;overflow-y:auto;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;white-space:nowrap;transition:background .1s;font-size:13px;color:var(--text2);}
+.nav-item:hover{background:var(--bg3);color:var(--text);}
+.nav-item.active{background:var(--accent-glow);color:var(--accent);}
+.nav-item .nav-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;}
+.nav-item .nav-label{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;}
+.nav-item .nav-num{font-family:var(--mono);font-size:10px;color:var(--text3);flex-shrink:0;}
+.sidebar-footer{padding:12px;border-top:1px solid var(--border);}
+.user-badge{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--radius);background:var(--bg3);}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+.user-info{min-width:0;}
+.user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-role{font-size:10px;color:var(--text3);}
+.main{flex:1;overflow-y:auto;background:var(--bg);}
+.module-container{padding:24px;max-width:1400px;}
+.auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+.auth-card{width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;position:relative;overflow:hidden;}
+.auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),#a78bfa);}
+.auth-logo{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.1em;margin-bottom:8px;}
+.auth-title{font-size:22px;font-weight:600;margin-bottom:4px;}
+.auth-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.5;}
+.form-group{margin-bottom:16px;}
+.form-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;display:block;}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;appearance:none;-webkit-appearance:none;}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.form-input::placeholder{color:var(--text3);}
+.form-select{cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235c6270' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;}
+.form-select option{background:var(--bg3);color:var(--text);}
+.form-textarea{resize:vertical;min-height:72px;}
+.form-row{display:flex;gap:12px;flex-wrap:wrap;}
+.form-row .form-group{flex:1;min-width:140px;}
+.form-error{font-size:11px;color:var(--danger);margin-top:5px;}
+.form-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+.btn{padding:9px 18px;border-radius:var(--radius);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover:not(:disabled){background:var(--accent2);}
+.btn-secondary{background:var(--bg4);color:var(--text);border:1px solid var(--border2);}
+.btn-secondary:hover:not(:disabled){background:var(--bg3);}
+.btn-danger{background:rgba(229,72,77,.15);color:var(--danger);border:1px solid rgba(229,72,77,.3);}
+.btn-danger:hover:not(:disabled){background:rgba(229,72,77,.25);}
+.btn-success{background:rgba(52,199,118,.15);color:var(--success);border:1px solid rgba(52,199,118,.3);}
+.btn-success:hover:not(:disabled){background:rgba(52,199,118,.25);}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.btn-icon{padding:6px;width:30px;height:30px;justify-content:center;}
+.btn-full{width:100%;justify-content:center;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.card-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.card-body{padding:20px;}
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead tr{background:var(--bg3);}
+th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+td{padding:10px 14px;border-top:1px solid var(--border);color:var(--text2);white-space:nowrap;}
+tr:hover td{background:var(--bg3);}
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-blue{background:rgba(79,127,255,.15);color:var(--accent);}
+.badge-green{background:rgba(52,199,118,.15);color:var(--success);}
+.badge-yellow{background:rgba(245,166,35,.15);color:var(--warning);}
+.badge-red{background:rgba(229,72,77,.15);color:var(--danger);}
+.badge-gray{background:var(--bg4);color:var(--text2);}
+.alert{padding:12px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:16px;}
+.alert-danger{background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.25);color:#f87171;}
+.alert-success{background:rgba(52,199,118,.1);border:1px solid rgba(52,199,118,.25);color:#4ade80;}
+.alert-info{background:rgba(103,184,244,.1);border:1px solid rgba(103,184,244,.25);color:var(--info);}
+.alert-warning{background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.25);color:var(--warning);}
+.module-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+.module-title{font-size:20px;font-weight:600;}
+.module-subtitle{font-size:13px;color:var(--text2);margin-top:3px;}
+.module-actions{display:flex;gap:8px;}
+.spinner{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.segment-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;}
+.segment-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+.segment-body{padding:16px;border-top:1px solid var(--border);}
+.km-total{display:inline-flex;align-items:center;gap:6px;background:var(--bg4);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-family:var(--mono);font-size:12px;color:var(--accent);}
+.empty{text-align:center;padding:48px 24px;color:var(--text3);}
+.empty .empty-icon{font-size:32px;margin-bottom:12px;}
+.empty p{font-size:13px;}
+.section-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
+.input-with-currency{display:flex;gap:0;}
+.input-with-currency .form-input{border-radius:var(--radius) 0 0 var(--radius);border-right:none;}
+.input-with-currency .form-select{width:80px;flex-shrink:0;border-radius:0 var(--radius) var(--radius) 0;}
+.field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
+.status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
+.status-en-curso{background:rgba(245,166,35,.15);color:var(--warning);}
+.status-completado{background:rgba(52,199,118,.15);color:var(--success);}
+.status-incompleto{background:rgba(229,72,77,.15);color:var(--danger);}
+.status-completo{background:rgba(52,199,118,.15);color:var(--success);}
+.save-bar{position:sticky;bottom:0;background:var(--bg2);border-top:1px solid var(--border);padding:12px 24px;display:flex;gap:10px;justify-content:flex-end;z-index:50;}
+.pw-strength{height:3px;border-radius:2px;margin-top:6px;background:var(--bg4);}
+.pw-strength-bar{height:100%;border-radius:2px;transition:width .3s,background .3s;}
+.notif{position:fixed;top:60px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.notif-item{padding:12px 16px;border-radius:var(--radius);font-size:13px;min-width:260px;animation:slideIn .2s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.liquidar-bar{position:sticky;bottom:0;padding:16px 24px;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;z-index:50;}
+.readonly-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(245,166,35,.15);color:var(--warning);border:1px solid rgba(245,166,35,.3);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;}
+/* liquidacion final destacada */
+.liq-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+.liq-row:last-child{border-bottom:none;}
+.liq-row.highlight{background:var(--bg4);border-radius:var(--radius);padding:12px 16px;margin:4px -4px;}
+/* SEARCHABLE SELECT */
+.ss-wrap{position:relative;width:100%;}
+.ss-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 30px 9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s;cursor:pointer;}
+.ss-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.ss-input::placeholder{color:var(--text3);}
+.ss-input:disabled{opacity:.5;cursor:not-allowed;}
+.ss-chevron{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text3);font-size:10px;}
+.ss-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);z-index:400;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.ss-option{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text2);transition:background .1s;}
+.ss-option:hover,.ss-option.focused{background:var(--bg4);color:var(--text);}
+.ss-option.selected{color:var(--accent);}
+.ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
 </style>
 </head>
 <body>
@@ -219,22 +182,30 @@ const PERMISSIONS = {
 };
 
 const CURRENCIES = ["USD","ARS","CLP"];
-const EXPENSE_CATS = ["GAS-OIL","PEAJES","ADUANA","LASTRE","GOMERIA","TELEFONO","LAVADERO","COIMAS","ESTADIA","REVISION TECNICA","PARQUEADERO","OTRO"];
+
+// FIX #7 — categorías exactas según spec
+const EXPENSE_CATS = [
+  "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
+  "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
+  "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
+];
+
 const SEGMENT_STATUSES = ["stand by","en curso","completado"];
 
-// Pies options for CONTENEDOR
-const PIES_OPTIONS = ["20","40"];
+// Países que NO son Argentina — para detectar tramos internacionales
+const PAISES_EXTRANJEROS = ["PARAGUAY","BRASIL","CHILE","URUGUAY","BOLIVIA","PERÚ","COLOMBIA","ARGENTINA NO"];
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
-function simpleHash(str) {
-  let h=0; for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);h=((h<<5)-h)+c;h|=0;} return h.toString(16);
+function simpleHash(str){
+  let h=0;for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);h=((h<<5)-h)+c;h|=0;}return h.toString(16);
 }
 function lsGet(k,def=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch{return def;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
-function fmtDate(d){if(!d)return"—";const dt=new Date(d);return dt.toLocaleDateString("es-AR");}
-function fmtDT(d){if(!d)return"—";const dt=new Date(d);return dt.toLocaleString("es-AR");}
+function fmtDate(d){if(!d)return"—";return new Date(d).toLocaleDateString("es-AR");}
+function fmtDT(d){if(!d)return"—";return new Date(d).toLocaleString("es-AR");}
 function nowISO(){return new Date().toISOString().slice(0,10);}
 function fmtKm(n){if(!n&&n!==0)return"—";return Number(n).toLocaleString("es-AR")+" km";}
+function fmtNum(n){return Number(n||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});}
 
 function pwStrength(pw){
   if(!pw)return{score:0,label:""};
@@ -246,6 +217,67 @@ function pwStrength(pw){
   return{score:s,label:labels[s],color:colors[s],pct:(s/4*100)+"%"};
 }
 function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
+
+// FIX #6 — Detectar si un lugar es internacional
+// El lugar puede ser un string del tipo "ASUNCIÓN" o "ASUNCIÓN (PY)"
+// También miramos si el nombre del lugar contiene un país extranjero conocido.
+function isLugarExtranjero(lugar, lugares) {
+  if (!lugar) return false;
+  const l = lugar.toUpperCase();
+  // Si el dato de lugares viene enriquecido con país {nombre, pais}
+  // lo usamos; si no, inferimos del nombre del lugar.
+  if (PAISES_EXTRANJEROS.some(p => l.includes(p))) return true;
+  // Ciudades conocidas fuera de Argentina:
+  const ciudadesExt = ["ASUNCIÓN","MONTEVIDEO","SANTIAGO","SÃO PAULO","RIO DE JANEIRO","LA PAZ","LIMA","BOGOTÁ","SANTA CRUZ","ENCARNACIÓN","CIUDAD DEL ESTE"];
+  return ciudadesExt.some(c => l.includes(c));
+}
+
+// FIX #1 — generateTripId: NAC si todos dentro de AR, INT si hay tramo internacional
+function generateTripId(trips, segments, lugares) {
+  const hasInt = (segments||[]).some(s =>
+    isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares)
+  );
+  const prefix = hasInt ? "INT" : "NAC";
+  const count = (trips||[]).filter(t => t.id && t.id.startsWith(prefix)).length + 1;
+  const seq = count.toString().padStart(4,"0");
+  const sub = Math.floor(Math.random()*9000+1000).toString();
+  return `${prefix}-${seq}-${sub}`;
+}
+
+// Recalcula el prefijo de un viaje existente basado en sus tramos actuales
+function recalcPrefix(id, segments, lugares) {
+  const hasInt = (segments||[]).some(s =>
+    isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares)
+  );
+  const newPrefix = hasInt ? "INT" : "NAC";
+  const oldPrefix = id.startsWith("INT") ? "INT" : "NAC";
+  if (newPrefix === oldPrefix) return id;
+  return id.replace(oldPrefix, newPrefix);
+}
+
+// FIX #2 — ID tramo: DESDE-HASTA-SEQ
+function makeSegmentId(tripId, desde, hasta, seq) {
+  const d = (desde || "???").replace(/\s+/g,"-").slice(0,6).toUpperCase();
+  const h = (hasta  || "???").replace(/\s+/g,"-").slice(0,6).toUpperCase();
+  return `${d}-${h}-${String(seq).padStart(2,"0")}`;
+}
+
+// FIX #8 — Tabla de distancias viales aproximadas (km por carretera) entre pares de lugares
+// Bidireccional. Si el par no está en la tabla, devuelve null (el usuario ingresa manualmente).
+const KM_TABLE = {
+  "BUENOS AIRES|ROSARIO": 300, "BUENOS AIRES|CÓRDOBA": 710, "BUENOS AIRES|MENDOZA": 1040,
+  "BUENOS AIRES|MONTEVIDEO": 280, "BUENOS AIRES|ASUNCIÓN": 1365, "BUENOS AIRES|SANTIAGO": 1440,
+  "ROSARIO|CÓRDOBA": 400, "ROSARIO|MENDOZA": 760, "ROSARIO|ASUNCIÓN": 1065,
+  "CÓRDOBA|MENDOZA": 690, "CÓRDOBA|SANTIAGO": 1365, "CÓRDOBA|ASUNCIÓN": 1010,
+  "MENDOZA|SANTIAGO": 380, "MONTEVIDEO|ASUNCIÓN": 1640,
+  "BUENOS AIRES|SANTA FE": 475, "ROSARIO|SANTA FE": 165,
+};
+function getKmPrevistos(desde, hasta) {
+  if (!desde || !hasta || desde === hasta) return null;
+  const key1 = `${desde.toUpperCase()}|${hasta.toUpperCase()}`;
+  const key2 = `${hasta.toUpperCase()}|${desde.toUpperCase()}`;
+  return KM_TABLE[key1] || KM_TABLE[key2] || null;
+}
 
 // ─── GAS CALL ────────────────────────────────────────────────────────────────
 async function gasCall(action, payload={}) {
@@ -293,7 +325,8 @@ function mockApi(action, payload) {
         const idx = db.trips.findIndex(t => t.id === trip.id);
         const now = new Date().toISOString();
         if (idx >= 0) {
-          db.trips[idx] = { ...trip, updatedAt:now, updatedBy:payload.user, createdAt:db.trips[idx].createdAt, createdBy:db.trips[idx].createdBy };
+          const old = db.trips[idx];
+          db.trips[idx] = { ...trip, updatedAt:now, updatedBy:payload.user, createdAt:old.createdAt, createdBy:old.createdBy };
         } else {
           db.trips.push({ ...trip, createdAt:now, createdBy:payload.user });
         }
@@ -342,21 +375,23 @@ function initDB() {
   return {
     users, trips:[], entregas:[], rendiciones:[], auditLog:[],
     dropdowns:{
-      // Hoja "TIPO DE CARGA": col A=tipo, B=UM, C=clasificacion, D=cantidad
-      // Reglas: "-" = ocultar | "" = input libre | texto = readonly
-      TIPOSDE_CARGA:[
+      // FIX #1 — hoja "CARGAS" col A: mercadería (lista simple de strings)
+      CARGAS:["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE","MADERA","MINERAL"],
+      // FIX #1 — hoja "TIPO DE CARGA" col A-D
+      // col A=tipo, B=UM, C=clasificacion, D=cantidad
+      // "" en D = input libre | "-" = ocultar campo
+      TIPO_DE_CARGA:[
         { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
         { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
         { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
         { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
       ],
-      // Hoja "CARGAS": mercadería (lista simple)
-      CARGAS_MERCANCIAS:["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE"],
       CLIENTES:["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR","IMPORT HNOS"],
-      LUGARES:["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
+      LUGARES:["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","SANTA FE","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
       CHOFERES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","LOPEZ CARLOS","FERNANDEZ DIEGO"],
       CAMIONES:["TRA-001 VOLVO","TRA-002 SCANIA","TRA-003 MERCEDES","TRA-004 MAN"],
       SEMIS:["SEMI-001","SEMI-002","SEMI-003","SEMI-004"],
+      // hoja "COLABORADORES" col A
       COLABORADORES:["RODRIGUEZ JUAN","GARCIA PEDRO","MARTINEZ LUIS","PEREZ ANA","GOMEZ SOFIA"],
     }
   };
@@ -368,11 +403,10 @@ function useNotifications() {
   const add = useCallback((msg, type="success") => {
     const id = Date.now();
     setItems(p => [...p, { id, msg, type }]);
-    setTimeout(() => setItems(p => p.filter(x => x.id !== id)), 3500);
+    setTimeout(() => setItems(p => p.filter(x => x.id !== id)), 4000);
   }, []);
   return { items, add };
 }
-
 function Notifications({ items }) {
   return (
     <div className="notif">
@@ -383,14 +417,6 @@ function Notifications({ items }) {
       ))}
     </div>
   );
-}
-
-// ─── TRIP ID ──────────────────────────────────────────────────────────────────
-function generateTripId(trips, hasInternational) {
-  const prefix = hasInternational ? "INT" : "NAC";
-  const seq = (trips.filter(t => t.id && t.id.startsWith(prefix)).length + 1).toString().padStart(4,"0");
-  const sub = Math.floor(Math.random()*9000+1000).toString();
-  return `${prefix}-${seq}-${sub}`;
 }
 
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
@@ -408,36 +434,32 @@ function StatusBadge({ status }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SEARCHABLE SELECT — reusable combobox
+// SEARCHABLE SELECT
 // options: string[] | { value, label }[]
 // ═══════════════════════════════════════════════════════════════════════════════
-function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar...", disabled=false, id }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen]   = useState(false);
+function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar...", disabled=false }) {
+  const [query, setQuery]     = useState("");
+  const [open, setOpen]       = useState(false);
   const [focusIdx, setFocusIdx] = useState(-1);
-  const wrapRef   = useRef(null);
-  const inputRef  = useRef(null);
-  const listRef   = useRef(null);
+  const wrapRef  = useRef(null);
+  const inputRef = useRef(null);
+  const listRef  = useRef(null);
 
-  // Normalise options to {value, label}
   const opts = useMemo(() => options.map(o =>
     typeof o === "string" ? { value:o, label:o } : o
   ), [options]);
 
-  // Label shown in input when closed
   const selectedLabel = useMemo(() => {
-    const found = opts.find(o => o.value === value);
-    return found ? found.label : "";
+    const f = opts.find(o => o.value === value);
+    return f ? f.label : "";
   }, [value, opts]);
 
-  // Filtered list while typing
   const filtered = useMemo(() => {
     if (!query.trim()) return opts;
     const q = query.toLowerCase();
     return opts.filter(o => o.label.toLowerCase().includes(q));
   }, [query, opts]);
 
-  // Close on outside click
   useEffect(() => {
     function handle(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
@@ -448,7 +470,6 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  // Scroll focused option into view
   useEffect(() => {
     if (focusIdx >= 0 && listRef.current) {
       const el = listRef.current.children[focusIdx];
@@ -458,37 +479,30 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 
   function openDropdown() {
     if (disabled) return;
-    setOpen(true);
-    setQuery("");
+    setOpen(true); setQuery("");
     setFocusIdx(opts.findIndex(o => o.value === value));
     setTimeout(() => inputRef.current && inputRef.current.select(), 0);
   }
 
   function select(val) {
-    onChange(val);
-    setOpen(false);
-    setQuery("");
-    setFocusIdx(-1);
+    onChange(val); setOpen(false); setQuery(""); setFocusIdx(-1);
   }
 
   function handleKeyDown(e) {
-    if (!open) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDropdown(); } return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setFocusIdx(i => Math.min(i+1, filtered.length-1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setFocusIdx(i => Math.max(i-1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); if (focusIdx >= 0 && filtered[focusIdx]) select(filtered[focusIdx].value); }
-    else if (e.key === "Escape") { setOpen(false); setQuery(""); setFocusIdx(-1); }
+    if (!open) { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); openDropdown(); } return; }
+    if (e.key==="ArrowDown") { e.preventDefault(); setFocusIdx(i => Math.min(i+1, filtered.length-1)); }
+    else if (e.key==="ArrowUp") { e.preventDefault(); setFocusIdx(i => Math.max(i-1, 0)); }
+    else if (e.key==="Enter") { e.preventDefault(); if (focusIdx>=0&&filtered[focusIdx]) select(filtered[focusIdx].value); }
+    else if (e.key==="Escape") { setOpen(false); setQuery(""); setFocusIdx(-1); }
   }
-
-  const displayValue = open ? query : selectedLabel;
 
   return (
     <div className="ss-wrap" ref={wrapRef}>
       <input
         ref={inputRef}
-        id={id}
         className="ss-input"
         type="text"
-        value={displayValue}
+        value={open ? query : selectedLabel}
         placeholder={open ? "Escribir para filtrar..." : (selectedLabel || placeholder)}
         disabled={disabled}
         autoComplete="off"
@@ -498,20 +512,19 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
         onKeyDown={handleKeyDown}
         readOnly={!open}
       />
-      <span className="ss-chevron">{open ? "▲" : "▼"}</span>
+      <span className="ss-chevron">{open?"▲":"▼"}</span>
       {open && (
         <div className="ss-dropdown" ref={listRef}>
-          {filtered.length === 0 ? (
-            <div className="ss-empty">Sin resultados</div>
-          ) : filtered.map((o, i) => (
-            <div
-              key={o.value}
-              className={`ss-option${i===focusIdx?" focused":""}${o.value===value?" selected":""}`}
-              onMouseDown={() => select(o.value)}
-            >
-              {o.label}
-            </div>
-          ))}
+          {filtered.length===0
+            ? <div className="ss-empty">Sin resultados</div>
+            : filtered.map((o,i) => (
+              <div
+                key={o.value}
+                className={`ss-option${i===focusIdx?" focused":""}${o.value===value?" selected":""}`}
+                onMouseDown={() => select(o.value)}
+              >{o.label}</div>
+            ))
+          }
         </div>
       )}
     </div>
@@ -522,7 +535,7 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════════════════
 function App() {
-  const [session, setSession]     = useState(() => lsGet("sigt_session"));
+  const [session, setSession]           = useState(() => lsGet("sigt_session"));
   const [mustChangePw, setMustChangePw] = useState(false);
   const [activeModule, setActiveModule] = useState(1);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
@@ -530,9 +543,7 @@ function App() {
   const notif = useNotifications();
 
   useEffect(() => {
-    if (session) {
-      gasCall("getDropdowns").then(r => { if (r.ok) setDropdowns(r.data); });
-    }
+    if (session) gasCall("getDropdowns").then(r => { if (r.ok) setDropdowns(r.data); });
   }, [session]);
 
   function handleLogin(user, token) {
@@ -551,8 +562,8 @@ function App() {
 
   function handleLogout() { lsSet("sigt_session", null); setSession(null); setMustChangePw(false); }
 
-  if (!session) return <><LoginScreen onLogin={handleLogin} /><Notifications items={notif.items} /></>;
-  if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged} /><Notifications items={notif.items} /></>;
+  if (!session) return <><LoginScreen onLogin={handleLogin}/><Notifications items={notif.items}/></>;
+  if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged}/><Notifications items={notif.items}/></>;
 
   const perms = PERMISSIONS[session.username] || { mods:[], edit:[] };
   const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
@@ -560,29 +571,28 @@ function App() {
 
   return (
     <div className="app">
-      <TopBar onLogout={handleLogout} />
+      <TopBar onLogout={handleLogout}/>
       <div className="body">
         <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
           modules={visibleMods} active={activeModule} onSelect={setActiveModule}
-          username={session.username} role={perms.role} />
+          username={session.username} role={perms.role}/>
         <main className="main">
           {dropdowns ? (
             <ModuleRenderer moduleId={activeModule} session={session}
-              canEdit={canEdit(activeModule)} dropdowns={dropdowns} notif={notif} />
+              canEdit={canEdit(activeModule)} dropdowns={dropdowns} notif={notif}/>
           ) : (
             <div style={{ padding:32, textAlign:"center", color:"var(--text3)" }}>
-              <div className="spinner" style={{ margin:"0 auto 12px" }} />
+              <div className="spinner" style={{ margin:"0 auto 12px" }}/>
               <div>Cargando datos...</div>
             </div>
           )}
         </main>
       </div>
-      <Notifications items={notif.items} />
+      <Notifications items={notif.items}/>
     </div>
   );
 }
 
-// ─── TOPBAR ───────────────────────────────────────────────────────────────────
 function TopBar({ onLogout }) {
   return (
     <div className="topbar">
@@ -592,15 +602,14 @@ function TopBar({ onLogout }) {
         <span style={{ fontWeight:400, color:"var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
       </div>
       <div className="wm-btns">
-        <button className="wm-btn min" title="Minimizar" />
-        <button className="wm-btn max" title="Maximizar" />
-        <button className="wm-btn close" title="Cerrar sesión" onClick={onLogout} />
+        <button className="wm-btn min" title="Minimizar"/>
+        <button className="wm-btn max" title="Maximizar"/>
+        <button className="wm-btn close" title="Cerrar sesión" onClick={onLogout}/>
       </div>
     </div>
   );
 }
 
-// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) {
   return (
     <div className={`sidebar${open?"":" collapsed"}`}>
@@ -630,7 +639,7 @@ function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) 
   );
 }
 
-// ─── AUTH SCREENS ─────────────────────────────────────────────────────────────
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -639,14 +648,13 @@ function LoginScreen({ onLogin }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!username || !password) return setError("Completá usuario y contraseña.");
+    if (!username||!password) return setError("Completá usuario y contraseña.");
     setLoading(true); setError("");
     const r = await gasCall("login", { username:username.trim(), password });
     setLoading(false);
-    if (!r.ok) return setError(r.error || "Error de acceso.");
+    if (!r.ok) return setError(r.error||"Error de acceso.");
     onLogin(r.user, r.token);
   }
-
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={handleSubmit}>
@@ -656,11 +664,11 @@ function LoginScreen({ onLogin }) {
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="form-group">
           <label className="form-label">Usuario</label>
-          <input className="form-input" value={username} onChange={e=>setUsername(e.target.value.toUpperCase())} placeholder="Ej: SOL" autoFocus />
+          <input className="form-input" value={username} onChange={e=>setUsername(e.target.value.toUpperCase())} placeholder="Ej: SOL" autoFocus/>
         </div>
         <div className="form-group">
           <label className="form-label">Contraseña</label>
-          <input type="password" className="form-input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••" />
+          <input type="password" className="form-input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••"/>
         </div>
         <button className="btn btn-primary btn-full" disabled={loading}>{loading?"Ingresando...":"Ingresar"}</button>
         <div style={{ marginTop:16, fontSize:11, color:"var(--text3)", textAlign:"center" }}>
@@ -675,29 +683,28 @@ function ChangePasswordScreen({ username, onDone }) {
   const [old, setOld] = useState("");
   const [nw, setNw]   = useState("");
   const [rep, setRep] = useState("");
-  const [error, setError]   = useState("");
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
   const str = pwStrength(nw);
 
   async function handleSubmit(e) {
     e.preventDefault(); setError("");
-    if (!old)            return setError("Ingresá la contraseña anterior.");
-    if (nw.length < 6)   return setError("Mínimo 6 caracteres.");
+    if (!old)             return setError("Ingresá la contraseña anterior.");
+    if (nw.length < 6)    return setError("Mínimo 6 caracteres.");
     if (!isAlphanumeric(nw)) return setError("Solo letras y números.");
-    if (nw !== rep)      return setError("Las contraseñas no coinciden.");
+    if (nw !== rep)       return setError("Las contraseñas no coinciden.");
     setLoading(true);
     const r = await gasCall("changePassword", { username, oldPassword:old, newPassword:nw });
     setLoading(false);
-    if (!r.ok) return setError(r.error || "Error al cambiar contraseña.");
+    if (!r.ok) return setError(r.error||"Error al cambiar contraseña.");
     onDone();
   }
-
   return (
     <div className="auth-screen">
       <form className="auth-card" onSubmit={handleSubmit} style={{ width:420 }}>
         <div className="auth-logo">SIGT v1.0</div>
         <div className="auth-title">Cambio de contraseña obligatorio</div>
-        <div className="auth-sub">Primer ingreso — establecé una nueva contraseña.</div>
+        <div className="auth-sub">Primer ingreso — establecé tu nueva contraseña.</div>
         {error && <div className="alert alert-danger">{error}</div>}
         <div className="form-group">
           <label className="form-label">Usuario</label>
@@ -705,17 +712,17 @@ function ChangePasswordScreen({ username, onDone }) {
         </div>
         <div className="form-group">
           <label className="form-label">Contraseña anterior</label>
-          <input type="password" className="form-input" value={old} onChange={e=>setOld(e.target.value)} autoFocus />
+          <input type="password" className="form-input" value={old} onChange={e=>setOld(e.target.value)} autoFocus/>
         </div>
         <div className="form-group">
           <label className="form-label">Nueva contraseña</label>
-          <input type="password" className="form-input" value={nw} onChange={e=>setNw(e.target.value)} placeholder="Mínimo 6 caracteres alfanuméricos" />
-          {nw && <><div className="pw-strength"><div className="pw-strength-bar" style={{ width:str.pct, background:str.color }} /></div><div className="form-hint" style={{ color:str.color }}>{str.label}</div></>}
+          <input type="password" className="form-input" value={nw} onChange={e=>setNw(e.target.value)} placeholder="Mínimo 6 caracteres alfanuméricos"/>
+          {nw && <><div className="pw-strength"><div className="pw-strength-bar" style={{ width:str.pct, background:str.color }}/></div><div className="form-hint" style={{ color:str.color }}>{str.label}</div></>}
         </div>
         <div className="form-group">
           <label className="form-label">Repetir contraseña</label>
-          <input type="password" className="form-input" value={rep} onChange={e=>setRep(e.target.value)} />
-          {rep && nw !== rep && <div className="form-error">No coinciden</div>}
+          <input type="password" className="form-input" value={rep} onChange={e=>setRep(e.target.value)}/>
+          {rep && nw!==rep && <div className="form-error">No coinciden</div>}
         </div>
         <button className="btn btn-primary btn-full" disabled={loading}>{loading?"Guardando...":"Cambiar contraseña"}</button>
       </form>
@@ -726,9 +733,9 @@ function ChangePasswordScreen({ username, onDone }) {
 // ─── MODULE RENDERER ──────────────────────────────────────────────────────────
 function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
   const props = { session, canEdit, dropdowns, notif };
-  if (moduleId === 1) return <Module1 {...props} />;
-  if (moduleId === 2) return <Module2 {...props} />;
-  if (moduleId === 3) return <Module3 {...props} />;
+  if (moduleId===1) return <Module1 {...props}/>;
+  if (moduleId===2) return <Module2 {...props}/>;
+  if (moduleId===3) return <Module3 {...props}/>;
   return (
     <div className="module-container">
       <div className="empty"><div className="empty-icon">🔧</div><p>Módulo {moduleId} — próximamente</p></div>
@@ -740,41 +747,38 @@ function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
 // MODULE 1 — INICIO DE VIAJE
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module1({ session, canEdit, dropdowns, notif }) {
-  const [view, setView]       = useState("list");
-  const [trips, setTrips]     = useState([]);
+  const [view, setView]         = useState("list");
+  const [trips, setTrips]       = useState([]);
   const [editTrip, setEditTrip] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
   const [histView, setHistView] = useState(false);
 
   useEffect(() => { loadTrips(); }, []);
-
   async function loadTrips() {
     setLoading(true);
     const r = await gasCall("getTrips");
     if (r.ok) setTrips(r.data);
     setLoading(false);
   }
-
   async function handleSave(tripData) {
     const r = await gasCall("saveTrip", { trip:tripData, user:session.username });
     if (r.ok) { notif.add("Viaje guardado"); loadTrips(); setView("list"); }
-    else notif.add(r.error || "Error al guardar", "error");
+    else notif.add(r.error||"Error al guardar","error");
   }
-
   async function handleFinalize(tripId) {
     const r = await gasCall("finalizeTrip", { tripId, user:session.username });
     if (r.ok) { notif.add("Viaje finalizado"); loadTrips(); setView("list"); }
-    else notif.add(r.error || "Error al finalizar", "error");
+    else notif.add(r.error||"Error al finalizar","error");
   }
 
-  if (view === "form") return (
+  if (view==="form") return (
     <TripForm trip={editTrip} trips={trips} dropdowns={dropdowns}
       canEdit={canEdit} session={session}
-      onSave={handleSave} onFinalize={handleFinalize} onBack={() => setView("list")} />
+      onSave={handleSave} onFinalize={handleFinalize} onBack={() => setView("list")}/>
   );
 
-  const active = trips.filter(t => t.status !== "finalizado");
-  const hist   = trips.filter(t => t.status === "finalizado");
+  const active = trips.filter(t => t.status!=="finalizado");
+  const hist   = trips.filter(t => t.status==="finalizado");
   const shown  = histView ? hist : active;
 
   return (
@@ -788,19 +792,23 @@ function Module1({ session, canEdit, dropdowns, notif }) {
           <button className="btn btn-secondary btn-sm" onClick={() => setHistView(!histView)}>
             {histView ? "← Activos" : "Ver Historial"}
           </button>
-          {!histView && canEdit && <button className="btn btn-primary btn-sm" onClick={() => { setEditTrip(null); setView("form"); }}>+ Nuevo Viaje</button>}
+          {!histView && canEdit && (
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditTrip(null); setView("form"); }}>
+              + Nuevo Viaje
+            </button>
+          )}
         </div>
       </div>
-
       {loading
-        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
-        : shown.length === 0
-          ? <div className="empty"><div className="empty-icon">{histView?"📂":"🚚"}</div><p>{histView?"No hay viajes finalizados.":"No hay viajes activos. Creá uno nuevo."}</p></div>
+        ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
+        : shown.length===0
+          ? <div className="empty"><div className="empty-icon">{histView?"📂":"🚚"}</div><p>{histView?"No hay viajes finalizados.":"No hay viajes activos."}</p></div>
           : (
             <div className="table-wrap">
               <table>
                 <thead><tr>
-                  <th></th><th>ID Viaje</th><th>Carga</th><th>Cliente</th><th>Monto Factura</th><th>Tramos</th><th>KM total</th><th>Estado doc.</th>
+                  <th></th><th>ID Viaje</th><th>Carga</th><th>Tipo</th><th>Cliente</th>
+                  <th>Monto Factura</th><th>Tramos</th><th>KM total</th><th>Estado doc.</th>
                   {histView && <th>Finalizado</th>}
                 </tr></thead>
                 <tbody>
@@ -808,15 +816,19 @@ function Module1({ session, canEdit, dropdowns, notif }) {
                     const totalKm = (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0);
                     return (
                       <tr key={t.id}>
-                        <td><button className="btn btn-secondary btn-icon btn-sm" onClick={() => { setEditTrip(t); setView("form"); }} title="Ver / Editar">🔍</button></td>
-                        <td><span style={{ fontFamily:"var(--mono)", fontSize:12 }}>{t.id}</span></td>
+                        <td>
+                          <button className="btn btn-secondary btn-icon btn-sm"
+                            onClick={() => { setEditTrip(t); setView("form"); }} title="Ver/Editar">🔍</button>
+                        </td>
+                        <td><span style={{ fontFamily:"var(--mono)",fontSize:12 }}>{t.id}</span></td>
                         <td>{t.carga}</td>
+                        <td>{t.tipoCarga}</td>
                         <td>{t.cliente}</td>
-                        <td>{t.montoFactura} {t.moneda}</td>
+                        <td style={{ fontFamily:"var(--mono)" }}>{t.montoFactura} {t.moneda}</td>
                         <td><span className="badge badge-gray">{(t.segments||[]).length}</span></td>
-                        <td style={{ fontFamily:"var(--mono)", fontSize:12 }}>{totalKm > 0 ? totalKm.toLocaleString("es-AR") : "—"}</td>
-                        <td><StatusBadge status={t.statusDoc||"incompleto"} /></td>
-                        {histView && <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDate(t.finalizedAt)}</td>}
+                        <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{totalKm>0?totalKm.toLocaleString("es-AR"):"—"}</td>
+                        <td><StatusBadge status={t.statusDoc||"incompleto"}/></td>
+                        {histView && <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDate(t.finalizedAt)}</td>}
                       </tr>
                     );
                   })}
@@ -835,21 +847,26 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const readonly    = !canEdit || isFinalized;
   const isNew       = !trip;
 
-  const [id] = useState(() => trip?.id || generateTripId(trips, false));
+  const lugares = dropdowns.LUGARES || [];
 
-  // carga   = mercadería transportada  (hoja CARGAS, col A — lista simple de strings)
-  // tipoCarga = método de transporte   (hoja TIPOS DE CARGA, col A)
-  const [carga,          setCarga]          = useState(trip?.carga          || "");
-  const [tipoCarga,      setTipoCarga]      = useState(trip?.tipoCarga      || "");
-  // Sub-campos que se despliegan según el tipo de carga seleccionado:
-  const [pies,           setPies]           = useState(trip?.pies           || ""); // solo CONTENEDOR
-  const [clasificacion,  setClasificacion]  = useState(trip?.clasificacion  || ""); // solo CONTENEDOR (post-pies)
-  const [cantidad,       setCantidad]       = useState(trip?.cantidad       || ""); // numérico libre cuando col D está vacía
+  // FIX #1 — ID generado con NAC/INT
+  const [id, setId] = useState(() =>
+    trip?.id || generateTripId(trips, [], lugares)
+  );
+
+  // FIX #1 — hoja "CARGAS" = mercadería (lista simple)
+  const [carga,         setCarga]         = useState(trip?.carga         || "");
+  // FIX #1 — hoja "TIPO DE CARGA" = método de transporte
+  const [tipoCarga,     setTipoCarga]     = useState(trip?.tipoCarga     || "");
+  // Sub-campos dinámicos del tipo de carga
+  const [pies,          setPies]          = useState(trip?.pies          || "");
+  const [clasificacion, setClasificacion] = useState(trip?.clasificacion || "");
+  const [cantidad,      setCantidad]      = useState(trip?.cantidad      || "");
 
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
   const [moneda,       setMoneda]       = useState(trip?.moneda       || "USD");
   const [cliente,      setCliente]      = useState(trip?.cliente      || "");
-  const [segments,     setSegments]     = useState(trip?.segments     || [makeSegment(id, 1)]);
+  const [segments,     setSegments]     = useState(trip?.segments     || [makeNewSegment(id, 1, "", "")]);
   const [numMIC,       setNumMIC]       = useState(trip?.numMIC       || "");
   const [fechaMIC,     setFechaMIC]     = useState(trip?.fechaMIC     || "");
   const [numCRT,       setNumCRT]       = useState(trip?.numCRT       || "");
@@ -859,119 +876,136 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [saving,       setSaving]       = useState(false);
   const [errors,       setErrors]       = useState({});
 
-  // Hoja "TIPO DE CARGA": col A=tipo, B=UM, C=clasificacion, D=cantidad
-  const tiposSource = dropdowns.TIPOSDE_CARGA || [];
-
+  // FIX #1 — TIPO DE CARGA proviene de hoja "TIPO DE CARGA"
+  const tiposSource = dropdowns.TIPO_DE_CARGA || [];
   const isContenedor = tipoCarga === "CONTENEDOR";
 
-  // All unique base type names for the Tipo de Carga dropdown.
-  // The sheet may have multiple CONTENEDOR rows (one per Pies×Clasificación combo)
-  // → collapse them all to a single "CONTENEDOR" entry.
+  // Opciones únicas para el dropdown de Tipo de Carga
   const tipoOptions = useMemo(() => {
-    const seen = new Set();
-    const out  = [];
+    const seen = new Set(); const out = [];
     tiposSource.forEach(r => {
-      const base = r.nombre === "CONTENEDOR" || String(r.nombre).toUpperCase().startsWith("CONTENEDOR")
-        ? "CONTENEDOR"
-        : r.nombre;
-      if (!seen.has(base)) { seen.add(base); out.push(base); }
+      if (!seen.has(r.nombre)) { seen.add(r.nombre); out.push(r.nombre); }
     });
     return out;
   }, [tiposSource]);
 
-  // For non-CONTENEDOR types: find the one matching row.
-  // For CONTENEDOR: after pies+clasificacion are chosen we could also
-  // find the matching row, but we hard-code the known values.
+  // Fila de la hoja para el tipo seleccionado
   const tipoRow = useMemo(() => {
     if (!tipoCarga || isContenedor) return null;
     return tiposSource.find(r => r.nombre === tipoCarga) || null;
   }, [tipoCarga, isContenedor, tiposSource]);
 
-  // Derived display values for a non-CONTENEDOR row:
-  // um, clasificacion, cantidad come from the row.
-  // Rules: "-" → hidden, "" → editable input, anything else → readonly display
-  const showUM             = tipoRow && tipoRow.um            !== "-";
-  const umIsEditable       = tipoRow && tipoRow.um            === "";
-  const umDisplay          = tipoRow ? (tipoRow.um  || "") : "";
+  const showUM    = tipoRow && tipoRow.um            !== "-";
+  const showClasif = tipoRow && tipoRow.clasificacion !== "-";
+  const showCant  = tipoRow && tipoRow.cantidad      !== "-";
+  const cantIsInput = tipoRow && tipoRow.cantidad === "";
 
-  const showClasif         = tipoRow && tipoRow.clasificacion !== "-";
-  const clasifIsEditable   = tipoRow && tipoRow.clasificacion === "";
-  const clasifDisplay      = tipoRow ? (tipoRow.clasificacion || "") : "";
-
-  const showCantidad       = tipoRow && tipoRow.cantidad      !== "-";
-  const cantidadIsEditable = tipoRow && tipoRow.cantidad      === "";
-  const cantidadDisplay    = tipoRow ? (tipoRow.cantidad || "") : "";
-
-  // When tipoCarga changes: reset sub-fields and auto-fill read-only values
   useEffect(() => {
-    setPies("");
-    setClasificacion("");
-    if (!isContenedor && tipoRow) {
-      // Pre-fill readonly values so they get saved correctly
-      setCantidad(tipoRow.cantidad && tipoRow.cantidad !== "-" ? tipoRow.cantidad : "");
-    } else {
-      setCantidad("");
-    }
+    setPies(""); setClasificacion("");
+    setCantidad(!isContenedor && tipoRow && tipoRow.cantidad !== "-" && tipoRow.cantidad !== "" ? tipoRow.cantidad : "");
   }, [tipoCarga]);
 
-  // When pies changes on CONTENEDOR: reset clasificacion
-  useEffect(() => {
-    if (isContenedor) setClasificacion("");
-  }, [pies]);
+  useEffect(() => { if (isContenedor) setClasificacion(""); }, [pies]);
 
-  // ── KM total ──────────────────────────────────────────────────────────────
+  // FIX #1 — Recalcular NAC/INT cuando cambian los tramos
+  useEffect(() => {
+    if (!isNew) return; // solo para viajes nuevos en creación
+    const newId = recalcPrefix(id, segments, lugares);
+    if (newId !== id) setId(newId);
+  }, [segments]);
+
+  // KM total reactivo
   const totalKm = useMemo(() =>
-    segments.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0)
+    segments.reduce((s,sg) => s+Number(sg.kmPrevistos||0), 0)
   , [segments]);
 
-  function makeSegment(tripId, seq) {
+  function makeNewSegment(tripId, seq, desde, hasta) {
+    // FIX #2 — segId incluye desde-hasta
+    const segId = makeSegmentId(tripId, desde, hasta, seq);
+    // FIX #8 — km previstos automático
+    const kmAuto = getKmPrevistos(desde, hasta);
     return {
-      segId:`TRM-${tripId}-${String(seq).padStart(2,"0")}`,
-      desde:"", fechaInicio:"", hasta:"", fechaLlegadaPrevista:"",
+      segId, desde, fechaInicio:"", hasta, fechaLlegadaPrevista:"",
       chofer:"", tractor:"", semi:"", fechaLlegadaReal:"",
-      kmPrevistos:0, status:"stand by", observaciones:""
+      kmPrevistos: kmAuto !== null ? kmAuto : 0,
+      kmManual: kmAuto === null, // true = el usuario debe ingresar manualmente
+      status:"stand by", observaciones:""
     };
   }
-  function addSegment()      { setSegments(p => [...p, makeSegment(id, p.length + 1)]); }
-  function removeSegment(i)  { if (segments.length > 1) setSegments(p => p.filter((_,idx) => idx !== i)); }
-  function updateSeg(i,k,v)  { setSegments(p => { const n=[...p]; n[i]={...n[i],[k]:v}; return n; }); }
 
-  // ── Validation ────────────────────────────────────────────────────────────
-  function validate() {
-    const e = {};
-    if (!carga)     e.carga     = "Requerido";
-    if (!tipoCarga) e.tipoCarga = "Requerido";
-    // Sub-fields required except when carga = VACIO
-    if (carga !== "VACIO") {
-      if (!montoFactura) e.montoFactura = "Requerido";
-      if (isContenedor) {
-        if (!pies)          e.pies          = "Requerido";
-        if (!clasificacion) e.clasificacion = "Requerido";
-        if (!cantidad)      e.cantidad      = "Requerido";
-      } else if (tipoRow) {
-        if (cantidadIsEditable && !cantidad) e.cantidad = "Requerido";
+  function addSegment() {
+    setSegments(p => [...p, makeNewSegment(id, p.length+1, "", "")]);
+  }
+  function removeSegment(i) {
+    if (segments.length>1) setSegments(p => p.filter((_,idx) => idx!==i));
+  }
+  function updateSeg(i, key, val) {
+    setSegments(p => {
+      const n = [...p];
+      n[i] = { ...n[i], [key]:val };
+      // FIX #2 + #8 — recalcular segId y km si cambia desde/hasta
+      if (key==="desde" || key==="hasta") {
+        const d = key==="desde" ? val : n[i].desde;
+        const h = key==="hasta" ? val : n[i].hasta;
+        n[i].segId = makeSegmentId(id, d, h, i+1);
+        const kmAuto = getKmPrevistos(d, h);
+        if (kmAuto !== null) { n[i].kmPrevistos = kmAuto; n[i].kmManual = false; }
+        else { n[i].kmManual = true; } // mantiene el valor que tenía, usuario puede editar
       }
-    }
-    if (!cliente)  e.cliente  = "Requerido";
-    if (!numMIC)   e.numMIC   = "Requerido";
-    if (!fechaCRT) e.fechaCRT = "Requerido";
-    setErrors(e);
-    return Object.keys(e).length === 0;
+      return n;
+    });
   }
 
-  // ── Save / Finalize ───────────────────────────────────────────────────────
+  // FIX #5 — Validación completa de tramos
+  function validate() {
+    const e = {};
+    if (!carga)         e.carga = "Requerido";
+    if (!tipoCarga)     e.tipoCarga = "Requerido";
+    if (carga!=="VACIO") {
+      if (!montoFactura) e.montoFactura = "Requerido";
+      if (isContenedor) {
+        if (!pies)          e.pies = "Requerido";
+        if (!clasificacion) e.clasificacion = "Requerido";
+      } else if (tipoRow && cantIsInput && !cantidad) {
+        e.cantidad = "Requerido";
+      }
+    }
+    if (!cliente)  e.cliente = "Requerido";
+    if (!numMIC)   e.numMIC = "Requerido";
+    if (!fechaCRT) e.fechaCRT = "Requerido";
+    setErrors(e);
+    return Object.keys(e).length===0;
+  }
+
+  // FIX #5 — Validación extra para FINALIZAR: todos los campos de cada tramo
+  function validateSegments() {
+    for (let i=0; i<segments.length; i++) {
+      const s = segments[i];
+      if (!s.desde)             { alert(`Tramo ${i+1}: falta "Desde".`); return false; }
+      if (!s.fechaInicio)       { alert(`Tramo ${i+1}: falta "Fecha inicio".`); return false; }
+      if (!s.hasta)             { alert(`Tramo ${i+1}: falta "Hasta".`); return false; }
+      if (!s.fechaLlegadaPrevista) { alert(`Tramo ${i+1}: falta "Fecha prevista llegada".`); return false; }
+      if (!s.chofer)            { alert(`Tramo ${i+1}: falta "Chofer".`); return false; }
+      if (!s.tractor)           { alert(`Tramo ${i+1}: falta "Tractor".`); return false; }
+      if (!s.semi)              { alert(`Tramo ${i+1}: falta "Semi".`); return false; }
+      if (!s.fechaLlegadaReal)  { alert(`Tramo ${i+1}: falta "Fecha real llegada".`); return false; }
+      if (!s.kmPrevistos && s.kmPrevistos!==0) { alert(`Tramo ${i+1}: falta "Km previstos".`); return false; }
+      if (s.status !== "completado") { alert(`Tramo ${i+1}: el estado debe ser "completado" para finalizar.`); return false; }
+    }
+    return true;
+  }
+
   function buildData(extraStatus) {
-    // Derive final um value to save
-    const umToSave = isContenedor ? "UN" : (umIsEditable ? "" : umDisplay);
+    const umToSave = isContenedor ? "UN" : (tipoRow ? tipoRow.um : "");
     return {
       id, carga, tipoCarga,
       um: umToSave,
       pies: isContenedor ? pies : "",
-      clasificacion: isContenedor ? clasificacion : (clasifIsEditable ? clasificacion : clasifDisplay),
-      cantidad: isContenedor ? "1" : (cantidadIsEditable ? cantidad : cantidadDisplay),
+      clasificacion: isContenedor ? clasificacion : (tipoRow ? tipoRow.clasificacion : ""),
+      cantidad: isContenedor ? (cantidad||"1") : (cantIsInput ? cantidad : (tipoRow?.cantidad||"")),
       montoFactura, moneda, cliente, segments,
       numMIC, fechaMIC, numCRT, fechaCRT,
-      statusDoc: extraStatus === "finalizado" ? "completo" : statusDoc,
+      statusDoc: extraStatus==="finalizado" ? "completo" : statusDoc,
       obsDoc,
       status: extraStatus || trip?.status || "activo"
     };
@@ -986,12 +1020,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
 
   async function handleFinalize() {
     if (!validate()) return;
-    if (!segments.every(s => s.status === "completado")) {
-      alert("Todos los tramos deben estar en estado 'completado'."); return;
-    }
-    if (segments.some(s => !s.desde || !s.hasta || !s.chofer || !s.tractor || !s.fechaLlegadaReal)) {
-      alert("Completá todos los campos de los tramos."); return;
-    }
+    if (!validateSegments()) return;
     setSaving(true);
     await onSave(buildData("finalizado"));
     await onFinalize(id);
@@ -1008,44 +1037,43 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:4 }}>
             <span style={{ fontFamily:"var(--mono)", fontSize:12, color:"var(--text3)" }}>{id}</span>
-            <span className="km-total">📍 {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km totales</span>
+            <span className="km-total">📍 {totalKm>0?totalKm.toLocaleString("es-AR"):"0"} km totales</span>
           </div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* ── CARD 1: Información general ── */}
+      {/* CARD 1: Información general */}
       <div className="card" style={{ marginBottom:16 }}>
-        <div className="card-header"><div className="card-title">📋 Información General del Viaje</div></div>
+        <div className="card-header"><div className="card-title">📋 Información General</div></div>
         <div className="card-body">
-
-          {/* ID */}
-          <div className="form-row" style={{ marginBottom:0 }}>
-            <div className="form-group" style={{ maxWidth:200 }}>
+          <div className="form-row" style={{ marginBottom:4 }}>
+            <div className="form-group" style={{ maxWidth:220 }}>
               <label className="form-label">ID Viaje</label>
               <div className="field-readonly">{id}</div>
             </div>
           </div>
 
-          {/* ── Fila 1: Carga + Tipo de Carga ── */}
+          {/* Carga + Tipo de Carga */}
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">
                 Carga {errors.carga && <span className="form-error">{errors.carga}</span>}
               </label>
+              {/* FIX #1 — Hoja "CARGAS" col A */}
               <SearchableSelect
-                options={dropdowns.CARGAS_MERCANCIAS || dropdowns.CARGAS_LISTA || []}
+                options={dropdowns.CARGAS || []}
                 value={carga}
                 onChange={v => setCarga(v)}
                 placeholder="Seleccioná mercadería..."
                 disabled={readonly}
               />
             </div>
-
             <div className="form-group">
               <label className="form-label">
                 Tipo de Carga {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
               </label>
+              {/* FIX #1 — Hoja "TIPO DE CARGA" col A */}
               <SearchableSelect
                 options={tipoOptions}
                 value={tipoCarga}
@@ -1056,115 +1084,61 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
           </div>
 
-          {/* ── Fila 2: campos dinámicos según Tipo de Carga ── */}
+          {/* Campos dinámicos según Tipo de Carga */}
           {tipoCarga && carga !== "VACIO" && (
-
             isContenedor ? (
-              /* ─── CONTENEDOR: Pies → luego Clasificación + UM + Cantidad ─── */
-              <div className="form-row" style={{ flexWrap:"wrap" }}>
-                {/* Pies */}
-                <div className="form-group" style={{ minWidth:140 }}>
-                  <label className="form-label">
-                    Pies {errors.pies && <span className="form-error">{errors.pies}</span>}
-                  </label>
+              <div className="form-row">
+                <div className="form-group" style={{ minWidth:150 }}>
+                  <label className="form-label">Pies {errors.pies && <span className="form-error">{errors.pies}</span>}</label>
                   <SearchableSelect
-                    options={[
-                      { value:"40 PIES", label:"40 PIES" },
-                      { value:"20 PIES", label:"20 PIES" },
-                    ]}
-                    value={pies}
-                    onChange={v => setPies(v)}
-                    placeholder="20 / 40..."
-                    disabled={readonly}
+                    options={[{value:"40 PIES",label:"40 PIES"},{value:"20 PIES",label:"20 PIES"}]}
+                    value={pies} onChange={v=>setPies(v)}
+                    placeholder="20 / 40..." disabled={readonly}
                   />
                 </div>
-
-                {/* Clasificación — solo si ya eligió Pies */}
                 {pies && (
                   <div className="form-group" style={{ minWidth:200 }}>
-                    <label className="form-label">
-                      Clasificación {errors.clasificacion && <span className="form-error">{errors.clasificacion}</span>}
-                    </label>
+                    <label className="form-label">Clasificación {errors.clasificacion && <span className="form-error">{errors.clasificacion}</span>}</label>
                     <SearchableSelect
-                      options={[
-                        { value:"REFRIGERADO",    label:"REFRIGERADO" },
-                        { value:"NO REFRIGERADO", label:"NO REFRIGERADO" },
-                      ]}
-                      value={clasificacion}
-                      onChange={v => setClasificacion(v)}
-                      placeholder="Refrigerado / No refrig..."
-                      disabled={readonly}
+                      options={[{value:"REFRIGERADO",label:"REFRIGERADO"},{value:"NO REFRIGERADO",label:"NO REFRIGERADO"}]}
+                      value={clasificacion} onChange={v=>setClasificacion(v)}
+                      placeholder="Refrigerado..." disabled={readonly}
                     />
                   </div>
                 )}
-
-                {/* UM — siempre UN para contenedor */}
-                <div className="form-group" style={{ minWidth:100 }}>
+                <div className="form-group" style={{ minWidth:80 }}>
                   <label className="form-label">UM</label>
                   <div className="field-readonly">UN</div>
                 </div>
-
-                {/* Cantidad — siempre 1 para contenedor, pero editable */}
                 <div className="form-group" style={{ minWidth:120 }}>
-                  <label className="form-label">
-                    Cantidad {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
-                  </label>
-                  <input
-                    className="form-input"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={cantidad || "1"}
-                    onChange={e => setCantidad(e.target.value)}
-                    disabled={readonly}
-                  />
+                  <label className="form-label">Cantidad</label>
+                  <input className="form-input" type="number" min="1" step="1"
+                    value={cantidad||"1"} onChange={e=>setCantidad(e.target.value)} disabled={readonly}/>
                 </div>
               </div>
-
             ) : tipoRow ? (
-              /* ─── TODOS LOS DEMÁS TIPOS ─── */
-              <div className="form-row" style={{ flexWrap:"wrap" }}>
-
-                {/* UM: "-" → no mostrar | texto → readonly | "" → readonly (viene de la hoja) */}
+              <div className="form-row">
                 {showUM && (
-                  <div className="form-group" style={{ minWidth:120 }}>
+                  <div className="form-group" style={{ minWidth:100 }}>
                     <label className="form-label">UM</label>
-                    {umIsEditable
-                      ? <input className="form-input" type="text" value={cantidad} onChange={e=>setUm && null} disabled={readonly} placeholder="UM" />
-                      : <div className="field-readonly">{umDisplay}</div>
-                    }
+                    <div className="field-readonly">{tipoRow.um}</div>
                   </div>
                 )}
-
-                {/* Clasificación: "-" → no mostrar | texto → readonly | "" → n/a para no-contenedor */}
                 {showClasif && (
-                  <div className="form-group" style={{ minWidth:160 }}>
+                  <div className="form-group" style={{ minWidth:140 }}>
                     <label className="form-label">Clasificación</label>
-                    {clasifIsEditable
-                      ? <input className="form-input" value={clasificacion} onChange={e=>setClasificacion(e.target.value)} disabled={readonly} />
-                      : <div className="field-readonly">{clasifDisplay}</div>
-                    }
+                    <div className="field-readonly">{tipoRow.clasificacion}</div>
                   </div>
                 )}
-
-                {/* Cantidad: "-" → no mostrar | texto → readonly | "" → input numérico */}
-                {showCantidad && (
+                {showCant && (
                   <div className="form-group" style={{ minWidth:140 }}>
                     <label className="form-label">
                       Cantidad {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
                     </label>
-                    {cantidadIsEditable
-                      ? <input
-                          className="form-input"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={cantidad}
-                          onChange={e => setCantidad(e.target.value)}
-                          disabled={readonly}
-                          placeholder="Ingresá cantidad"
-                        />
-                      : <div className="field-readonly">{cantidadDisplay}</div>
+                    {cantIsInput
+                      ? <input className="form-input" type="number" min="0" step="0.01"
+                          value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} placeholder="Ingresá cantidad"/>
+                      : <div className="field-readonly">{tipoRow.cantidad}</div>
                     }
                   </div>
                 )}
@@ -1172,84 +1146,71 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             ) : null
           )}
 
-          {/* ── Fila 3: Monto Factura + Cliente ── */}
+          {/* Monto + Cliente */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">
-                Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}
-              </label>
+              <label className="form-label">Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
               <div className="input-with-currency">
-                <input className="form-input" type="number" value={montoFactura} onChange={e=>setMontoFactura(e.target.value)} disabled={readonly} placeholder="0.00" />
+                <input className="form-input" type="number" value={montoFactura} onChange={e=>setMontoFactura(e.target.value)} disabled={readonly} placeholder="0.00"/>
                 <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)} disabled={readonly}>
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">
-                Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}
-              </label>
-              <SearchableSelect
-                options={dropdowns.CLIENTES || []}
-                value={cliente}
-                onChange={setCliente}
-                placeholder="Buscar cliente..."
-                disabled={readonly}
-              />
+              <label className="form-label">Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
+              {/* FIX #1 — hoja "CLIENTES" col A */}
+              <SearchableSelect options={dropdowns.CLIENTES||[]} value={cliente} onChange={setCliente} placeholder="Buscar cliente..." disabled={readonly}/>
             </div>
           </div>
-
         </div>
       </div>
 
-      {/* ── CARD 2: Tramos ── */}
+      {/* CARD 2: Tramos */}
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">
             🗺 Tramos del Viaje
             <span className="km-total" style={{ marginLeft:8 }}>
-              {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km totales
+              {totalKm>0?totalKm.toLocaleString("es-AR"):"0"} km totales
             </span>
           </div>
         </div>
         <div className="card-body">
-          {segments.map((seg, i) => (
+          {segments.map((seg,i) => (
             <SegmentCard
-              key={seg.segId}
-              seg={seg}
-              idx={i}
-              total={segments.length}
-              dropdowns={dropdowns}
-              readonly={readonly}
+              key={seg.segId+i}
+              seg={seg} idx={i} total={segments.length}
+              dropdowns={dropdowns} readonly={readonly}
               onChange={(k,v) => updateSeg(i,k,v)}
               onRemove={() => removeSegment(i)}
               onAdd={addSegment}
-              isLast={i === segments.length - 1}
+              isLast={i===segments.length-1}
             />
           ))}
         </div>
       </div>
 
-      {/* ── CARD 3: Documentación ── */}
+      {/* CARD 3: Documentación */}
       <div className="card" style={{ marginBottom:80 }}>
         <div className="card-header"><div className="card-title">📄 Documentación</div></div>
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Número MIC {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
-              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value)} disabled={readonly} />
+              <label className="form-label">N° MIC {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
+              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha MIC</label>
-              <input type="date" className="form-input" value={fechaMIC} onChange={e=>setFechaMIC(e.target.value)} disabled={readonly} />
+              <input type="date" className="form-input" value={fechaMIC} onChange={e=>setFechaMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Número CRT</label>
-              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value)} disabled={readonly} />
+              <label className="form-label">N° CRT</label>
+              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha CRT {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
-              <input type="date" className="form-input" value={fechaCRT} onChange={e=>setFechaCRT(e.target.value)} disabled={readonly} />
+              <input type="date" className="form-input" value={fechaCRT} onChange={e=>setFechaCRT(e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -1262,7 +1223,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
             <div className="form-group" style={{ flex:3 }}>
               <label className="form-label">Observaciones</label>
-              <input className="form-input" value={obsDoc} onChange={e=>setObsDoc(e.target.value)} disabled={readonly} placeholder="Opcional" />
+              <input className="form-input" value={obsDoc} onChange={e=>setObsDoc(e.target.value)} disabled={readonly} placeholder="Opcional"/>
             </div>
           </div>
         </div>
@@ -1271,8 +1232,8 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       {!readonly && (
         <div className="save-bar">
           <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-          <button className="btn btn-success"   onClick={handleFinalize} disabled={saving}>🏁 Finalizar Viaje</button>
-          <button className="btn btn-primary"   onClick={handleSave}     disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
+          <button className="btn btn-success" onClick={handleFinalize} disabled={saving}>🏁 Finalizar Viaje</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
         </div>
       )}
     </div>
@@ -1280,40 +1241,29 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
 }
 
 // ─── SEGMENT CARD ─────────────────────────────────────────────────────────────
-// Props: seg, idx, total, dropdowns, readonly, onChange, onRemove, onAdd, isLast
 function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove, onAdd, isLast }) {
   const [open, setOpen] = useState(true);
-
   return (
     <div className="segment-card">
-      {/* Header — click to collapse, action buttons on right */}
       <div className="segment-header">
         <div onClick={() => setOpen(!open)} style={{ flex:1, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+          {/* FIX #2 — segId muestra desde-hasta */}
           <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--text3)" }}>{seg.segId}</span>
-          <span style={{ fontSize:12, color:"var(--text2)" }}>{seg.desde||"Desde ?"} → {seg.hasta||"Hasta ?"}</span>
-          {seg.kmPrevistos > 0 && (
-            <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--accent)" }}>{Number(seg.kmPrevistos).toLocaleString("es-AR")} km</span>
+          {seg.kmPrevistos>0 && (
+            <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--accent)" }}>
+              {Number(seg.kmPrevistos).toLocaleString("es-AR")} km
+            </span>
           )}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <StatusBadge status={seg.status} />
-          {/* Botón eliminar en CADA tramo (si hay más de 1 y no es readonly) */}
-          {!readonly && total > 1 && (
-            <button
-              className="btn btn-danger btn-sm btn-icon"
-              onClick={e => { e.stopPropagation(); onRemove(); }}
-              title="Eliminar tramo"
-            >✕</button>
+          <StatusBadge status={seg.status}/>
+          {!readonly && total>1 && (
+            <button className="btn btn-danger btn-sm btn-icon" onClick={e=>{e.stopPropagation();onRemove();}} title="Eliminar tramo">✕</button>
           )}
-          {/* Botón agregar SOLO en el último tramo */}
           {!readonly && isLast && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={e => { e.stopPropagation(); onAdd(); }}
-              title="Agregar tramo"
-            >+ Tramo</button>
+            <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation();onAdd();}} title="Agregar tramo">+ Tramo</button>
           )}
-          <span onClick={() => setOpen(!open)} style={{ color:"var(--text3)", fontSize:12, cursor:"pointer", userSelect:"none" }}>
+          <span onClick={()=>setOpen(!open)} style={{ color:"var(--text3)", fontSize:12, cursor:"pointer", userSelect:"none" }}>
             {open?"▲":"▼"}
           </span>
         </div>
@@ -1324,63 +1274,68 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Desde</label>
-              <SearchableSelect options={dropdowns.LUGARES} value={seg.desde} onChange={v=>onChange("desde",v)} placeholder="Origen..." disabled={readonly} />
+              {/* FIX #1 — hoja "LUGARES" col A */}
+              <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.desde} onChange={v=>onChange("desde",v)} placeholder="Origen..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha inicio</label>
-              <input type="date" className="form-input" value={seg.fechaInicio} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly} />
+              <label className="form-label">Fecha inicio viaje</label>
+              <input type="date" className="form-input" value={seg.fechaInicio} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Hasta</label>
-              <SearchableSelect options={dropdowns.LUGARES} value={seg.hasta} onChange={v=>onChange("hasta",v)} placeholder="Destino..." disabled={readonly} />
+              {/* FIX #1 — hoja "LUGARES" col A */}
+              <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.hasta} onChange={v=>onChange("hasta",v)} placeholder="Destino..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha prevista llegada</label>
-              <input type="date" className="form-input" value={seg.fechaLlegadaPrevista} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly} />
+              <input type="date" className="form-input" value={seg.fechaLlegadaPrevista} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Chofer</label>
-              <SearchableSelect options={dropdowns.CHOFERES} value={seg.chofer} onChange={v=>onChange("chofer",v)} placeholder="Buscar chofer..." disabled={readonly} />
+              {/* FIX #1 — hoja "CHOFERES" col A */}
+              <SearchableSelect options={dropdowns.CHOFERES||[]} value={seg.chofer} onChange={v=>onChange("chofer",v)} placeholder="Buscar chofer..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Tractor</label>
-              <SearchableSelect options={dropdowns.CAMIONES} value={seg.tractor} onChange={v=>onChange("tractor",v)} placeholder="Buscar tractor..." disabled={readonly} />
+              {/* FIX #1 — hoja "CAMIONES" col A */}
+              <SearchableSelect options={dropdowns.CAMIONES||[]} value={seg.tractor} onChange={v=>onChange("tractor",v)} placeholder="Buscar tractor..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Semi</label>
-              <SearchableSelect options={dropdowns.SEMIS} value={seg.semi} onChange={v=>onChange("semi",v)} placeholder="Buscar semi..." disabled={readonly} />
+              {/* FIX #1 — hoja "SEMIS" col A */}
+              <SearchableSelect options={dropdowns.SEMIS||[]} value={seg.semi} onChange={v=>onChange("semi",v)} placeholder="Buscar semi..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha real llegada</label>
-              <input type="date" className="form-input" value={seg.fechaLlegadaReal} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly} />
+              <input type="date" className="form-input" value={seg.fechaLlegadaReal} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group" style={{ maxWidth:180 }}>
-              <label className="form-label">Km previstos</label>
-              {readonly
-                ? <div className="field-readonly">{fmtKm(seg.kmPrevistos)}</div>
-                : <input
-                    className="form-input"
-                    type="number"
-                    min="0"
-                    value={seg.kmPrevistos || ""}
-                    placeholder="0"
-                    onChange={e => onChange("kmPrevistos", Number(e.target.value) || 0)}
-                  />
+            <div className="form-group" style={{ maxWidth:200 }}>
+              <label className="form-label">
+                Km previstos
+                {/* FIX #8 — automático si está en tabla, manual si no */}
+                {!readonly && seg.kmManual && <span className="form-hint" style={{ marginLeft:4 }}>(manual)</span>}
+                {!readonly && !seg.kmManual && <span className="form-hint" style={{ marginLeft:4 }}>(auto)</span>}
+              </label>
+              {readonly || !seg.kmManual
+                ? <div className="field-readonly">{seg.kmPrevistos>0?fmtKm(seg.kmPrevistos):"—"}</div>
+                : <input className="form-input" type="number" min="0"
+                    value={seg.kmPrevistos||""} placeholder="km"
+                    onChange={e=>onChange("kmPrevistos",Number(e.target.value)||0)}/>
               }
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
               <select className="form-select" value={seg.status} onChange={e=>onChange("status",e.target.value)} disabled={readonly}>
-                {SEGMENT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                {SEGMENT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div className="form-group" style={{ flex:3 }}>
               <label className="form-label">Observaciones</label>
-              <input className="form-input" value={seg.observaciones} onChange={e=>onChange("observaciones",e.target.value)} disabled={readonly} placeholder="Opcional" />
+              <input className="form-input" value={seg.observaciones} onChange={e=>onChange("observaciones",e.target.value)} disabled={readonly} placeholder="Opcional"/>
             </div>
           </div>
         </div>
@@ -1393,9 +1348,9 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
 // MODULE 2 — ENTREGA DE PLATA
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module2({ session, canEdit, dropdowns, notif }) {
-  const [view, setView]       = useState("list");
+  const [view, setView]         = useState("list");
   const [entregas, setEntregas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
 
   useEffect(() => { loadEntregas(); }, []);
   async function loadEntregas() {
@@ -1404,14 +1359,13 @@ function Module2({ session, canEdit, dropdowns, notif }) {
     if (r.ok) setEntregas(r.data);
     setLoading(false);
   }
-
   async function handleSave(data) {
     const r = await gasCall("saveEntrega", { entrega:data, user:session.username });
     if (r.ok) { notif.add("Entrega registrada"); loadEntregas(); setView("list"); }
-    else notif.add(r.error || "Error al guardar", "error");
+    else notif.add(r.error||"Error al guardar","error");
   }
 
-  if (view === "form") return <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={() => setView("list")} />;
+  if (view==="form") return <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={()=>setView("list")}/>;
 
   return (
     <div className="module-container">
@@ -1420,25 +1374,25 @@ function Module2({ session, canEdit, dropdowns, notif }) {
           <div className="module-title">💵 Entrega de Plata</div>
           <div className="module-subtitle">{entregas.length} entrega(s) registrada(s)</div>
         </div>
-        {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setView("form")}>+ Nueva Entrega</button>}
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={()=>setView("form")}>+ Nueva Entrega</button>}
       </div>
       {loading
-        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
-        : entregas.length === 0
+        ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
+        : entregas.length===0
           ? <div className="empty"><div className="empty-icon">💵</div><p>No hay entregas registradas.</p></div>
           : (
             <div className="table-wrap">
               <table>
                 <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Moneda</th><th>Registrado por</th><th>Fecha registro</th></tr></thead>
                 <tbody>
-                  {entregas.map(e => (
+                  {entregas.map(e=>(
                     <tr key={e.id}>
                       <td>{fmtDate(e.fecha)}</td>
                       <td>{e.responsable}</td>
                       <td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td>
                       <td><span className="badge badge-blue">{e.moneda}</span></td>
-                      <td style={{ fontSize:11, color:"var(--text3)" }}>{e.createdBy}</td>
-                      <td style={{ fontSize:11, color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
+                      <td style={{ fontSize:11,color:"var(--text3)" }}>{e.createdBy}</td>
+                      <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1451,28 +1405,26 @@ function Module2({ session, canEdit, dropdowns, notif }) {
 }
 
 function EntregaForm({ dropdowns, onSave, onBack }) {
-  const [fecha, setFecha]         = useState(nowISO());
-  const [responsable, setResponsable] = useState("");
-  const [monto, setMonto]         = useState("");
-  const [moneda, setMoneda]       = useState("ARS");
-  const [errors, setErrors]       = useState({});
-  const [saving, setSaving]       = useState(false);
+  const [fecha,      setFecha]      = useState(nowISO());
+  const [responsable,setResponsable]= useState("");
+  const [monto,      setMonto]      = useState("");
+  const [moneda,     setMoneda]     = useState("ARS");
+  const [errors,     setErrors]     = useState({});
+  const [saving,     setSaving]     = useState(false);
 
   function validate() {
-    const e = {};
-    if (!fecha)       e.fecha = "Requerido";
-    if (!responsable) e.responsable = "Requerido";
-    if (!monto)       e.monto = "Requerido";
-    setErrors(e); return Object.keys(e).length === 0;
+    const e={};
+    if (!fecha)       e.fecha="Requerido";
+    if (!responsable) e.responsable="Requerido";
+    if (!monto)       e.monto="Requerido";
+    setErrors(e); return Object.keys(e).length===0;
   }
-
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
     await onSave({ fecha, responsable, monto, moneda });
     setSaving(false);
   }
-
   return (
     <div className="module-container">
       <div className="module-header">
@@ -1484,22 +1436,23 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           <div className="alert alert-info" style={{ marginBottom:16 }}>Los registros no pueden editarse una vez guardados.</div>
           <div className="form-group">
             <label className="form-label">Fecha {errors.fecha && <span className="form-error">{errors.fecha}</span>}</label>
-            <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)} />
+            <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)}/>
           </div>
           <div className="form-group">
             <label className="form-label">Responsable entrega {errors.responsable && <span className="form-error">{errors.responsable}</span>}</label>
-            <SearchableSelect options={dropdowns.COLABORADORES} value={responsable} onChange={setResponsable} placeholder="Buscar colaborador..." />
+            {/* FIX #1 — hoja "COLABORADORES" col A */}
+            <SearchableSelect options={dropdowns.COLABORADORES||[]} value={responsable} onChange={setResponsable} placeholder="Buscar colaborador..."/>
           </div>
           <div className="form-group">
             <label className="form-label">Monto {errors.monto && <span className="form-error">{errors.monto}</span>}</label>
             <div className="input-with-currency">
-              <input className="form-input" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00" />
+              <input className="form-input" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00"/>
               <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)}>
-                {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
-          <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:16 }}>
+          <div style={{ display:"flex",gap:10,justifyContent:"flex-end",marginTop:16 }}>
             <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
           </div>
@@ -1513,16 +1466,16 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
 // MODULE 3 — RENDICIÓN DE GASTOS
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module3({ session, canEdit, dropdowns, notif }) {
-  const [trips, setTrips]           = useState([]);
-  const [entregas, setEntregas]     = useState([]);
-  const [rendiciones, setRendiciones] = useState([]);
-  const [selectedDriver, setSelectedDriver] = useState("");
-  const [selectedSegIds, setSelectedSegIds] = useState([]);
-  const [view, setView]             = useState("list");
-  const [loading, setLoading]       = useState(true);
+  const [trips,       setTrips]      = useState([]);
+  const [entregas,    setEntregas]   = useState([]);
+  const [rendiciones, setRendiciones]= useState([]);
+  const [selDriver,   setSelDriver]  = useState("");
+  const [selSegIds,   setSelSegIds]  = useState([]);
+  const [view,        setView]       = useState("list");
+  const [loading,     setLoading]    = useState(true);
 
   useEffect(() => {
-    Promise.all([gasCall("getTrips"), gasCall("getEntregas"), gasCall("getRendiciones")])
+    Promise.all([gasCall("getTrips"),gasCall("getEntregas"),gasCall("getRendiciones")])
       .then(([t,e,r]) => {
         if (t.ok) setTrips(t.data);
         if (e.ok) setEntregas(e.data);
@@ -1531,47 +1484,46 @@ function Module3({ session, canEdit, dropdowns, notif }) {
       });
   }, []);
 
-  const settledSegIds = useMemo(() => {
-    const s = new Set();
-    rendiciones.forEach(r => (r.segments||[]).forEach(sg => s.add(sg.segId)));
+  const settledIds = useMemo(() => {
+    const s=new Set();
+    rendiciones.forEach(r=>(r.segments||[]).forEach(sg=>s.add(sg.segId)));
     return s;
   }, [rendiciones]);
 
-  const unsettledSegs = useMemo(() => {
-    const segs = [];
+  const unsettled = useMemo(() => {
+    const segs=[];
     trips.forEach(trip => {
-      if (trip.status === "finalizado" || trip.status === "activo") {
+      if (trip.status==="finalizado"||trip.status==="activo") {
         (trip.segments||[]).forEach(seg => {
-          if (!settledSegIds.has(seg.segId))
+          if (!settledIds.has(seg.segId))
             segs.push({ ...seg, tripId:trip.id, tripMonto:trip.montoFactura, tripMoneda:trip.moneda });
         });
       }
     });
     return segs;
-  }, [trips, settledSegIds]);
+  }, [trips, settledIds]);
 
-  const filtered    = selectedDriver ? unsettledSegs.filter(s => s.chofer === selectedDriver) : unsettledSegs;
-  const allDrivers  = [...new Set(unsettledSegs.map(s => s.chofer).filter(Boolean))];
-  const selectedSegs = filtered.filter(s => selectedSegIds.includes(s.segId));
+  const filtered   = selDriver ? unsettled.filter(s=>s.chofer===selDriver) : unsettled;
+  const allDrivers = [...new Set(unsettled.map(s=>s.chofer).filter(Boolean))];
+  const selSegs    = filtered.filter(s=>selSegIds.includes(s.segId));
 
   function toggleSeg(segId) {
-    setSelectedSegIds(p => p.includes(segId) ? p.filter(x=>x!==segId) : [...p, segId]);
+    setSelSegIds(p=>p.includes(segId)?p.filter(x=>x!==segId):[...p,segId]);
   }
 
   async function handleSave(data) {
     const r = await gasCall("saveRendicion", { rendicion:data, user:session.username });
     if (r.ok) {
-      notif.add("Rendición guardada"); setView("list"); setSelectedSegIds([]);
-      Promise.all([gasCall("getTrips"), gasCall("getRendiciones")]).then(([t,r]) => {
-        if (t.ok) setTrips(t.data);
-        if (r.ok) setRendiciones(r.data);
+      notif.add("Rendición guardada"); setView("list"); setSelSegIds([]);
+      Promise.all([gasCall("getTrips"),gasCall("getRendiciones")]).then(([t,r])=>{
+        if(t.ok)setTrips(t.data); if(r.ok)setRendiciones(r.data);
       });
     } else notif.add(r.error||"Error","error");
   }
 
-  if (view === "form") return (
-    <RendicionForm segs={selectedSegs} driver={selectedDriver} entregas={entregas}
-      onSave={handleSave} onBack={() => setView("list")} session={session} />
+  if (view==="form") return (
+    <RendicionForm segs={selSegs} driver={selDriver} entregas={entregas}
+      onSave={handleSave} onBack={()=>setView("list")} session={session}/>
   );
 
   return (
@@ -1586,16 +1538,16 @@ function Module3({ session, canEdit, dropdowns, notif }) {
         <div className="form-group" style={{ margin:0 }}>
           <label className="form-label">Filtrar por chofer</label>
           <SearchableSelect
-            options={["", ...allDrivers].map(d => ({ value:d, label:d||"Todos los choferes" }))}
-            value={selectedDriver}
-            onChange={v => { setSelectedDriver(v); setSelectedSegIds([]); }}
+            options={["", ...allDrivers].map(d=>({ value:d, label:d||"Todos los choferes" }))}
+            value={selDriver}
+            onChange={v=>{ setSelDriver(v); setSelSegIds([]); }}
             placeholder="Todos los choferes"
           />
         </div>
       </div>
       {loading
-        ? <div style={{ textAlign:"center", padding:32 }}><div className="spinner" style={{ margin:"0 auto" }} /></div>
-        : filtered.length === 0
+        ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
+        : filtered.length===0
           ? <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes de rendición.</p></div>
           : (
             <div style={{ maxHeight:"calc(100vh - 300px)", overflowY:"auto" }}>
@@ -1603,14 +1555,14 @@ function Module3({ session, canEdit, dropdowns, notif }) {
                 <table>
                   <thead><tr><th></th><th>Tramo</th><th>Viaje</th><th>Chofer</th><th>Desde</th><th>Hasta</th><th>Fecha inicio</th><th>Estado</th></tr></thead>
                   <tbody>
-                    {filtered.map(s => (
+                    {filtered.map(s=>(
                       <tr key={s.segId}>
-                        <td><input type="checkbox" checked={selectedSegIds.includes(s.segId)} onChange={() => toggleSeg(s.segId)} /></td>
-                        <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.segId}</td>
-                        <td style={{ fontFamily:"var(--mono)", fontSize:11 }}>{s.tripId}</td>
+                        <td><input type="checkbox" checked={selSegIds.includes(s.segId)} onChange={()=>toggleSeg(s.segId)}/></td>
+                        <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.segId}</td>
+                        <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.tripId}</td>
                         <td>{s.chofer}</td><td>{s.desde}</td><td>{s.hasta}</td>
                         <td>{fmtDate(s.fechaInicio)}</td>
-                        <td><StatusBadge status={s.status} /></td>
+                        <td><StatusBadge status={s.status}/></td>
                       </tr>
                     ))}
                   </tbody>
@@ -1619,10 +1571,10 @@ function Module3({ session, canEdit, dropdowns, notif }) {
             </div>
           )
       }
-      {canEdit && selectedSegIds.length > 0 && (
+      {canEdit && selSegIds.length>0 && (
         <div className="liquidar-bar">
-          <span style={{ color:"var(--text2)", fontSize:13 }}>{selectedSegIds.length} tramo(s) seleccionado(s)</span>
-          <button className="btn btn-primary" onClick={() => setView("form")}>💰 Liquidar</button>
+          <span style={{ color:"var(--text2)",fontSize:13 }}>{selSegIds.length} tramo(s) seleccionado(s)</span>
+          <button className="btn btn-primary" onClick={()=>setView("form")}>💰 Liquidar</button>
         </div>
       )}
     </div>
@@ -1632,48 +1584,93 @@ function Module3({ session, canEdit, dropdowns, notif }) {
 // ─── RENDICION FORM ───────────────────────────────────────────────────────────
 function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
   const rendId = "RND-" + Date.now();
-  const [segMonto, setSegMonto]     = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"ARS"}}),{}));
-  const [expenses, setExpenses]     = useState([{ cat:"GAS-OIL", monto:"", moneda:"ARS" }]);
-  const [fuelRows, setFuelRows]     = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
-  const [kmReales, setKmReales]     = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
-  const [adelanto, setAdelantoMonto] = useState("");
-  const [adelantoMoneda, setAdelantoMoneda] = useState("ARS");
-  const [saving, setSaving]         = useState(false);
 
-  const allDates = segs.map(s=>[s.fechaInicio,s.fechaLlegadaPrevista]).flat().filter(Boolean).sort();
-  const dateFrom = allDates[0];
-  const dateTo   = allDates[allDates.length-1];
+  const [segMonto, setSegMonto]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"USD"}}),{}));
+  const [expenses, setExpenses]   = useState([{ cat:"GAS-OIL", monto:"", moneda:"ARS" }]);
+  const [fuelRows, setFuelRows]   = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
+  const [kmReales, setKmReales]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
+  // FIX #4 — devoluciones por moneda
+  const [devolucion, setDevolucion] = useState({ ARS:"", CLP:"", USD:"" });
+  const [saving, setSaving]       = useState(false);
 
-  const driverEntregas = driver ? entregas.filter(e => {
-    const d = e.fecha;
-    return e.responsable && (d>=(dateFrom||"")&&d<(dateTo||"9999"));
-  }) : [];
+  // FIX #3 — Rango de fechas: min(fechaInicio) → max(fechaLlegadaReal) - 1 día
+  const allFechasInicio = segs.map(s=>s.fechaInicio).filter(Boolean).sort();
+  const allFechasLlegada = segs.map(s=>s.fechaLlegadaReal||s.fechaLlegadaPrevista).filter(Boolean).sort();
+  const dateFrom = allFechasInicio[0] || "";
+  const dateTo   = allFechasLlegada[allFechasLlegada.length-1] || "";
+  // Restar 1 día a dateTo
+  const dateToMinus1 = useMemo(() => {
+    if (!dateTo) return "";
+    const d = new Date(dateTo + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0,10);
+  }, [dateTo]);
+
+  // FIX #3 — Filtrar entregas del chofer en el rango correcto (hasta el día anterior a la llegada)
+  const driverEntregas = useMemo(() => {
+    if (!driver || !dateFrom) return [];
+    return entregas.filter(e => {
+      return e.responsable &&
+        e.fecha >= dateFrom &&
+        (!dateToMinus1 || e.fecha <= dateToMinus1);
+    });
+  }, [entregas, driver, dateFrom, dateToMinus1]);
 
   const entByCur = { ARS:[], CLP:[], USD:[] };
-  driverEntregas.forEach(e => { if (entByCur[e.moneda]) entByCur[e.moneda].push(e); });
-  const entTotals = { ARS:entByCur.ARS.reduce((s,e)=>s+Number(e.monto),0), CLP:entByCur.CLP.reduce((s,e)=>s+Number(e.monto),0), USD:entByCur.USD.reduce((s,e)=>s+Number(e.monto),0) };
+  driverEntregas.forEach(e=>{ if(entByCur[e.moneda]) entByCur[e.moneda].push(e); });
+  const entBruto = {
+    ARS: entByCur.ARS.reduce((s,e)=>s+Number(e.monto),0),
+    CLP: entByCur.CLP.reduce((s,e)=>s+Number(e.monto),0),
+    USD: entByCur.USD.reduce((s,e)=>s+Number(e.monto),0),
+  };
+  // FIX #4 — descontar devoluciones
+  const entNeto = {
+    ARS: entBruto.ARS - Number(devolucion.ARS||0),
+    CLP: entBruto.CLP - Number(devolucion.CLP||0),
+    USD: entBruto.USD - Number(devolucion.USD||0),
+  };
 
+  // Conversión a ARS (tasas de referencia — en producción se pueden cargar desde Sheets)
+  const TC = { USD:1000, CLP:1.1, ARS:1 };
+  const toARS = (monto, cur) => Number(monto||0) * TC[cur];
+
+  const entTotalARS = entNeto.ARS + toARS(entNeto.CLP,"CLP") + toARS(entNeto.USD,"USD");
+
+  // Total montos tramo
   const totalSegARS = segs.reduce((s,seg)=>{
     const m = segMonto[seg.segId]; if (!m?.monto) return s;
-    const v = Number(m.monto);
-    return s + (m.moneda==="ARS"?v:m.moneda==="USD"?v*1000:v*1.1);
-  },0);
+    return s + toARS(m.monto, m.moneda);
+  }, 0);
 
-  const tripTotal = segs[0]?.tripMonto ? Number(segs[0].tripMonto)*(segs[0].tripMoneda==="USD"?1000:1) : Infinity;
-  const expTotal  = { ARS:expenses.filter(e=>e.moneda==="ARS").reduce((s,e)=>s+Number(e.monto||0),0), USD:expenses.filter(e=>e.moneda==="USD").reduce((s,e)=>s+Number(e.monto||0),0), CLP:expenses.filter(e=>e.moneda==="CLP").reduce((s,e)=>s+Number(e.monto||0),0) };
-  const totalLitros    = fuelRows.reduce((s,r)=>s+Number(r.litros||0),0);
-  const totalKmReales  = Object.values(kmReales).reduce((s,v)=>s+Number(v||0),0);
-  const consumo        = totalKmReales>0 ? ((totalLitros/totalKmReales)*100).toFixed(2) : "—";
-  const driverPct      = totalSegARS * 0.13;
-  const adelantoARS    = Number(adelanto||0)*(adelantoMoneda==="USD"?1000:adelantoMoneda==="CLP"?1.1:1);
-  const expTotalARS    = expTotal.ARS + expTotal.USD*1000 + expTotal.CLP*1.1;
-  const entTotalARS    = entTotals.ARS + entTotals.USD*1000 + entTotals.CLP*1.1;
-  const driverBalance  = driverPct - adelantoARS;
+  const tripTotal = segs[0]?.tripMonto ? toARS(segs[0].tripMonto, segs[0].tripMoneda||"USD") : Infinity;
+
+  // Gastos
+  const expTotal = { ARS:0, CLP:0, USD:0 };
+  expenses.forEach(e=>{ expTotal[e.moneda] = (expTotal[e.moneda]||0)+Number(e.monto||0); });
+  const expTotalARS = expTotal.ARS + toARS(expTotal.CLP,"CLP") + toARS(expTotal.USD,"USD");
+
+  // Combustible
+  const totalLitros   = fuelRows.reduce((s,r)=>s+Number(r.litros||0),0);
+  const totalKmPrev   = segs.reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0);
+  const totalKmReales = Object.values(kmReales).reduce((s,v)=>s+Number(v||0),0);
+  const gapKm         = totalKmReales - totalKmPrev;
+  const consumo       = totalKmReales>0 ? ((totalLitros/totalKmReales)*100).toFixed(2) : "—";
+
+  // FIX #3 + #4 — Liquidación correcta según spec:
+  // PORCENTAJE CHOFER = 13% del total montos tramo (en ARS)
+  // ANTICIPO DE SUELDO = total entregado (ARS) − total gastos (ARS) − total devolución (ARS)
+  // SALDO CHOFER = porcentaje chofer − anticipo de sueldo
+  const porcChofer    = totalSegARS * 0.13;
+  const anticipoSueldo = entTotalARS - expTotalARS; // entregado neto − gastos
+  const saldoChofer   = porcChofer - anticipoSueldo;
 
   async function handleSave() {
     setSaving(true);
-    await onSave({ id:rendId, driver, segMonto, expenses, fuelRows, kmReales, adelanto, adelantoMoneda, segments:segs,
-      totals:{ totalSegARS, driverPct, adelantoARS, driverBalance, entTotalARS, expTotalARS } });
+    await onSave({
+      id:rendId, driver, segMonto, expenses, fuelRows, kmReales, devolucion,
+      segments:segs,
+      totals:{ totalSegARS, porcChofer, anticipoSueldo, saldoChofer, entTotalARS, expTotalARS, consumo }
+    });
     setSaving(false);
   }
 
@@ -1682,108 +1679,166 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
       <div className="module-header">
         <div>
           <div className="module-title">📊 Rendición — {driver}</div>
-          <div className="module-subtitle" style={{ fontFamily:"var(--mono)", fontSize:12 }}>{rendId}</div>
+          <div className="module-subtitle" style={{ fontFamily:"var(--mono)",fontSize:12 }}>{rendId}</div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* Tramos */}
+      {/* Tramos precargados + monto + km reales */}
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header"><div className="card-title">🗺 Tramos incluidos</div></div>
         <div className="card-body">
-          {segs.map(s => (
-            <div key={s.segId} style={{ marginBottom:16 }}>
-              <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
-                <span style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--text3)" }}>{s.segId}</span>
-                <span style={{ fontSize:12 }}>{s.desde} → {s.hasta}</span>
-                <StatusBadge status={s.status} />
+          {segs.map(s=>(
+            <div key={s.segId} style={{ marginBottom:20, paddingBottom:16, borderBottom:"1px solid var(--border)" }}>
+              <div style={{ display:"flex",gap:8,alignItems:"center",marginBottom:8 }}>
+                <span style={{ fontFamily:"var(--mono)",fontSize:11,color:"var(--text3)" }}>{s.segId}</span>
+                <span style={{ fontSize:13 }}>{s.desde} → {s.hasta}</span>
+                <StatusBadge status={s.status}/>
               </div>
-              <div className="form-row" style={{ flexWrap:"wrap", gap:8 }}>
-                {[["Chofer",s.chofer],["Tractor",s.tractor],["Semi",s.semi],["Km previstos",s.kmPrevistos||"—"]].map(([l,v])=>(
-                  <div key={l} style={{ minWidth:120 }}>
+              {/* Todos los campos readonly según spec */}
+              <div className="form-row" style={{ flexWrap:"wrap",gap:8,marginBottom:8 }}>
+                {[
+                  ["ID Viaje",s.tripId],["Chofer",s.chofer],["Tractor",s.tractor],["Semi",s.semi],
+                  ["Fecha inicio",fmtDate(s.fechaInicio)],["Fecha prev. llegada",fmtDate(s.fechaLlegadaPrevista)],
+                  ["Fecha real llegada",fmtDate(s.fechaLlegadaReal)],["Km previstos",fmtKm(s.kmPrevistos)],
+                ].map(([l,v])=>(
+                  <div key={l} style={{ minWidth:130 }}>
                     <div className="form-label">{l}</div>
-                    <div className="field-readonly">{v}</div>
+                    <div className="field-readonly">{v||"—"}</div>
                   </div>
                 ))}
               </div>
-              <div className="form-row" style={{ marginTop:8, maxWidth:320 }}>
+              {s.observaciones && <div className="form-hint">Obs: {s.observaciones}</div>}
+              <div className="form-row" style={{ marginTop:8, maxWidth:400 }}>
                 <div className="form-group">
                   <label className="form-label">Monto tramo *</label>
                   <div className="input-with-currency">
-                    <input className="form-input" type="number" value={segMonto[s.segId]?.monto||""} onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],monto:e.target.value}}))} placeholder="0.00" />
-                    <select className="form-select" style={{ width:80 }} value={segMonto[s.segId]?.moneda||"ARS"} onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],moneda:e.target.value}}))}>
-                      {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    <input className="form-input" type="number" placeholder="0.00"
+                      value={segMonto[s.segId]?.monto||""}
+                      onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],monto:e.target.value}}))}/>
+                    <select className="form-select" style={{ width:80 }}
+                      value={segMonto[s.segId]?.moneda||"USD"}
+                      onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],moneda:e.target.value}}))}>
+                      {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Km reales</label>
-                  <input className="form-input" type="number" value={kmReales[s.segId]||""} onChange={e=>setKmReales(p=>({...p,[s.segId]:e.target.value}))} placeholder="km" />
+                  <label className="form-label">Km reales *</label>
+                  <input className="form-input" type="number" placeholder="km"
+                    value={kmReales[s.segId]||""}
+                    onChange={e=>setKmReales(p=>({...p,[s.segId]:e.target.value}))}/>
                 </div>
               </div>
               {totalSegARS > tripTotal && (
-                <div className="alert alert-danger" style={{ marginTop:8 }}>⚠️ Total supera monto de factura.</div>
+                <div className="alert alert-danger" style={{ marginTop:8 }}>
+                  ⚠️ El total de tramos supera el monto del viaje. Disponible: {fmtNum(tripTotal - totalSegARS + toARS(segMonto[s.segId]?.monto||0, segMonto[s.segId]?.moneda||"USD"))} ARS
+                </div>
               )}
             </div>
           ))}
+          <div style={{ display:"flex",gap:20,paddingTop:8 }}>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Km previstos total: <strong>{fmtKm(totalKmPrev)}</strong></span>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Km reales total: <strong>{fmtKm(totalKmReales)}</strong></span>
+            <span style={{ fontSize:13,color:gapKm>0?"var(--warning)":"var(--success)" }}>
+              Gap: <strong>{gapKm>0?"+":""}{gapKm.toLocaleString("es-AR")} km</strong>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Entregas */}
+      {/* Dinero entregado al chofer */}
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header"><div className="card-title">💵 Dinero entregado al chofer</div></div>
         <div className="card-body">
-          <div className="form-hint" style={{ marginBottom:12 }}>Período: {fmtDate(dateFrom)} — {fmtDate(dateTo)}</div>
-          {CURRENCIES.map(cur => entByCur[cur].length > 0 && (
+          <div className="form-hint" style={{ marginBottom:12 }}>
+            Período: {fmtDate(dateFrom)} — {fmtDate(dateToMinus1||dateTo)}
+            <span style={{ marginLeft:8, color:"var(--text3)" }}>(hasta el día anterior a la llegada)</span>
+          </div>
+          {CURRENCIES.map(cur=>(
             <div key={cur} style={{ marginBottom:16 }}>
               <div className="section-label">{cur}</div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th></tr></thead>
-                  <tbody>
-                    {entByCur[cur].map(e => (
-                      <tr key={e.id}><td>{fmtDate(e.fecha)}</td><td>{e.responsable}</td><td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td></tr>
-                    ))}
-                    <tr><td colSpan={2} style={{ fontWeight:600, color:"var(--text)" }}>Subtotal {cur}</td><td style={{ fontFamily:"var(--mono)", fontWeight:600, color:"var(--text)" }}>{entTotals[cur].toLocaleString("es-AR")}</td></tr>
-                  </tbody>
-                </table>
+              {entByCur[cur].length===0
+                ? <div style={{ fontSize:12,color:"var(--text3)",marginBottom:8 }}>Sin entregas</div>
+                : (
+                  <div className="table-wrap" style={{ marginBottom:8 }}>
+                    <table>
+                      <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Equiv. ARS</th></tr></thead>
+                      <tbody>
+                        {entByCur[cur].map(e=>(
+                          <tr key={e.id}>
+                            <td>{fmtDate(e.fecha)}</td>
+                            <td>{e.responsable}</td>
+                            <td style={{ fontFamily:"var(--mono)" }}>{fmtNum(e.monto)}</td>
+                            <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(e.monto,cur))}</td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td colSpan={2} style={{ fontWeight:600,color:"var(--text)" }}>Subtotal {cur}</td>
+                          <td style={{ fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)" }}>{fmtNum(entBruto[cur])}</td>
+                          <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(entBruto[cur],cur))}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              }
+              {/* FIX #4 — campo devolución por moneda */}
+              <div style={{ display:"flex",alignItems:"center",gap:10,maxWidth:280 }}>
+                <label className="form-label" style={{ margin:0,whiteSpace:"nowrap" }}>Devolución {cur}</label>
+                <input className="form-input" type="number" min="0" step="0.01"
+                  value={devolucion[cur]}
+                  onChange={e=>setDevolucion(p=>({...p,[cur]:e.target.value}))}
+                  placeholder="0.00" style={{ maxWidth:160 }}/>
               </div>
+              {Number(devolucion[cur])>0 && (
+                <div style={{ fontSize:12,color:"var(--success)",marginTop:4 }}>
+                  Neto {cur}: {fmtNum(entNeto[cur])} ({fmtNum(toARS(entNeto[cur],cur))} ARS)
+                </div>
+              )}
             </div>
           ))}
-          <div style={{ textAlign:"right", fontWeight:600, fontSize:14 }}>Total (ARS equiv.): {entTotalARS.toLocaleString("es-AR")}</div>
+          <div style={{ textAlign:"right",fontWeight:600,fontSize:14,borderTop:"1px solid var(--border)",paddingTop:12 }}>
+            Total entregado neto (ARS equiv.): {fmtNum(entTotalARS)}
+          </div>
         </div>
       </div>
 
-      {/* Gastos */}
+      {/* Gastos — FIX #7 categorías exactas */}
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">📋 Gastos</div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setExpenses(p=>[...p,{cat:"GAS-OIL",monto:"",moneda:"ARS"}])}>+ Gasto</button>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setExpenses(p=>[...p,{cat:"GAS-OIL",monto:"",moneda:"ARS"}])}>+ Gasto</button>
         </div>
         <div className="card-body">
-          {expenses.map((e,i) => (
-            <div key={i} className="form-row" style={{ alignItems:"flex-end", marginBottom:8 }}>
+          {expenses.map((e,i)=>(
+            <div key={i} className="form-row" style={{ alignItems:"flex-end",marginBottom:8 }}>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Categoría</label>
-                <select className="form-select" value={e.cat} onChange={x=>{ const n=[...expenses];n[i]={...n[i],cat:x.target.value};setExpenses(n); }}>
-                  {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                <select className="form-select" value={e.cat}
+                  onChange={x=>{ const n=[...expenses];n[i]={...n[i],cat:x.target.value};setExpenses(n); }}>
+                  {EXPENSE_CATS.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Monto</label>
                 <div className="input-with-currency">
-                  <input className="form-input" type="number" value={e.monto} onChange={x=>{ const n=[...expenses];n[i]={...n[i],monto:x.target.value};setExpenses(n); }} placeholder="0.00" />
-                  <select className="form-select" style={{ width:80 }} value={e.moneda} onChange={x=>{ const n=[...expenses];n[i]={...n[i],moneda:x.target.value};setExpenses(n); }}>
-                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <input className="form-input" type="number" value={e.monto} placeholder="0.00"
+                    onChange={x=>{ const n=[...expenses];n[i]={...n[i],monto:x.target.value};setExpenses(n); }}/>
+                  <select className="form-select" style={{ width:80 }} value={e.moneda}
+                    onChange={x=>{ const n=[...expenses];n[i]={...n[i],moneda:x.target.value};setExpenses(n); }}>
+                    {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setExpenses(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
             </div>
           ))}
-          <div style={{ display:"flex", gap:16, justifyContent:"flex-end", borderTop:"1px solid var(--border)", paddingTop:12, marginTop:8 }}>
-            {CURRENCIES.map(cur => expTotal[cur]>0 && <span key={cur} style={{ fontSize:13, color:"var(--text2)" }}>{cur}: {expTotal[cur].toLocaleString("es-AR")}</span>)}
-            <span style={{ fontWeight:600 }}>Total ARS: {expTotalARS.toLocaleString("es-AR")}</span>
+          <div style={{ display:"flex",gap:16,justifyContent:"flex-end",borderTop:"1px solid var(--border)",paddingTop:12,marginTop:8,flexWrap:"wrap" }}>
+            {CURRENCIES.map(cur=>expTotal[cur]>0&&(
+              <span key={cur} style={{ fontSize:13,color:"var(--text2)" }}>{cur}: {fmtNum(expTotal[cur])} ({fmtNum(toARS(expTotal[cur],cur))} ARS)</span>
+            ))}
+            <span style={{ fontWeight:600 }}>Total ARS: {fmtNum(expTotalARS)}</span>
           </div>
         </div>
       </div>
@@ -1792,26 +1847,34 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
       <div className="card" style={{ marginBottom:16 }}>
         <div className="card-header">
           <div className="card-title">⛽ Combustible</div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setFuelRows(p=>[...p,{fecha:"",proveedor:"",litros:"",total:""}])}>+ Carga</button>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setFuelRows(p=>[...p,{fecha:"",proveedor:"",litros:"",total:""}])}>+ Carga</button>
         </div>
         <div className="card-body">
-          {fuelRows.map((f,i) => (
-            <div key={i} className="form-row" style={{ alignItems:"flex-end", marginBottom:8 }}>
+          <div style={{ marginBottom:12 }}>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Km previstos (lectura): </span>
+            <span style={{ fontFamily:"var(--mono)",fontSize:13 }}>{fmtKm(totalKmPrev)}</span>
+          </div>
+          {fuelRows.map((f,i)=>(
+            <div key={i} className="form-row" style={{ alignItems:"flex-end",marginBottom:8 }}>
               <div className="form-group">
                 <label className="form-label">Fecha</label>
-                <input type="date" className="form-input" value={f.fecha} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],fecha:e.target.value};setFuelRows(n); }} />
+                <input type="date" className="form-input" value={f.fecha}
+                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],fecha:e.target.value};setFuelRows(n); }}/>
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Proveedor</label>
-                <input className="form-input" value={f.proveedor} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:e.target.value};setFuelRows(n); }} />
+                <input className="form-input" value={f.proveedor}
+                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:e.target.value};setFuelRows(n); }}/>
               </div>
               <div className="form-group">
                 <label className="form-label">Litros</label>
-                <input className="form-input" type="number" value={f.litros} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],litros:e.target.value};setFuelRows(n); }} />
+                <input className="form-input" type="number" value={f.litros}
+                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],litros:e.target.value};setFuelRows(n); }}/>
               </div>
               <div className="form-group">
                 <label className="form-label">Total factura</label>
-                <input className="form-input" type="number" value={f.total} onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],total:e.target.value};setFuelRows(n); }} />
+                <input className="form-input" type="number" value={f.total}
+                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],total:e.target.value};setFuelRows(n); }}/>
               </div>
               <div className="form-group" style={{ maxWidth:100 }}>
                 <label className="form-label">$/L</label>
@@ -1820,44 +1883,69 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setFuelRows(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
             </div>
           ))}
-          <div style={{ display:"flex", gap:24, borderTop:"1px solid var(--border)", paddingTop:12, marginTop:8 }}>
-            <span style={{ fontSize:13, color:"var(--text2)" }}>Total litros: <strong>{totalLitros.toLocaleString("es-AR")}</strong></span>
-            <span style={{ fontSize:13, color:"var(--text2)" }}>Km reales: <strong>{totalKmReales.toLocaleString("es-AR")}</strong></span>
-            <span style={{ fontSize:13, color:"var(--text2)" }}>Consumo: <strong>{consumo} L/100km</strong></span>
+          <div style={{ display:"flex",gap:24,borderTop:"1px solid var(--border)",paddingTop:12,marginTop:8,flexWrap:"wrap" }}>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Total litros: <strong>{fmtNum(totalLitros)}</strong></span>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Km reales totales: <strong>{fmtKm(totalKmReales)}</strong></span>
+            <span style={{ fontSize:13,color:gapKm>0?"var(--warning)":"var(--success)" }}>
+              Gap: <strong>{gapKm>0?"+":""}{gapKm.toLocaleString("es-AR")} km</strong>
+            </span>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Consumo: <strong>{consumo} L/100km</strong></span>
           </div>
         </div>
       </div>
 
-      {/* Liquidación */}
+      {/* FIX #3 — Liquidación final con fórmulas correctas */}
       <div className="card" style={{ marginBottom:80 }}>
         <div className="card-header"><div className="card-title">💰 Liquidación final — {driver}</div></div>
         <div className="card-body">
-          <div className="form-row" style={{ maxWidth:320, marginBottom:16 }}>
-            <div className="form-group">
-              <label className="form-label">Adelanto sueldo</label>
-              <div className="input-with-currency">
-                <input className="form-input" type="number" value={adelanto} onChange={e=>setAdelantoMonto(e.target.value)} placeholder="0.00" />
-                <select className="form-select" style={{ width:80 }} value={adelantoMoneda} onChange={e=>setAdelantoMoneda(e.target.value)}>
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+          <div style={{ background:"var(--bg3)",borderRadius:"var(--radius)",padding:"20px",display:"flex",flexDirection:"column",gap:4 }}>
+
+            {/* Porcentaje chofer */}
+            <div className="liq-row highlight">
+              <div>
+                <div style={{ fontSize:13,fontWeight:600,color:"var(--text)" }}>Porcentaje del chofer (13%)</div>
+                <div style={{ fontSize:11,color:"var(--text3)" }}>13% de {fmtNum(totalSegARS)} ARS en montos de tramos</div>
               </div>
+              <span style={{ fontFamily:"var(--mono)",fontSize:16,fontWeight:600,color:"var(--success)" }}>
+                {fmtNum(porcChofer)} ARS
+              </span>
             </div>
-          </div>
-          <div style={{ background:"var(--bg3)", borderRadius:"var(--radius)", padding:"16px 20px", display:"flex", flexDirection:"column", gap:10 }}>
-            {[
-              ["Porcentaje chofer (13%)", driverPct, true],
-              ["Adelanto sueldo", -adelantoARS, false],
-              ["Total entregado", entTotalARS, false],
-              ["Total gastos", -expTotalARS, false],
-              ["Saldo chofer (% − adelanto)", driverBalance, true],
-            ].map(([l,v,bold]) => (
-              <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:bold?"1px solid var(--border)":"none", paddingTop:bold?10:0 }}>
-                <span style={{ fontSize:13, color:bold?"var(--text)":"var(--text2)", fontWeight:bold?600:400 }}>{l}</span>
-                <span style={{ fontFamily:"var(--mono)", fontSize:14, fontWeight:bold?600:400, color:v<0?"var(--danger)":bold?"var(--success)":"var(--text2)" }}>
-                  {v<0?"-":""}{Math.abs(v).toLocaleString("es-AR")} ARS
-                </span>
+
+            <div style={{ height:8 }}/>
+
+            {/* Desglose del anticipo */}
+            <div className="liq-row">
+              <span style={{ fontSize:13,color:"var(--text2)" }}>Total entregado neto al chofer</span>
+              <span style={{ fontFamily:"var(--mono)",fontSize:13,color:"var(--text2)" }}>{fmtNum(entTotalARS)} ARS</span>
+            </div>
+            <div className="liq-row">
+              <span style={{ fontSize:13,color:"var(--text2)" }}>Total gastos</span>
+              <span style={{ fontFamily:"var(--mono)",fontSize:13,color:"var(--danger)" }}>− {fmtNum(expTotalARS)} ARS</span>
+            </div>
+
+            {/* Anticipo de sueldo */}
+            <div className="liq-row highlight">
+              <div>
+                <div style={{ fontSize:13,fontWeight:600,color:"var(--text)" }}>Anticipo de sueldo</div>
+                <div style={{ fontSize:11,color:"var(--text3)" }}>Entregado neto − gastos</div>
               </div>
-            ))}
+              <span style={{ fontFamily:"var(--mono)",fontSize:15,fontWeight:600,color:anticipoSueldo<0?"var(--danger)":"var(--warning)" }}>
+                {anticipoSueldo<0?"−":""}{fmtNum(Math.abs(anticipoSueldo))} ARS
+              </span>
+            </div>
+
+            <div style={{ height:8 }}/>
+
+            {/* Saldo chofer */}
+            <div className="liq-row highlight" style={{ border:"2px solid var(--accent)",background:"rgba(79,127,255,0.08)" }}>
+              <div>
+                <div style={{ fontSize:14,fontWeight:600,color:"var(--text)" }}>Saldo chofer</div>
+                <div style={{ fontSize:11,color:"var(--text3)" }}>Porcentaje chofer − anticipo de sueldo</div>
+              </div>
+              <span style={{ fontFamily:"var(--mono)",fontSize:18,fontWeight:600,color:saldoChofer>=0?"var(--success)":"var(--danger)" }}>
+                {saldoChofer<0?"−":""}{fmtNum(Math.abs(saldoChofer))} ARS
+              </span>
+            </div>
           </div>
         </div>
       </div>
