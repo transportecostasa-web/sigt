@@ -161,7 +161,10 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec";
-
+  
+// Lista de todos los módulos del sistema.
+// "id" es el número de módulo, "short" es el nombre que aparece en el menú lateral.
+// Para agregar un módulo nuevo: añadir una entrada acá y crear su componente Module_N más abajo.
 const MODULES = [
   { id:1, icon:"🚚", label:"Inicio de Viaje",     short:"Viajes" },
   { id:2, icon:"💵", label:"Entrega de Plata",    short:"Entregas" },
@@ -172,6 +175,10 @@ const MODULES = [
   { id:7, icon:"🏗",  label:"Costos Fijos",         short:"Costos Fijos" },
 ];
 
+// Permisos por usuario.
+// "mods": qué módulos puede VER (aparecen en el menú lateral).
+// "edit": en cuáles puede EDITAR (en el resto solo lee).
+// Para cambiar permisos: modificar los arrays de cada usuario. 
 const PERMISSIONS = {
   SOL:      { role:"Editor global",  mods:[1,2,3,4,5,6,7], edit:[1,2,3,4,5,6,7] },
   PABLO:    { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
@@ -181,6 +188,7 @@ const PERMISSIONS = {
   LUCIANA:  { role:"Editor parcial", mods:[5,6],           edit:[5,6] },
 };
 
+// Divisas disponibles en todos los campos de dinero del sistema.
 const CURRENCIES = ["USD","ARS","CLP"];
 
 // FIX #7 — categorías exactas según spec
@@ -196,20 +204,46 @@ const SEGMENT_STATUSES = ["stand by","en curso","completado"];
 const PAISES_EXTRANJEROS = ["PARAGUAY","BRASIL","CHILE","URUGUAY","BOLIVIA","PERÚ","COLOMBIA","ARGENTINA NO"];
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
+// Convierte una contraseña en un código irreversible (hash).
+// Nunca se guarda la contraseña real — solo este código.
+// Solo se usa en el mock local; el servidor real usa SHA-256 de Google.
+// Ej: simpleHash("SOL") → "a3f9c2..." (siempre el mismo resultado para el mismo texto)
 function simpleHash(str){
   let h=0;for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);h=((h<<5)-h)+c;h|=0;}return h.toString(16);
 }
+
+// Lee un dato guardado en la memoria del navegador (localStorage).
+// Si no existe o hay error, devuelve el valor por defecto (def).
 function lsGet(k,def=null){try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch{return def;}}
+
+// Guarda un dato en la memoria del navegador (localStorage).
+// Persiste aunque se cierre la pestaña, hasta que se borre el caché.
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+
+// Convierte una fecha técnica ("2025-03-17") al formato argentino ("17/03/2025").
+// Si recibe vacío o nulo, muestra "—" en lugar de un error.
 function fmtDate(d){if(!d)return"—";return new Date(d).toLocaleDateString("es-AR");}
+
+// Igual que fmtDate pero incluye la hora: "17/03/2025, 14:32:05"
+// Se usa en el historial y logs de auditoría.
 function fmtDT(d){if(!d)return"—";return new Date(d).toLocaleString("es-AR");}
+
+// Devuelve la fecha de hoy en formato técnico "YYYY-MM-DD".
+// Se usa para pre-completar campos de fecha con el día actual.
 function nowISO(){return new Date().toISOString().slice(0,10);}
+
+// Formatea un número como kilómetros con separador de miles.
 function fmtKm(n){if(!n&&n!==0)return"—";return Number(n).toLocaleString("es-AR")+" km";}
+
+// Formatea un número como dinero con separador de miles y un decimal.
 function fmtNum(n){
   if(n===null||n===undefined||n==="")return"—";
-  return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:1});
 }
-// Formatea número crudo con separador de miles mientras el usuario escribe
+
+// Helpers internos usados por el componente MoneyInput (ver más abajo).
+// parseMoneyInput: convierte "1.234,56" → 1234.56 (número puro)
+// formatMoneyDisplay: agrega puntos de miles mientras el usuario escribe
 // Guarda internamente el valor numérico puro, muestra "1.234.567"
 function parseMoneyInput(raw){
   // quitar todo excepto dígitos y coma decimal
@@ -225,6 +259,9 @@ function formatMoneyDisplay(raw){
   return parts.length>1 ? intPart+","+parts[1] : intPart;
 }
 
+// Evalúa la fortaleza de una contraseña nueva.
+// Devuelve un objeto con: puntaje (0-4), etiqueta ("Débil"/"Fuerte"), color y porcentaje.
+// Se usa para mostrar la barra de progreso en el formulario de cambio de contraseña.
 function pwStrength(pw){
   if(!pw)return{score:0,label:""};
   let s=0;
@@ -234,11 +271,13 @@ function pwStrength(pw){
   const colors=["","var(--danger)","var(--warning)","var(--info)","var(--success)"];
   return{score:s,label:labels[s],color:colors[s],pct:(s/4*100)+"%"};
 }
+
+// Verifica que una contraseña contenga solo letras y números (sin símbolos ni espacios).
+// Requisito del sistema para contraseñas nuevas.
 function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
 
-// FIX #6 — Detectar si un lugar es internacional
-// El lugar puede ser un string del tipo "ASUNCIÓN" o "ASUNCIÓN (PY)"
-// También miramos si el nombre del lugar contiene un país extranjero conocido.
+// Detecta si un lugar está fuera de Argentina.
+// Busca el nombre del lugar dentro de la lista de países extranjeros
 function isLugarExtranjero(lugar, lugares) {
   if (!lugar) return false;
   const l = lugar.toUpperCase();
@@ -262,7 +301,10 @@ function generateTripId(trips, segments, lugares) {
   return `${prefix}-${seq}-${sub}`;
 }
 
-// Recalcula el prefijo de un viaje existente basado en sus tramos actuales
+// Revisa si el prefijo NAC/INT de un viaje ya creado sigue siendo correcto
+// según los tramos que tiene actualmente.
+// Se llama automáticamente cada vez que el usuario modifica los orígenes/destinos
+// de los tramos, para que el ID se actualice solo.
 function recalcPrefix(id, segments, lugares) {
   const hasInt = (segments||[]).some(s =>
     isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares)
@@ -280,8 +322,9 @@ function makeSegmentId(tripId, desde, hasta, seq) {
   return `${d}-${h}-${String(seq).padStart(2,"0")}`;
 }
 
-// FIX #8 — Tabla de distancias viales aproximadas (km por carretera) entre pares de lugares
-// Bidireccional. Si el par no está en la tabla, devuelve null (el usuario ingresa manualmente).
+// Tabla de distancias viales aproximadas entre ciudades (en km por carretera).
+// Es bidireccional: funciona igual si se busca A→B que B→A.
+// Para agregar una ruta nueva: añadir una línea con el formato "CIUDAD A|CIUDAD B": km
 const KM_TABLE = {
   "BUENOS AIRES|ROSARIO": 300, "BUENOS AIRES|CÓRDOBA": 710, "BUENOS AIRES|MENDOZA": 1040,
   "BUENOS AIRES|MONTEVIDEO": 280, "BUENOS AIRES|ASUNCIÓN": 1365, "BUENOS AIRES|SANTIAGO": 1440,
@@ -290,6 +333,10 @@ const KM_TABLE = {
   "MENDOZA|SANTIAGO": 380, "MONTEVIDEO|ASUNCIÓN": 1640,
   "BUENOS AIRES|SANTA FE": 475, "ROSARIO|SANTA FE": 165,
 };
+
+// Busca los km entre dos ciudades en la tabla KM_TABLE.
+// Si los encuentra → devuelve el número (el campo km previstos se completa solo y queda bloqueado).
+// Si no los encuentra → devuelve null (el campo queda editable para que el usuario lo ingrese).
 function getKmPrevistos(desde, hasta) {
   if (!desde || !hasta || desde === hasta) return null;
   const key1 = `${desde.toUpperCase()}|${hasta.toUpperCase()}`;
@@ -298,6 +345,20 @@ function getKmPrevistos(desde, hasta) {
 }
 
 // ─── GAS CALL ────────────────────────────────────────────────────────────────
+// Es el mensajero entre el frontend y el servidor.
+// TODA comunicación con el backend pasa por acá — login, guardar viajes, etc.
+//
+// Cómo funciona:
+//   1. Si GAS_URL está vacío → usa el mock local (modo demo sin servidor)
+//   2. Empaqueta la acción y los datos en JSON
+//   3. Los codifica en base64 para que puedan viajar en la URL sin romperse
+//      con tildes, comillas u otros caracteres especiales
+//   4. Construye la URL: GAS_URL?p=DATOS_CODIFICADOS&t=TOKEN_DE_SESION
+//   5. Hace un pedido GET al servidor (no POST, para evitar bloqueos de CORS)
+//   6. Devuelve la respuesta descodificada
+//
+// Siempre devuelve { ok: true, data: ... } o { ok: false, error: "..." }
+// Si la conexión falla → devuelve ok:false con el mensaje de error, sin romper la app
 async function gasCall(action, payload={}) {
   if (!GAS_URL) return mockApi(action, payload);
   const session = lsGet("sigt_session");
@@ -314,6 +375,13 @@ async function gasCall(action, payload={}) {
 }
 
 // ─── MOCK API ────────────────────────────────────────────────────────────────
+// Servidor falso que vive dentro del propio HTML.
+// Se activa automáticamente cuando GAS_URL está vacío.
+// Permite probar el sistema sin tener el servidor de Google configurado.
+// Guarda todo en la memoria del navegador (localStorage) — si cerrás el navegador
+// o borrás el caché, los datos se pierden.
+// Responde exactamente igual que el servidor real: mismas acciones, mismos formatos.
+// El setTimeout(180ms) simula el tiempo de respuesta de red para que la UX sea realista.
 function mockApi(action, payload) {
   return new Promise(resolve => {
     setTimeout(() => {
@@ -386,6 +454,11 @@ function mockApi(action, payload) {
   });
 }
 
+// Crea la base de datos vacía que usa el mock la primera vez que se abre la app.
+// Si ya existen datos en el navegador, NO se llama — se usan los datos guardados.
+// Los datos de ejemplo en "dropdowns" son los que aparecen en los desplegables
+// cuando se trabaja en modo demo (sin servidor). En producción, estos datos
+// vienen de las hojas de Google Sheets configuradas en el spreadsheet de config.
 function initDB() {
   const users = Object.keys(PERMISSIONS).map(u => ({
     username:u, passwordHash:simpleHash(u), mustChangePassword:true
@@ -416,6 +489,11 @@ function initDB() {
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+// Hook que maneja los mensajes emergentes (las cajitas que aparecen arriba a la derecha).
+// Devuelve: { items: lista de mensajes activos, add: función para mostrar uno nuevo }
+// Uso: notif.add("Viaje guardado")          → cajita verde
+//      notif.add("Error al guardar", "error") → cajita roja
+// Cada mensaje desaparece automáticamente después de 4 segundos.
 function useNotifications() {
   const [items, setItems] = useState([]);
   const add = useCallback((msg, type="success") => {
@@ -425,6 +503,10 @@ function useNotifications() {
   }, []);
   return { items, add };
 }
+
+// Componente visual que renderiza los mensajes emergentes en pantalla.
+// Se ubica fijo en la esquina superior derecha, por encima de todo el resto.
+// Los colores: success=verde, error=rojo, warn=amarillo.
 function Notifications({ items }) {
   return (
     <div className="notif">
@@ -438,6 +520,11 @@ function Notifications({ items }) {
 }
 
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
+// Componente visual reutilizable que muestra un estado como una pastillita de color.
+// Se usa en la tabla de viajes, en los tramos y en el historial.
+// Colores: gris=stand by | amarillo=en curso | verde=completado/completo
+//          rojo=incompleto | azul=finalizado/activo
+// Si recibe un estado desconocido, muestra una pastillita gris genérica.
 function StatusBadge({ status }) {
   const map = {
     "stand by":"badge badge-gray status-standby",
@@ -454,6 +541,8 @@ function StatusBadge({ status }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // SEARCHABLE SELECT
 // options: string[] | { value, label }[]
+// Desplegable reutilizable con búsqueda por texto. Se usa en todos los campos
+// que tienen lista de opciones: cargas, clientes, lugares, choferes, etc.
 // ═══════════════════════════════════════════════════════════════════════════════
 function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar...", disabled=false }) {
   const [query, setQuery]     = useState("");
@@ -463,21 +552,26 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
   const inputRef = useRef(null);
   const listRef  = useRef(null);
 
+ // Normaliza las opciones: si vienen como strings simples, las convierte a {value, label}
   const opts = useMemo(() => options.map(o =>
     typeof o === "string" ? { value:o, label:o } : o
   ), [options]);
 
+  // El texto que muestra el input cuando está cerrado (el nombre de la opción seleccionada)
   const selectedLabel = useMemo(() => {
     const f = opts.find(o => o.value === value);
     return f ? f.label : "";
   }, [value, opts]);
 
+  // Las opciones filtradas según lo que escribe el usuario
   const filtered = useMemo(() => {
     if (!query.trim()) return opts;
     const q = query.toLowerCase();
     return opts.filter(o => o.label.toLowerCase().includes(q));
   }, [query, opts]);
 
+
+  // Cierra el desplegable si el usuario hace clic en cualquier parte fuera del componente
   useEffect(() => {
     function handle(e) {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
@@ -488,6 +582,7 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
+  // Hace scroll automático para que la opción resaltada con teclado siempre sea visible
   useEffect(() => {
     if (focusIdx >= 0 && listRef.current) {
       const el = listRef.current.children[focusIdx];
@@ -495,6 +590,7 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
     }
   }, [focusIdx]);
 
+  // Abre el panel: limpia el filtro, resalta la opción actualmente seleccionada
   function openDropdown() {
     if (disabled) return;
     setOpen(true); setQuery("");
@@ -502,10 +598,13 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
     setTimeout(() => inputRef.current && inputRef.current.select(), 0);
   }
 
+  // Selecciona una opción: llama a onChange con el valor elegido y cierra el panel
   function select(val) {
     onChange(val); setOpen(false); setQuery(""); setFocusIdx(-1);
   }
 
+ 
+  // Navegación con teclado: flechas arriba/abajo, Enter para seleccionar, Escape para cerrar
   function handleKeyDown(e) {
     if (!open) { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); openDropdown(); } return; }
     if (e.key==="ArrowDown") { e.preventDefault(); setFocusIdx(i => Math.min(i+1, filtered.length-1)); }
@@ -552,15 +651,28 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
 // ═══════════════════════════════════════════════════════════════════════════════
 // MONEY INPUT — input con separador de miles automático
 // value: número o string numérico | onChange(numericValue: number|"")
+// Campo de texto para ingresar montos de dinero con formato argentino automático.
+// Muestra puntos de miles mientras se escribe (1234567 → 1.234.567).
+// Acepta coma como decimal (1.234,56).
+// Internamente guarda el número puro para que los cálculos sean siempre correctos.
+//
+// Props que recibe:
+//   value       — número o string numérico (el valor actual)
+//   onChange    — función que recibe el número puro cuando cambia el valor
+//   placeholder — texto gris cuando el campo está vacío
+//   disabled    — si es true, el campo queda bloqueado (modo lectura)
+//   style       — estilos CSS adicionales opcionales
 // ═══════════════════════════════════════════════════════════════════════════════
 function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={} }) {
-  // display: lo que ve el usuario (con puntos de miles)
+  // "display" es lo que el usuario ve en pantalla (con puntos de miles).
+  // "value" es el número puro que se guarda en el estado del formulario.
   const [display, setDisplay] = useState(() => {
     if (value===""||value===null||value===undefined) return "";
     return Number(value).toLocaleString("es-AR");
   });
-
-  // Sincronizar si el valor externo cambia (ej: reset del form)
+  
+  // Si el valor cambia desde afuera (ej: cuando se resetea el formulario),
+  // actualiza el display para que coincida con el nuevo valor.
   useEffect(() => {
     if (value===""||value===null||value===undefined) { setDisplay(""); return; }
     // Solo reformat si el valor numérico cambió desde afuera
@@ -570,6 +682,7 @@ function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={}
     }
   }, [value]);
 
+  // Convierte el texto que ve el usuario al número puro interno.
   function parseRaw(str) {
     // "1.234.567" → 1234567  |  "1.234,56" → 1234.56
     const s = String(str).trim();
@@ -582,6 +695,10 @@ function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={}
     return parseFloat(s.replace(/\./g,""));
   }
 
+  // Cada vez que el usuario escribe un caracter:
+  // 1. Descarta cualquier caracter que no sea dígito, punto o coma
+  // 2. Agrega puntos de miles automáticamente a la parte entera
+  // 3. Actualiza el display con el formato y llama a onChange con el número puro
   function handleChange(e) {
     const raw = e.target.value;
     // Permitir solo: dígitos, punto, coma
@@ -625,15 +742,35 @@ function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP ROOT
+// Componente raíz que contiene y coordina toda la aplicación.
+// Decide qué mostrar en pantalla según el estado de sesión:
+//   - Sin sesión       → pantalla de login
+//   - Primer ingreso   → pantalla de cambio de contraseña obligatorio
+//   - Sesión activa    → la app completa (topbar + sidebar + módulo activo)
 // ═══════════════════════════════════════════════════════════════════════════════
 function App() {
+  // session: datos del usuario logueado { username, token }, o null si no hay sesión.
+  // Se inicializa leyendo del localStorage para recordar la sesión entre recargas.
   const [session, setSession]           = useState(() => lsGet("sigt_session"));
+
+  // mustChangePw: true cuando el usuario ingresó por primera vez y debe cambiar contraseña.
   const [mustChangePw, setMustChangePw] = useState(false);
+
+  // activeModule: número del módulo actualmente visible (1=Viajes, 2=Entregas, etc.)
   const [activeModule, setActiveModule] = useState(1);
+
+  // sidebarOpen: si el panel lateral está expandido o colapsado
   const [sidebarOpen, setSidebarOpen]   = useState(true);
+
+  // dropdowns: objeto con todas las listas de opciones para los desplegables.
+  // null mientras se están cargando desde el servidor.
   const [dropdowns, setDropdowns]       = useState(null);
   const notif = useNotifications();
 
+  // Al iniciar sesión, carga todos los desplegables desde el servidor una sola vez.
+  // Incluye normalización defensiva: si el servidor devuelve datos en formato viejo
+  // (keys renombradas en versiones anteriores), los convierte al formato actual.
+  // Si el servidor devuelve listas vacías, usa datos de ejemplo como fallback.
   useEffect(() => {
     if (!session) return;
     gasCall("getDropdowns").then(r => {
@@ -680,6 +817,8 @@ function App() {
     });
   }, [session]);
 
+  // Se llama cuando el login es exitoso: guarda la sesión en localStorage y en el estado.
+  // Si es el primer ingreso del usuario, activa la pantalla de cambio de contraseña.
   function handleLogin(user, token) {
     const s = { username:user.username, token };
     lsSet("sigt_session", s);
@@ -688,17 +827,23 @@ function App() {
     else setActiveModule(PERMISSIONS[user.username]?.mods[0] || 1);
   }
 
+
+  // Se llama cuando el usuario termina de cambiar su contraseña por primera vez.
   function handlePasswordChanged() {
     setMustChangePw(false);
     setActiveModule(PERMISSIONS[session?.username]?.mods[0] || 1);
     notif.add("Contraseña actualizada correctamente");
   }
 
+  // Cierra la sesión: borra el token del localStorage y resetea el estado.
   function handleLogout() { lsSet("sigt_session", null); setSession(null); setMustChangePw(false); }
 
+
+  // Puntos de decisión: qué mostrar según el estado de sesión
   if (!session) return <><LoginScreen onLogin={handleLogin}/><Notifications items={notif.items}/></>;
   if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged}/><Notifications items={notif.items}/></>;
 
+  // Calcula qué módulos puede ver y editar el usuario logueado
   const perms = PERMISSIONS[session.username] || { mods:[], edit:[] };
   const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
   const canEdit = modId => perms.edit.includes(modId);
@@ -727,6 +872,9 @@ function App() {
   );
 }
 
+
+// Barra superior fija. Muestra el título del sistema a la izquierda
+// El botón rojo llama a onLogout, que borra la sesión y vuelve a la pantalla de login.
 function TopBar({ onLogout }) {
   return (
     <div className="topbar">
@@ -736,14 +884,25 @@ function TopBar({ onLogout }) {
         <span style={{ fontWeight:400, color:"var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
       </div>
       <div className="wm-btns">
-        <button className="wm-btn min" title="Minimizar"/>
-        <button className="wm-btn max" title="Maximizar"/>
         <button className="wm-btn close" title="Cerrar sesión" onClick={onLogout}/>
       </div>
     </div>
   );
 }
 
+// Panel de navegación lateral. Muestra solo los módulos que el usuario tiene permiso de ver.
+// Se puede colapsar (◀/▶) para ganar espacio: en modo colapsado solo muestra íconos.
+// El módulo activo se resalta en azul.
+// Al pie muestra el nombre y rol del usuario logueado.
+//
+// Props que recibe:
+//   open      — si está expandido (true) o colapsado (false)
+//   onToggle  — función para expandir/colapsar
+//   modules   — lista de módulos visibles para este usuario
+//   active    — id del módulo actualmente seleccionado
+//   onSelect  — función que se llama cuando el usuario hace clic en un módulo
+//   username  — nombre del usuario logueado (para mostrar en el pie)
+//   role      — rol del usuario (para mostrar en el pie)
 function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) {
   return (
     <div className={`sidebar${open?"":" collapsed"}`}>
@@ -774,6 +933,14 @@ function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) 
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
+// Pantalla de inicio de sesión. Es lo primero que ve el usuario al abrir la app.
+// Convierte el nombre de usuario a mayúsculas automáticamente mientras se escribe.
+// Al hacer clic en "Ingresar":
+//   1. Valida que ambos campos estén completos
+//   2. Llama al servidor con el usuario y la contraseña
+//   3. Si es correcto: llama a onLogin con los datos del usuario y el token de sesión
+//   4. Si es incorrecto: muestra el mensaje de error del servidor (usuario no encontrado, contraseña incorrecta)
+// El botón muestra "Ingresando..." mientras espera la respuesta del servidor.
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -813,6 +980,15 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// Pantalla de cambio de contraseña obligatorio. Aparece automáticamente
+// la primera vez que un usuario ingresa al sistema (cuando mustChangePassword es true).
+// Validaciones que hace antes de enviar al servidor:
+//   - La contraseña anterior debe ser correcta
+//   - La nueva contraseña debe tener al menos 6 caracteres
+//   - Solo acepta letras y números (sin símbolos ni espacios)
+//   - La confirmación debe coincidir con la nueva contraseña
+// Muestra una barra de progreso de fortaleza mientras el usuario escribe la nueva contraseña.
+// Al completarse exitosamente llama a onDone, que lleva al usuario al módulo principal.
 function ChangePasswordScreen({ username, onDone }) {
   const [old, setOld] = useState("");
   const [nw, setNw]   = useState("");
@@ -865,6 +1041,13 @@ function ChangePasswordScreen({ username, onDone }) {
 }
 
 // ─── MODULE RENDERER ──────────────────────────────────────────────────────────
+// Decide qué módulo mostrar según el número de módulo activo.
+// Pasa a cada módulo las mismas props base:
+//   session   — datos del usuario logueado (username, token)
+//   canEdit   — true si el usuario tiene permiso de edición en este módulo
+//   dropdowns — todas las listas de opciones para los desplegables
+//   notif     — función para mostrar mensajes emergentes
+// Los módulos 4 al 7 todavía no están implementados → muestran un cartel "próximamente".
 function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
   const props = { session, canEdit, dropdowns, notif };
   if (moduleId===1) return <Module1 {...props}/>;
@@ -1546,9 +1729,9 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   // Montos: una fila por divisa, el usuario activa las que necesita
   // { moneda, monto } — solo se guardan las que tengan monto > 0
   const [montos, setMontos] = useState([
-    { moneda:"USD", monto:"" },
     { moneda:"ARS", monto:"" },
     { moneda:"CLP", monto:"" },
+    { moneda:"USD", monto:"" },
   ]);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
