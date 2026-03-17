@@ -887,6 +887,11 @@ function App() {
         ESTACIONES_COMBUSTIBLES: withFallback(d.ESTACIONES_COMBUSTIBLES, [
           "YPF","SHELL","AXION","PUMA","OTRO"
         ]),
+        // Tasas de cambio negociadas con choferes — vienen de Google Sheets
+        // TC_USD: A2 de hoja "USD/ARS CHOFERES" — cuántos ARS vale 1 USD
+        // TC_CLP: A2 de hoja "CLP/ARS CHOFERES" — cuántos CLP vale 1 ARS (ej: 160)
+        TC_USD: d.TC_USD || 1200,
+        TC_CLP: d.TC_CLP || 160,
       });
     });
   }, [session]);
