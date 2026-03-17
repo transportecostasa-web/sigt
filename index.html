@@ -342,11 +342,22 @@ function initDB() {
   return {
     users, trips:[], entregas:[], rendiciones:[], auditLog:[],
     dropdowns:{
+      // TIPOS DE CARGA: col A=nombre, B=um, C=clasificacion, D=cantidad
+      // Reglas: "-" = ocultar campo | "" = input libre | texto = readonly
+      TIPOSDE_CARGA:[
+        { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
+        { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
+        { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
+        { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
+      ],
+      // CARGAS = mercadería transportada (lista simple)
+      CARGAS_MERCANCIAS:["VACIO","SOJA","MAIZ","TRIGO","GIRASOL","ACEITE","CEMENTO","FERTILIZANTE"],
+      // Backward-compat
       CARGAS:[
-        { nombre:"VACIO",      tipo:"-",            um:"-",  clasificacion:"-",             cantidad:"-"  },
-        { nombre:"GRANEL",     tipo:"CEREAL",        um:"TN", clasificacion:"MINERAL",       cantidad:"30" },
-        { nombre:"CONTENEDOR", tipo:"CARGA GENERAL", um:"UN", clasificacion:"REFRIGERADO",   cantidad:""   },
-        { nombre:"CISTERNA",   tipo:"LIQUIDO",       um:"LT", clasificacion:"",              cantidad:""   },
+        { nombre:"A GRANEL",     um:"TON",            clasificacion:"-", cantidad:""  },
+        { nombre:"CONTENEDOR",   um:"UN",             clasificacion:"-", cantidad:"1" },
+        { nombre:"TANQUE",       um:"TON",            clasificacion:"-", cantidad:""  },
+        { nombre:"BARANDA-LONA", um:"FLETE COMPLETO", clasificacion:"-", cantidad:"1" },
       ],
       CLIENTES:["ACME SA","TRANS-AR SRL","GLOBALPORT","GRANOS DEL SUR","IMPORT HNOS"],
       LUGARES:["BUENOS AIRES","CÓRDOBA","ROSARIO","MENDOZA","ASUNCIÓN","MONTEVIDEO","SANTIAGO"],
@@ -831,40 +842,105 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const readonly    = !canEdit || isFinalized;
   const isNew       = !trip;
 
-  const [id]           = useState(() => trip?.id || generateTripId(trips, false));
-  const [carga, setCarga]             = useState(trip?.carga || "");
-  const [tipoCarga, setTipoCarga]     = useState(trip?.tipoCarga || "");
-  const [um, setUm]                   = useState(trip?.um || "");
-  const [clasificacion, setClasificacion] = useState(trip?.clasificacion || "");
-  const [cantidad, setCantidad]       = useState(trip?.cantidad || "");
-  const [pies, setPies]               = useState(trip?.pies || "");
+  const [id] = useState(() => trip?.id || generateTripId(trips, false));
+
+  // carga   = mercadería transportada  (hoja CARGAS, col A — lista simple de strings)
+  // tipoCarga = método de transporte   (hoja TIPOS DE CARGA, col A)
+  const [carga,          setCarga]          = useState(trip?.carga          || "");
+  const [tipoCarga,      setTipoCarga]      = useState(trip?.tipoCarga      || "");
+  // Sub-campos que se despliegan según el tipo de carga seleccionado:
+  const [pies,           setPies]           = useState(trip?.pies           || ""); // solo CONTENEDOR
+  const [clasificacion,  setClasificacion]  = useState(trip?.clasificacion  || ""); // solo CONTENEDOR (post-pies)
+  const [cantidad,       setCantidad]       = useState(trip?.cantidad       || ""); // numérico libre cuando col D está vacía
+
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
-  const [moneda, setMoneda]           = useState(trip?.moneda || "USD");
-  const [cliente, setCliente]         = useState(trip?.cliente || "");
-  const [segments, setSegments]       = useState(trip?.segments || [makeSegment(id, 1)]);
-  const [numMIC, setNumMIC]           = useState(trip?.numMIC || "");
-  const [fechaMIC, setFechaMIC]       = useState(trip?.fechaMIC || "");
-  const [numCRT, setNumCRT]           = useState(trip?.numCRT || "");
-  const [fechaCRT, setFechaCRT]       = useState(trip?.fechaCRT || "");
-  const [statusDoc, setStatusDoc]     = useState(trip?.statusDoc || "incompleto");
-  const [obsDoc, setObsDoc]           = useState(trip?.obsDoc || "");
-  const [saving, setSaving]           = useState(false);
-  const [errors, setErrors]           = useState({});
+  const [moneda,       setMoneda]       = useState(trip?.moneda       || "USD");
+  const [cliente,      setCliente]      = useState(trip?.cliente      || "");
+  const [segments,     setSegments]     = useState(trip?.segments     || [makeSegment(id, 1)]);
+  const [numMIC,       setNumMIC]       = useState(trip?.numMIC       || "");
+  const [fechaMIC,     setFechaMIC]     = useState(trip?.fechaMIC     || "");
+  const [numCRT,       setNumCRT]       = useState(trip?.numCRT       || "");
+  const [fechaCRT,     setFechaCRT]     = useState(trip?.fechaCRT     || "");
+  const [statusDoc,    setStatusDoc]    = useState(trip?.statusDoc    || "incompleto");
+  const [obsDoc,       setObsDoc]       = useState(trip?.obsDoc       || "");
+  const [saving,       setSaving]       = useState(false);
+  const [errors,       setErrors]       = useState({});
 
-  // ── carga metadata ──
-  const cargaRow = dropdowns.CARGAS.find(c => c.nombre === carga);
-  const isContenedor = carga === "CONTENEDOR";
+  // ── Lookup the selected row from the TIPOS DE CARGA sheet ─────────────────
+  // dropdowns.TIPOSDE_CARGA (populated by GAS) or dropdowns.CARGAS depending on
+  // how your sheet is mapped. We look in dropdowns.TIPOSDE_CARGA first, then
+  // fall back to dropdowns.CARGAS for backwards compatibility.
+  // Each row: { nombre: col A, um: col B, clasificacion: col C, cantidad: col D }
+  //
+  // Special rules read from the image:
+  //   col value empty ("")  → show editable numeric input
+  //   col value "-"         → hide the field entirely
+  //   col value has text    → show as readonly display
+  //
+  // CONTENEDOR rows: col A = "CONTENEDOR", col B = "40 PIES" / "20 PIES"
+  //   → we special-case this type: first show Pies selector,
+  //     then Clasificación selector, then UM readonly = "UN", Cantidad readonly = 1
 
-  // Auto-fill UM/clasificacion/cantidad when carga changes
+  const tiposSource = dropdowns.TIPOSDE_CARGA || dropdowns.TIPOS_DE_CARGA || dropdowns.CARGAS || [];
+
+  const isContenedor = tipoCarga === "CONTENEDOR";
+
+  // All unique base type names for the Tipo de Carga dropdown.
+  // The sheet may have multiple CONTENEDOR rows (one per Pies×Clasificación combo)
+  // → collapse them all to a single "CONTENEDOR" entry.
+  const tipoOptions = useMemo(() => {
+    const seen = new Set();
+    const out  = [];
+    tiposSource.forEach(r => {
+      const base = r.nombre === "CONTENEDOR" || String(r.nombre).toUpperCase().startsWith("CONTENEDOR")
+        ? "CONTENEDOR"
+        : r.nombre;
+      if (!seen.has(base)) { seen.add(base); out.push(base); }
+    });
+    return out;
+  }, [tiposSource]);
+
+  // For non-CONTENEDOR types: find the one matching row.
+  // For CONTENEDOR: after pies+clasificacion are chosen we could also
+  // find the matching row, but we hard-code the known values.
+  const tipoRow = useMemo(() => {
+    if (!tipoCarga || isContenedor) return null;
+    return tiposSource.find(r => r.nombre === tipoCarga) || null;
+  }, [tipoCarga, isContenedor, tiposSource]);
+
+  // Derived display values for a non-CONTENEDOR row:
+  // um, clasificacion, cantidad come from the row.
+  // Rules: "-" → hidden, "" → editable input, anything else → readonly display
+  const showUM             = tipoRow && tipoRow.um            !== "-";
+  const umIsEditable       = tipoRow && tipoRow.um            === "";
+  const umDisplay          = tipoRow ? (tipoRow.um  || "") : "";
+
+  const showClasif         = tipoRow && tipoRow.clasificacion !== "-";
+  const clasifIsEditable   = tipoRow && tipoRow.clasificacion === "";
+  const clasifDisplay      = tipoRow ? (tipoRow.clasificacion || "") : "";
+
+  const showCantidad       = tipoRow && tipoRow.cantidad      !== "-";
+  const cantidadIsEditable = tipoRow && tipoRow.cantidad      === "";
+  const cantidadDisplay    = tipoRow ? (tipoRow.cantidad || "") : "";
+
+  // When tipoCarga changes: reset sub-fields and auto-fill read-only values
   useEffect(() => {
-    if (!cargaRow) return;
-    setUm(cargaRow.um !== "-" ? cargaRow.um : "");
-    setClasificacion(cargaRow.clasificacion !== "-" ? cargaRow.clasificacion : "");
-    setCantidad(cargaRow.cantidad !== "-" ? cargaRow.cantidad : "");
-    if (!isContenedor) setPies("");
-  }, [carga]);
+    setPies("");
+    setClasificacion("");
+    if (!isContenedor && tipoRow) {
+      // Pre-fill readonly values so they get saved correctly
+      setCantidad(tipoRow.cantidad && tipoRow.cantidad !== "-" ? tipoRow.cantidad : "");
+    } else {
+      setCantidad("");
+    }
+  }, [tipoCarga]);
 
-  // ── KM total (reactive) ──
+  // When pies changes on CONTENEDOR: reset clasificacion
+  useEffect(() => {
+    if (isContenedor) setClasificacion("");
+  }, [pies]);
+
+  // ── KM total ──────────────────────────────────────────────────────────────
   const totalKm = useMemo(() =>
     segments.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0)
   , [segments]);
@@ -877,36 +953,55 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       kmPrevistos:0, status:"stand by", observaciones:""
     };
   }
+  function addSegment()      { setSegments(p => [...p, makeSegment(id, p.length + 1)]); }
+  function removeSegment(i)  { if (segments.length > 1) setSegments(p => p.filter((_,idx) => idx !== i)); }
+  function updateSeg(i,k,v)  { setSegments(p => { const n=[...p]; n[i]={...n[i],[k]:v}; return n; }); }
 
-  function addSegment() {
-    setSegments(p => [...p, makeSegment(id, p.length + 1)]);
-  }
-  function removeSegment(i) {
-    if (segments.length <= 1) return;
-    setSegments(p => p.filter((_,idx) => idx !== i));
-  }
-  function updateSeg(i, key, val) {
-    setSegments(p => { const n=[...p]; n[i]={...n[i],[key]:val}; return n; });
-  }
-
+  // ── Validation ────────────────────────────────────────────────────────────
   function validate() {
     const e = {};
-    if (!carga)                        e.carga = "Requerido";
-    if (carga !== "VACIO" && !montoFactura) e.montoFactura = "Requerido";
-    if (!cliente)                      e.cliente = "Requerido";
-    if (!numMIC)                       e.numMIC = "Requerido";
-    if (!fechaCRT)                     e.fechaCRT = "Requerido";
+    if (!carga)     e.carga     = "Requerido";
+    if (!tipoCarga) e.tipoCarga = "Requerido";
+    // Sub-fields required except when carga = VACIO
+    if (carga !== "VACIO") {
+      if (!montoFactura) e.montoFactura = "Requerido";
+      if (isContenedor) {
+        if (!pies)          e.pies          = "Requerido";
+        if (!clasificacion) e.clasificacion = "Requerido";
+        if (!cantidad)      e.cantidad      = "Requerido";
+      } else if (tipoRow) {
+        if (cantidadIsEditable && !cantidad) e.cantidad = "Requerido";
+      }
+    }
+    if (!cliente)  e.cliente  = "Requerido";
+    if (!numMIC)   e.numMIC   = "Requerido";
+    if (!fechaCRT) e.fechaCRT = "Requerido";
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  // ── Save / Finalize ───────────────────────────────────────────────────────
+  function buildData(extraStatus) {
+    // Derive final um value to save
+    const umToSave = isContenedor ? "UN" : (umIsEditable ? "" : umDisplay);
+    return {
+      id, carga, tipoCarga,
+      um: umToSave,
+      pies: isContenedor ? pies : "",
+      clasificacion: isContenedor ? clasificacion : (clasifIsEditable ? clasificacion : clasifDisplay),
+      cantidad: isContenedor ? "1" : (cantidadIsEditable ? cantidad : cantidadDisplay),
+      montoFactura, moneda, cliente, segments,
+      numMIC, fechaMIC, numCRT, fechaCRT,
+      statusDoc: extraStatus === "finalizado" ? "completo" : statusDoc,
+      obsDoc,
+      status: extraStatus || trip?.status || "activo"
+    };
   }
 
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, pies,
-      montoFactura, moneda, cliente, segments, numMIC, fechaMIC,
-      numCRT, fechaCRT, statusDoc, obsDoc, status:trip?.status||"activo" };
-    await onSave(data);
+    await onSave(buildData());
     setSaving(false);
   }
 
@@ -919,10 +1014,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       alert("Completá todos los campos de los tramos."); return;
     }
     setSaving(true);
-    const data = { id, carga, tipoCarga, um, clasificacion, cantidad, pies,
-      montoFactura, moneda, cliente, segments, numMIC, fechaMIC,
-      numCRT, fechaCRT, statusDoc:"completo", obsDoc, status:"finalizado" };
-    await onSave(data);
+    await onSave(buildData("finalizado"));
     await onFinalize(id);
     setSaving(false);
   }
@@ -937,10 +1029,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:4 }}>
             <span style={{ fontFamily:"var(--mono)", fontSize:12, color:"var(--text3)" }}>{id}</span>
-            {/* ── KM TOTAL CHIP ── always visible ── */}
-            <span className="km-total">
-              📍 KM totales: {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km
-            </span>
+            <span className="km-total">📍 {totalKm > 0 ? totalKm.toLocaleString("es-AR") : "0"} km totales</span>
           </div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
@@ -951,6 +1040,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         <div className="card-header"><div className="card-title">📋 Información General del Viaje</div></div>
         <div className="card-body">
 
+          {/* ID */}
           <div className="form-row" style={{ marginBottom:0 }}>
             <div className="form-group" style={{ maxWidth:200 }}>
               <label className="form-label">ID Viaje</label>
@@ -958,99 +1048,157 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
           </div>
 
-          {/* Carga + Tipo de Carga */}
+          {/* ── Fila 1: Carga + Tipo de Carga ── */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Carga {errors.carga && <span className="form-error">{errors.carga}</span>}</label>
+              <label className="form-label">
+                Carga {errors.carga && <span className="form-error">{errors.carga}</span>}
+              </label>
               <SearchableSelect
-                options={dropdowns.CARGAS.map(c => c.nombre)}
+                options={dropdowns.CARGAS_MERCANCIAS || []}
                 value={carga}
-                onChange={v => { setCarga(v); setTipoCarga(""); }}
-                placeholder="Seleccioná carga..."
+                onChange={v => setCarga(v)}
+                placeholder="Seleccioná mercadería..."
                 disabled={readonly}
               />
             </div>
 
-            {cargaRow && cargaRow.tipo !== "-" && (
-              <div className="form-group">
-                <label className="form-label">Tipo de Carga</label>
-                <SearchableSelect
-                  options={[...new Set(dropdowns.CARGAS.filter(c=>c.tipo&&c.tipo!=="-").map(c=>c.tipo))]}
-                  value={tipoCarga}
-                  onChange={setTipoCarga}
-                  placeholder="Seleccioná tipo..."
-                  disabled={readonly}
-                />
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label">
+                Tipo de Carga {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
+              </label>
+              <SearchableSelect
+                options={tipoOptions}
+                value={tipoCarga}
+                onChange={v => setTipoCarga(v)}
+                placeholder="A Granel, Contenedor..."
+                disabled={readonly}
+              />
+            </div>
           </div>
 
-          {/* Dynamic fields based on carga selection */}
-          {cargaRow && carga !== "VACIO" && (
-            <div className="form-row">
-              {/* UM */}
-              {cargaRow.um !== "-" && (
-                <div className="form-group">
-                  <label className="form-label">Unidad de Medida</label>
-                  {cargaRow.um
-                    ? <div className="field-readonly">{um || cargaRow.um}</div>
-                    : <input className="form-input" type="text" value={um} onChange={e=>setUm(e.target.value)} disabled={readonly} placeholder="UM" />
-                  }
-                </div>
-              )}
+          {/* ── Fila 2: campos dinámicos según Tipo de Carga ── */}
+          {tipoCarga && carga !== "VACIO" && (
 
-              {/* CONTENEDOR: Pies selector + Clasificación */}
-              {isContenedor ? (
-                <>
-                  <div className="form-group">
-                    <label className="form-label">Pies</label>
+            isContenedor ? (
+              /* ─── CONTENEDOR: Pies → luego Clasificación + UM + Cantidad ─── */
+              <div className="form-row" style={{ flexWrap:"wrap" }}>
+                {/* Pies */}
+                <div className="form-group" style={{ minWidth:140 }}>
+                  <label className="form-label">
+                    Pies {errors.pies && <span className="form-error">{errors.pies}</span>}
+                  </label>
+                  <SearchableSelect
+                    options={[
+                      { value:"40 PIES", label:"40 PIES" },
+                      { value:"20 PIES", label:"20 PIES" },
+                    ]}
+                    value={pies}
+                    onChange={v => setPies(v)}
+                    placeholder="20 / 40..."
+                    disabled={readonly}
+                  />
+                </div>
+
+                {/* Clasificación — solo si ya eligió Pies */}
+                {pies && (
+                  <div className="form-group" style={{ minWidth:200 }}>
+                    <label className="form-label">
+                      Clasificación {errors.clasificacion && <span className="form-error">{errors.clasificacion}</span>}
+                    </label>
                     <SearchableSelect
-                      options={PIES_OPTIONS}
-                      value={pies}
-                      onChange={setPies}
-                      placeholder="20 / 40"
-                      disabled={readonly}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Clasificación</label>
-                    <SearchableSelect
-                      options={["REFRIGERADO","NO REFRIGERADO"]}
+                      options={[
+                        { value:"REFRIGERADO",    label:"REFRIGERADO" },
+                        { value:"NO REFRIGERADO", label:"NO REFRIGERADO" },
+                      ]}
                       value={clasificacion}
-                      onChange={setClasificacion}
-                      placeholder="Tipo..."
+                      onChange={v => setClasificacion(v)}
+                      placeholder="Refrigerado / No refrig..."
                       disabled={readonly}
                     />
                   </div>
-                </>
-              ) : (
-                <>
-                  {cargaRow.clasificacion !== "-" && (
-                    <div className="form-group">
-                      <label className="form-label">Clasificación</label>
-                      {cargaRow.clasificacion
-                        ? <div className="field-readonly">{clasificacion || cargaRow.clasificacion}</div>
-                        : <input className="form-input" value={clasificacion} onChange={e=>setClasificacion(e.target.value)} disabled={readonly} />
-                      }
-                    </div>
-                  )}
-                  {cargaRow.cantidad !== "-" && (
-                    <div className="form-group">
-                      <label className="form-label">Cantidad</label>
-                      {cargaRow.cantidad
-                        ? <div className="field-readonly">{cantidad || cargaRow.cantidad}</div>
-                        : <input className="form-input" type="number" value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} />
-                      }
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                )}
+
+                {/* UM — siempre UN para contenedor */}
+                <div className="form-group" style={{ minWidth:100 }}>
+                  <label className="form-label">UM</label>
+                  <div className="field-readonly">UN</div>
+                </div>
+
+                {/* Cantidad — siempre 1 para contenedor, pero editable */}
+                <div className="form-group" style={{ minWidth:120 }}>
+                  <label className="form-label">
+                    Cantidad {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
+                  </label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={cantidad || "1"}
+                    onChange={e => setCantidad(e.target.value)}
+                    disabled={readonly}
+                  />
+                </div>
+              </div>
+
+            ) : tipoRow ? (
+              /* ─── TODOS LOS DEMÁS TIPOS ─── */
+              <div className="form-row" style={{ flexWrap:"wrap" }}>
+
+                {/* UM: "-" → no mostrar | texto → readonly | "" → readonly (viene de la hoja) */}
+                {showUM && (
+                  <div className="form-group" style={{ minWidth:120 }}>
+                    <label className="form-label">UM</label>
+                    {umIsEditable
+                      ? <input className="form-input" type="text" value={cantidad} onChange={e=>setUm && null} disabled={readonly} placeholder="UM" />
+                      : <div className="field-readonly">{umDisplay}</div>
+                    }
+                  </div>
+                )}
+
+                {/* Clasificación: "-" → no mostrar | texto → readonly | "" → n/a para no-contenedor */}
+                {showClasif && (
+                  <div className="form-group" style={{ minWidth:160 }}>
+                    <label className="form-label">Clasificación</label>
+                    {clasifIsEditable
+                      ? <input className="form-input" value={clasificacion} onChange={e=>setClasificacion(e.target.value)} disabled={readonly} />
+                      : <div className="field-readonly">{clasifDisplay}</div>
+                    }
+                  </div>
+                )}
+
+                {/* Cantidad: "-" → no mostrar | texto → readonly | "" → input numérico */}
+                {showCantidad && (
+                  <div className="form-group" style={{ minWidth:140 }}>
+                    <label className="form-label">
+                      Cantidad {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
+                    </label>
+                    {cantidadIsEditable
+                      ? <input
+                          className="form-input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={cantidad}
+                          onChange={e => setCantidad(e.target.value)}
+                          disabled={readonly}
+                          placeholder="Ingresá cantidad"
+                        />
+                      : <div className="field-readonly">{cantidadDisplay}</div>
+                    }
+                  </div>
+                )}
+              </div>
+            ) : null
           )}
 
+          {/* ── Fila 3: Monto Factura + Cliente ── */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
+              <label className="form-label">
+                Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}
+              </label>
               <div className="input-with-currency">
                 <input className="form-input" type="number" value={montoFactura} onChange={e=>setMontoFactura(e.target.value)} disabled={readonly} placeholder="0.00" />
                 <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)} disabled={readonly}>
@@ -1059,9 +1207,11 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
+              <label className="form-label">
+                Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}
+              </label>
               <SearchableSelect
-                options={dropdowns.CLIENTES}
+                options={dropdowns.CLIENTES || []}
                 value={cliente}
                 onChange={setCliente}
                 placeholder="Buscar cliente..."
@@ -1069,6 +1219,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
               />
             </div>
           </div>
+
         </div>
       </div>
 
