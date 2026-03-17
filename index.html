@@ -2034,36 +2034,39 @@ function Module3({ session, canEdit, dropdowns, notif }) {
         </div>
       </div>
 
-      {/* Mientras no se elija chofer: no mostrar nada */}
-      {!selDriver
-        ? <div className="empty"><div className="empty-icon">👤</div><p>Seleccioná un chofer para ver sus tramos pendientes.</p></div>
-        : loading
-          ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
-          : filtered.length===0
-            ? <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes para {selDriver}.</p></div>
-            : (
-            <div style={{ maxHeight:"calc(100vh - 300px)", overflowY:"auto" }}>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th></th><th>Tramo</th><th>Viaje</th><th>Chofer</th><th>Desde</th><th>Hasta</th><th>Fecha inicio</th><th>Estado</th></tr></thead>
-                  <tbody>
-                    {filtered.map(s=>(
-                      <tr key={s.segId}>
-                        <td><input type="checkbox" checked={selSegIds.includes(s.segId)} onChange={()=>toggleSeg(s.segId)}/></td>
-                        <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.segId}</td>
-                        <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.tripId}</td>
-                        <td>{s.chofer}</td><td>{s.desde}</td><td>{s.hasta}</td>
-                        <td>{fmtDate(s.fechaInicio)}</td>
-                        <td><StatusBadge status={s.status}/></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-        )
-      }
+      {/* Sin chofer seleccionado: mensaje de guía */}
+      {!selDriver && (
+        <div className="empty"><div className="empty-icon">👤</div><p>Seleccioná un chofer para ver sus tramos pendientes.</p></div>
+      )}
+
+      {/* Con chofer seleccionado: spinner, vacío, o tabla */}
+      {selDriver && loading && (
+        <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
+      )}
+      {selDriver && !loading && filtered.length===0 && (
+        <div className="empty"><div className="empty-icon">✅</div><p>No hay tramos pendientes para {selDriver}.</p></div>
+      )}
+      {selDriver && !loading && filtered.length>0 && (
+        <div style={{ maxHeight:"calc(100vh - 300px)", overflowY:"auto" }}>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th></th><th>Tramo</th><th>Viaje</th><th>Chofer</th><th>Desde</th><th>Hasta</th><th>Fecha inicio</th><th>Estado</th></tr></thead>
+              <tbody>
+                {filtered.map(s=>(
+                  <tr key={s.segId}>
+                    <td><input type="checkbox" checked={selSegIds.includes(s.segId)} onChange={()=>toggleSeg(s.segId)}/></td>
+                    <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.segId}</td>
+                    <td style={{ fontFamily:"var(--mono)",fontSize:11 }}>{s.tripId}</td>
+                    <td>{s.chofer}</td><td>{s.desde}</td><td>{s.hasta}</td>
+                    <td>{fmtDate(s.fechaInicio)}</td>
+                    <td><StatusBadge status={s.status}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {canEdit && selSegIds.length>0 && (
         <div className="liquidar-bar">
           <span style={{ color:"var(--text2)",fontSize:13 }}>{selSegIds.length} tramo(s) seleccionado(s)</span>
