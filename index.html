@@ -205,7 +205,25 @@ function fmtDate(d){if(!d)return"—";return new Date(d).toLocaleDateString("es-
 function fmtDT(d){if(!d)return"—";return new Date(d).toLocaleString("es-AR");}
 function nowISO(){return new Date().toISOString().slice(0,10);}
 function fmtKm(n){if(!n&&n!==0)return"—";return Number(n).toLocaleString("es-AR")+" km";}
-function fmtNum(n){return Number(n||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtNum(n){
+  if(n===null||n===undefined||n==="")return"—";
+  return Number(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+// Formatea número crudo con separador de miles mientras el usuario escribe
+// Guarda internamente el valor numérico puro, muestra "1.234.567"
+function parseMoneyInput(raw){
+  // quitar todo excepto dígitos y coma decimal
+  const clean = String(raw).replace(/\./g,"").replace(",",".");
+  const n = parseFloat(clean);
+  return isNaN(n) ? "" : n;
+}
+function formatMoneyDisplay(raw){
+  // raw es string del input — aplicar solo separador de miles, sin decimales forzados
+  const digits = String(raw).replace(/[^\d,]/g,"");  // mantener dígitos y coma
+  const parts  = digits.split(",");
+  const intPart= parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,".");
+  return parts.length>1 ? intPart+","+parts[1] : intPart;
+}
 
 function pwStrength(pw){
   if(!pw)return{score:0,label:""};
@@ -528,6 +546,80 @@ function SearchableSelect({ options=[], value="", onChange, placeholder="Buscar.
         </div>
       )}
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MONEY INPUT — input con separador de miles automático
+// value: número o string numérico | onChange(numericValue: number|"")
+// ═══════════════════════════════════════════════════════════════════════════════
+function MoneyInput({ value, onChange, placeholder="0", disabled=false, style={} }) {
+  // display: lo que ve el usuario (con puntos de miles)
+  const [display, setDisplay] = useState(() => {
+    if (value===""||value===null||value===undefined) return "";
+    return Number(value).toLocaleString("es-AR");
+  });
+
+  // Sincronizar si el valor externo cambia (ej: reset del form)
+  useEffect(() => {
+    if (value===""||value===null||value===undefined) { setDisplay(""); return; }
+    // Solo reformat si el valor numérico cambió desde afuera
+    const current = parseRaw(display);
+    if (current !== Number(value)) {
+      setDisplay(Number(value).toLocaleString("es-AR"));
+    }
+  }, [value]);
+
+  function parseRaw(str) {
+    // "1.234.567" → 1234567  |  "1.234,56" → 1234.56
+    const s = String(str).trim();
+    if (!s) return NaN;
+    // Si tiene coma, es decimal: quitar puntos de miles, reemplazar coma por punto
+    if (s.includes(",")) {
+      return parseFloat(s.replace(/\./g,"").replace(",","."));
+    }
+    // Sin coma: puntos son separadores de miles
+    return parseFloat(s.replace(/\./g,""));
+  }
+
+  function handleChange(e) {
+    const raw = e.target.value;
+    // Permitir solo: dígitos, punto, coma
+    const filtered = raw.replace(/[^\d.,]/g,"");
+    // Evitar doble separador decimal
+    const parts = filtered.split(/[,]/);
+    if (parts.length > 2) return; // más de una coma → ignorar
+
+    // Formatear parte entera con puntos de miles
+    const intStr = parts[0].replace(/\./g,""); // quitar puntos viejos
+    const formatted = intStr.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+    const result = parts.length===2 ? formatted+","+parts[1] : formatted;
+
+    setDisplay(result);
+    const numeric = parseRaw(result);
+    onChange(isNaN(numeric) ? "" : numeric);
+  }
+
+  function handleBlur() {
+    // Al salir del campo: reformat limpio
+    const numeric = parseRaw(display);
+    if (!isNaN(numeric) && display!=="") {
+      setDisplay(numeric.toLocaleString("es-AR"));
+    }
+  }
+
+  return (
+    <input
+      className="form-input"
+      type="text"
+      inputMode="decimal"
+      value={display}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      disabled={disabled}
+      style={style}
+    />
   );
 }
 
@@ -1193,7 +1285,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             <div className="form-group">
               <label className="form-label">Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
               <div className="input-with-currency">
-                <input className="form-input" type="number" value={montoFactura} onChange={e=>setMontoFactura(e.target.value)} disabled={readonly} placeholder="0.00"/>
+                <MoneyInput value={montoFactura} onChange={setMontoFactura} placeholder="0" disabled={readonly}/>
                 <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)} disabled={readonly}>
                   {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
@@ -1432,7 +1524,7 @@ function Module2({ session, canEdit, dropdowns, notif }) {
                       <td>{fmtDate(e.fecha)}</td>
                       <td style={{ fontWeight:500,color:"var(--text)" }}>{e.chofer||"—"}</td>
                       <td>{e.responsable}</td>
-                      <td style={{ fontFamily:"var(--mono)" }}>{Number(e.monto).toLocaleString("es-AR")}</td>
+                      <td style={{ fontFamily:"var(--mono)" }}>{fmtNum(e.monto)}</td>
                       <td><span className="badge badge-blue">{e.moneda}</span></td>
                       <td style={{ fontSize:11,color:"var(--text3)" }}>{e.createdBy}</td>
                       <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
@@ -1449,36 +1541,63 @@ function Module2({ session, canEdit, dropdowns, notif }) {
 
 function EntregaForm({ dropdowns, onSave, onBack }) {
   const [fecha,       setFecha]       = useState(nowISO());
-  const [chofer,      setChofer]      = useState("");   // A QUIÉN se entrega
-  const [responsable, setResponsable] = useState("");   // QUIÉN entrega
-  const [monto,       setMonto]       = useState("");
-  const [moneda,      setMoneda]      = useState("ARS");
-  const [errors,      setErrors]      = useState({});
-  const [saving,      setSaving]      = useState(false);
+  const [chofer,      setChofer]      = useState("");
+  const [responsable, setResponsable] = useState("");
+  // Montos: una fila por divisa, el usuario activa las que necesita
+  // { moneda, monto } — solo se guardan las que tengan monto > 0
+  const [montos, setMontos] = useState([
+    { moneda:"USD", monto:"" },
+    { moneda:"ARS", monto:"" },
+    { moneda:"CLP", monto:"" },
+  ]);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  function updateMonto(idx, val) {
+    setMontos(p => { const n=[...p]; n[idx]={...n[idx],monto:val}; return n; });
+  }
+
+  const montosConValor = montos.filter(m => m.monto !== "" && Number(m.monto) > 0);
 
   function validate() {
     const e={};
-    if (!fecha)       e.fecha="Requerido";
-    if (!chofer)      e.chofer="Requerido";
-    if (!responsable) e.responsable="Requerido";
-    if (!monto)       e.monto="Requerido";
+    if (!fecha)               e.fecha="Requerido";
+    if (!chofer)              e.chofer="Requerido";
+    if (!responsable)         e.responsable="Requerido";
+    if (!montosConValor.length) e.montos="Ingresá al menos un monto";
     setErrors(e); return Object.keys(e).length===0;
   }
+
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    await onSave({ fecha, chofer, responsable, monto, moneda });
+    // Guardar un registro por cada divisa con monto > 0
+    // Todos comparten fecha, chofer, responsable y el mismo ID base
+    const baseId = "ENT-"+Date.now();
+    for (let i=0; i<montosConValor.length; i++) {
+      const m = montosConValor[i];
+      await onSave({
+        fecha, chofer, responsable,
+        monto: String(m.monto),
+        moneda: m.moneda,
+        // Si hay más de una divisa, marcar con sufijo para distinguirlas
+        _baseId: baseId,
+      });
+    }
     setSaving(false);
   }
+
   return (
     <div className="module-container">
       <div className="module-header">
         <div><div className="module-title">Nueva Entrega de Plata</div></div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      <div className="card" style={{ maxWidth:560 }}>
+      <div className="card" style={{ maxWidth:580 }}>
         <div className="card-body">
-          <div className="alert alert-info" style={{ marginBottom:16 }}>Los registros no pueden editarse una vez guardados.</div>
+          <div className="alert alert-info" style={{ marginBottom:16 }}>
+            Los registros no pueden editarse una vez guardados. Podés ingresar montos en las 3 divisas en una misma entrega.
+          </div>
           <div className="form-group">
             <label className="form-label">Fecha {errors.fecha && <span className="form-error">{errors.fecha}</span>}</label>
             <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)}/>
@@ -1491,7 +1610,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
               options={dropdowns.CHOFERES||[]}
               value={chofer}
               onChange={setChofer}
-              placeholder="A quién se entrega el dinero..."/>
+              placeholder="A quién se entrega..."/>
           </div>
           <div className="form-group">
             <label className="form-label">
@@ -1503,18 +1622,41 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
               onChange={setResponsable}
               placeholder="Quién entrega el dinero..."/>
           </div>
+
+          {/* Montos por divisa */}
           <div className="form-group">
-            <label className="form-label">Monto {errors.monto && <span className="form-error">{errors.monto}</span>}</label>
-            <div className="input-with-currency">
-              <input className="form-input" type="number" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00"/>
-              <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)}>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
+            <label className="form-label">
+              Montos {errors.montos && <span className="form-error">{errors.montos}</span>}
+            </label>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {montos.map((m,i) => (
+                <div key={m.moneda} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{
+                    width:40, fontFamily:"var(--mono)", fontSize:12, fontWeight:600,
+                    color: m.monto ? "var(--accent)" : "var(--text3)",
+                    flexShrink:0
+                  }}>{m.moneda}</span>
+                  <MoneyInput
+                    value={m.monto}
+                    onChange={val => updateMonto(i, val)}
+                    placeholder={`Monto en ${m.moneda} (dejar vacío si no aplica)`}
+                    style={{ flex:1 }}
+                  />
+                </div>
+              ))}
             </div>
+            {montosConValor.length > 0 && (
+              <div style={{ marginTop:8, fontSize:12, color:"var(--text3)" }}>
+                Se guardarán {montosConValor.length} registro(s): {montosConValor.map(m=>`${m.moneda} ${Number(m.monto).toLocaleString("es-AR")}`).join(" + ")}
+              </div>
+            )}
           </div>
+
           <div style={{ display:"flex",gap:10,justifyContent:"flex-end",marginTop:16 }}>
             <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Guardando..." : `💾 Guardar${montosConValor.length>1?" ("+montosConValor.length+" registros)":""}`}
+            </button>
           </div>
         </div>
       </div>
@@ -1774,9 +1916,7 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
                 <div className="form-group">
                   <label className="form-label">Monto tramo *</label>
                   <div className="input-with-currency">
-                    <input className="form-input" type="number" placeholder="0.00"
-                      value={segMonto[s.segId]?.monto||""}
-                      onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],monto:e.target.value}}))}/>
+                    <MoneyInput value={segMonto[s.segId]?.monto||""} onChange={v=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],monto:v}}))} placeholder="0"/>
                     <select className="form-select" style={{ width:80 }}
                       value={segMonto[s.segId]?.moneda||"USD"}
                       onChange={e=>setSegMonto(p=>({...p,[s.segId]:{...p[s.segId],moneda:e.target.value}}))}>
@@ -1884,8 +2024,7 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Monto</label>
                 <div className="input-with-currency">
-                  <input className="form-input" type="number" value={e.monto} placeholder="0.00"
-                    onChange={x=>{ const n=[...expenses];n[i]={...n[i],monto:x.target.value};setExpenses(n); }}/>
+                  <MoneyInput value={e.monto} onChange={v=>{ const n=[...expenses];n[i]={...n[i],monto:v};setExpenses(n); }} placeholder="0"/>
                   <select className="form-select" style={{ width:80 }} value={e.moneda}
                     onChange={x=>{ const n=[...expenses];n[i]={...n[i],moneda:x.target.value};setExpenses(n); }}>
                     {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
@@ -1934,8 +2073,7 @@ function RendicionForm({ segs, driver, entregas, onSave, onBack, session }) {
               </div>
               <div className="form-group">
                 <label className="form-label">Total factura</label>
-                <input className="form-input" type="number" value={f.total}
-                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],total:e.target.value};setFuelRows(n); }}/>
+                <MoneyInput value={f.total} onChange={v=>{ const n=[...fuelRows];n[i]={...n[i],total:v};setFuelRows(n); }} placeholder="0"/>
               </div>
               <div className="form-group" style={{ maxWidth:100 }}>
                 <label className="form-label">$/L</label>
