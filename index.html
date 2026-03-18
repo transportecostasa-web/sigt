@@ -916,6 +916,26 @@ function App() {
   // Cierra la sesión: borra el token del localStorage y resetea el estado.
   function handleLogout() { lsSet("sigt_session", null); setSession(null); setMustChangePw(false); }
 
+  // Cierra sesión automáticamente cuando se cierra la pestaña o el navegador
+  useEffect(() => {
+    function onUnload() { lsSet("sigt_session", null); }
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+
+  // Verifica cada minuto si el token expiró en el servidor (8hs desde el login).
+  // Si el servidor rechaza la solicitud, cierra la sesión automáticamente.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(async () => {
+      const r = await gasCall("getDropdowns");
+      if (!r.ok && r.error && r.error.includes("Sesión inválida")) {
+        handleLogout();
+      }
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [session]);
+
   // Puntos de decisión: qué mostrar según el estado de sesión
   if (!session) return <><LoginScreen onLogin={handleLogin}/><Notifications items={notif.items}/></>;
   if (mustChangePw) return <><ChangePasswordScreen username={session.username} onDone={handlePasswordChanged}/><Notifications items={notif.items}/></>;
@@ -961,8 +981,6 @@ function TopBar({ onLogout }) {
         <span style={{ fontWeight:400, color:"var(--text2)" }}>Sistema Integral de Gestión de Transporte</span>
       </div>
       <div className="wm-btns">
-        <button className="wm-btn min" title="Minimizar"/>
-        <button className="wm-btn max" title="Maximizar"/>
         <button className="wm-btn close" title="Cerrar sesión" onClick={onLogout}/>
       </div>
     </div>
@@ -2141,9 +2159,20 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
     USD: entBruto.USD - Number(devolucion.USD||0),
   };
 
-  // Conversión a ARS (tasas de referencia — en producción se pueden cargar desde Sheets)
-  const TC = { USD:1000, CLP:1.1, ARS:1 };
-  const toARS = (monto, cur) => Number(monto||0) * TC[cur];
+  // Tasas negociadas con el chofer — vienen de Sheets vía dropdowns
+  // TC_USD: cuántos ARS vale 1 USD → multiplicar  (ej: 1200)
+  // TC_CLP: cuántos CLP vale 1 ARS → 100/TC_CLP   (ej: 160 = 1 ARS son 160 CLP)
+  const TC = {
+    USD: dropdowns?.TC_USD || 1200,
+    CLP: dropdowns?.TC_CLP || 160,
+    ARS: 1
+  };
+  const toARS = (monto, cur) => {
+    if (cur === "ARS") return Number(monto || 0);
+    if (cur === "USD") return Number(monto || 0) * TC.USD;
+    if (cur === "CLP") return Number(monto || 0) * 100 / TC.CLP;
+    return Number(monto || 0);
+  };
 
   const entTotalARS = entNeto.ARS + toARS(entNeto.CLP,"CLP") + toARS(entNeto.USD,"USD");
 
