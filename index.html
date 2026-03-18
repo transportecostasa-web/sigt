@@ -232,11 +232,32 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 
 // Convierte una fecha técnica ("2025-03-17") al formato argentino ("17/03/2025").
 // Si recibe vacío o nulo, muestra "—" en lugar de un error.
-function fmtDate(d){if(!d)return"—";return new Date(d).toLocaleDateString("es-AR");}
+function fmtDate(d){
+  if(!d)return"—";
+  const dt = new Date(d);
+  const dd = String(dt.getDate()).padStart(2,"0");
+  const mm = String(dt.getMonth()+1).padStart(2,"0");
+  const yy = dt.getFullYear();
+  return `${dd}/${mm}/${yy}`;
+}
 
-// Igual que fmtDate pero incluye la hora: "17/03/2025, 14:32:05"
-// Se usa en el historial y logs de auditoría.
-function fmtDT(d){if(!d)return"—";return new Date(d).toLocaleString("es-AR");}
+// Igual que fmtDate pero incluye la hora en formato: dd/mm/aaaa - hh:mm:ss
+// Se usa en el historial, logs de auditoría y fecha de registro de entregas.
+function fmtDT(d){
+  if(!d)return"—";
+  const dt = new Date(d);
+  const dd = String(dt.getDate()).padStart(2,"0");
+  const mm = String(dt.getMonth()+1).padStart(2,"0");
+  const yy = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2,"0");
+  const mi = String(dt.getMinutes()).padStart(2,"0");
+  const ss = String(dt.getSeconds()).padStart(2,"0");
+  return `${dd}/${mm}/${yy} - ${hh}:${mi}:${ss}`;
+}
+
+// Devuelve el timestamp actual en formato dd/mm/aaaa - hh:mm:ss.
+// Se usa para registrar la fecha y hora exacta de creación de registros.
+function nowTS(){return fmtDT(new Date());}
 
 // Devuelve la fecha de hoy en formato técnico "YYYY-MM-DD".
 // Se usa para pre-completar campos de fecha con el día actual.
@@ -1296,6 +1317,47 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [saving,       setSaving]       = useState(false);
   const [errors,       setErrors]       = useState({});
 
+  // ─── BORRADOR AUTOMÁTICO ──────────────────────────────────────────────────
+  // Clave única por viaje: si es nuevo usa "new", si es edición usa el id.
+  const draftKey = `sigt_draft_${trip?.id || "new"}`;
+
+  // Al montar: restaurar borrador del localStorage si existe y el viaje no está finalizado.
+  // Esto recupera cantidad, fechas MIC/CRT y todo lo demás si se recargó la página.
+  useEffect(() => {
+    if (readonly) return; // no restaurar borradores en modo lectura
+    const draft = lsGet(draftKey);
+    if (!draft) return;
+    if (draft.cantidad   !== undefined) setCantidad(draft.cantidad);
+    if (draft.numMIC     !== undefined) setNumMIC(draft.numMIC);
+    if (draft.fechaMIC   !== undefined) setFechaMIC(draft.fechaMIC);
+    if (draft.numCRT     !== undefined) setNumCRT(draft.numCRT);
+    if (draft.fechaCRT   !== undefined) setFechaCRT(draft.fechaCRT);
+    if (draft.obsDoc     !== undefined) setObsDoc(draft.obsDoc);
+    if (draft.statusDoc  !== undefined) setStatusDoc(draft.statusDoc);
+    if (draft.montoFactura !== undefined) setMontoFactura(draft.montoFactura);
+    if (draft.moneda     !== undefined) setMoneda(draft.moneda);
+    if (draft.carga      !== undefined) setCarga(draft.carga);
+    if (draft.tipoCarga  !== undefined) setTipoCarga(draft.tipoCarga);
+    if (draft.pies       !== undefined) setPies(draft.pies);
+    if (draft.clasificacion !== undefined) setClasificacion(draft.clasificacion);
+    if (draft.cliente    !== undefined) setCliente(draft.cliente);
+    if (draft.segments   !== undefined) setSegments(draft.segments);
+  }, []); // eslint-disable-line
+
+  // Guardar borrador automáticamente cada vez que cambia cualquier campo relevante.
+  // No se guarda si es readonly (viaje finalizado o sin permiso).
+  useEffect(() => {
+    if (readonly) return;
+    lsSet(draftKey, {
+      cantidad, numMIC, fechaMIC, numCRT, fechaCRT, obsDoc, statusDoc,
+      montoFactura, moneda, carga, tipoCarga, pies, clasificacion, cliente, segments
+    });
+  }, [cantidad, numMIC, fechaMIC, numCRT, fechaCRT, obsDoc, statusDoc,
+      montoFactura, moneda, carga, tipoCarga, pies, clasificacion, cliente, segments]);
+
+  // Limpiar el borrador cuando se guarda o finaliza exitosamente.
+  function clearDraft() { lsSet(draftKey, null); }
+
   // FIX #1 — TIPO DE CARGA proviene de hoja "TIPO DE CARGA"
   const tiposSource = dropdowns.TIPO_DE_CARGA || [];
   const isContenedor = tipoCarga === "CONTENEDOR";
@@ -1435,6 +1497,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     if (!validate()) return;
     setSaving(true);
     await onSave(buildData());
+    clearDraft(); // borrar borrador tras guardar exitosamente
     setSaving(false);
   }
 
@@ -1444,6 +1507,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     setSaving(true);
     await onSave(buildData("finalizado"));
     await onFinalize(id);
+    clearDraft(); // borrar borrador tras finalizar
     setSaving(false);
   }
 
@@ -1783,9 +1847,12 @@ function Module2({ session, canEdit, dropdowns, notif }) {
   async function handleSave(data) {
     const r = await gasCall("saveEntrega", { entrega:data, user:session.username });
     if (r.ok) {
-      invalidateCache("entregas"); // fuerza recarga después de guardar
+      invalidateCache("entregas");
       notif.add("Entrega registrada"); loadEntregas(); setView("list");
-    } else notif.add(r.error||"Error al guardar","error");
+    } else {
+      notif.add(r.error||"Error al guardar","error");
+    }
+    return r; // devolver resultado para que EntregaForm pueda detectar errores
   }
 
   if (view==="form") return <EntregaForm dropdowns={dropdowns} onSave={handleSave} onBack={()=>setView("list")}/>;
@@ -1871,18 +1938,21 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    // Guardar un registro por cada divisa con monto > 0
-    // Todos comparten fecha, chofer, responsable y el mismo ID base
     const baseId = "ENT-"+Date.now();
     for (let i=0; i<montosConValor.length; i++) {
       const m = montosConValor[i];
-      await onSave({
-        fecha, chofer, responsable,
-        monto: String(m.monto),
-        moneda: m.moneda,
-        // Si hay más de una divisa, marcar con sufijo para distinguirlas
-        _baseId: baseId,
-      });
+      // chofer se envía explícitamente — campo crítico para la rendición de gastos
+      const entrega = {
+        fecha:       fecha,
+        chofer:      chofer,        // destinatario del dinero — obligatorio para Módulo 3
+        responsable: responsable,
+        monto:       String(m.monto),
+        moneda:      m.moneda,
+        _baseId:     baseId,
+      };
+      const r = await onSave(entrega);
+      // Si el primer guardado falla, detener el loop
+      if (r && !r.ok) break;
     }
     setSaving(false);
   }
