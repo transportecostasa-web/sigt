@@ -385,14 +385,70 @@ const KM_TABLE = {
   "BUENOS AIRES|SANTA FE": 475, "ROSARIO|SANTA FE": 165,
 };
 
-// Busca los km entre dos ciudades en la tabla KM_TABLE.
-// Si los encuentra → devuelve el número (el campo km previstos se completa solo y queda bloqueado).
-// Si no los encuentra → devuelve null (el campo queda editable para que el usuario lo ingrese).
+// UPDATE: Busca km entre dos ciudades.
+// Flujo: 1) KM_TABLE local (inmediato) → 2) OSRM API (async, más preciso) → 3) manual.
+// La versión síncrona (getKmPrevistos) se mantiene para compatibilidad interna.
+// La versión async (fetchKmPrevistos) intenta OSRM y cae al KM_TABLE si falla.
 function getKmPrevistos(desde, hasta) {
   if (!desde || !hasta || desde === hasta) return null;
   const key1 = `${desde.toUpperCase()}|${hasta.toUpperCase()}`;
   const key2 = `${hasta.toUpperCase()}|${desde.toUpperCase()}`;
   return KM_TABLE[key1] || KM_TABLE[key2] || null;
+}
+
+// NEW: Coordenadas aproximadas de ciudades conocidas para usar con OSRM.
+// OSRM (Open Source Routing Machine) es una API de ruteo gratuita y sin API key.
+// URL pública: https://router.project-osrm.org
+// Si la ciudad no está en este mapa, no se intenta OSRM y se cae al KM_TABLE.
+const CITY_COORDS = {
+  "BUENOS AIRES":  [-34.6037, -58.3816],
+  "ROSARIO":       [-32.9468, -60.6393],
+  "CÓRDOBA":       [-31.4135, -64.1811],
+  "MENDOZA":       [-32.8908, -68.8272],
+  "SANTA FE":      [-31.6333, -60.7000],
+  "ASUNCIÓN":      [-25.2867, -57.6470],
+  "MONTEVIDEO":    [-34.9011, -56.1645],
+  "SANTIAGO":      [-33.4489, -70.6693],
+  "LA PAZ":        [-16.5000, -68.1500],
+  "LIMA":          [-12.0464, -77.0428],
+  "ENCARNACIÓN":   [-27.3365, -55.8666],
+  "CIUDAD DEL ESTE":[-25.5097, -54.6114],
+};
+
+// NEW: Consulta OSRM para obtener distancia vial real entre dos ciudades.
+// Si la ciudad no está en CITY_COORDS, o si OSRM falla, devuelve null.
+// Timeout de 4 segundos para no bloquear la UI si la red es lenta.
+async function fetchKmOSRM(desde, hasta) {
+  const coordsD = CITY_COORDS[desde?.toUpperCase()];
+  const coordsH = CITY_COORDS[hasta?.toUpperCase()];
+  if (!coordsD || !coordsH) return null;
+  try {
+    const [latD, lngD] = coordsD;
+    const [latH, lngH] = coordsH;
+    const url = `https://router.project-osrm.org/route/v1/driving/${lngD},${latD};${lngH},${latH}?overview=false`;
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 4000);
+    const res  = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code !== "Ok" || !data.routes?.[0]) return null;
+    // OSRM devuelve distancia en metros — convertir a km redondeado
+    return Math.round(data.routes[0].distance / 1000);
+  } catch {
+    return null; // timeout o error de red → fallback silencioso
+  }
+}
+
+// NEW: Obtiene km previstos con fallback en cadena:
+// 1. OSRM (API externa, distancia vial real)
+// 2. KM_TABLE (tabla local, estimación)
+// 3. null (campo manual)
+async function fetchKmPrevistos(desde, hasta) {
+  if (!desde || !hasta || desde === hasta) return null;
+  const osrm = await fetchKmOSRM(desde, hasta);
+  if (osrm !== null) return osrm;
+  return getKmPrevistos(desde, hasta); // KM_TABLE como fallback
 }
 
 // ─── CACHÉ EN MEMORIA ────────────────────────────────────────────────────────
@@ -1321,27 +1377,43 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   // Clave única por viaje: si es nuevo usa "new", si es edición usa el id.
   const draftKey = `sigt_draft_${trip?.id || "new"}`;
 
-  // Al montar: restaurar borrador del localStorage si existe y el viaje no está finalizado.
-  // Esto recupera cantidad, fechas MIC/CRT y todo lo demás si se recargó la página.
+  // FIX: Al montar, restaurar borrador del localStorage.
+  // Para viajes NUEVOS: restaurar todo el borrador si existe.
+  // Para viajes EXISTENTES (trip !== null): el servidor ya tiene los datos correctos,
+  // así que el draft solo se usa para campos que están vacíos en los datos del servidor
+  // (ej: el usuario guardó a medias y recargó sin haber enviado todo).
   useEffect(() => {
-    if (readonly) return; // no restaurar borradores en modo lectura
+    if (readonly) return;
     const draft = lsGet(draftKey);
     if (!draft) return;
-    if (draft.cantidad   !== undefined) setCantidad(draft.cantidad);
-    if (draft.numMIC     !== undefined) setNumMIC(draft.numMIC);
-    if (draft.fechaMIC   !== undefined) setFechaMIC(draft.fechaMIC);
-    if (draft.numCRT     !== undefined) setNumCRT(draft.numCRT);
-    if (draft.fechaCRT   !== undefined) setFechaCRT(draft.fechaCRT);
-    if (draft.obsDoc     !== undefined) setObsDoc(draft.obsDoc);
-    if (draft.statusDoc  !== undefined) setStatusDoc(draft.statusDoc);
-    if (draft.montoFactura !== undefined) setMontoFactura(draft.montoFactura);
-    if (draft.moneda     !== undefined) setMoneda(draft.moneda);
-    if (draft.carga      !== undefined) setCarga(draft.carga);
-    if (draft.tipoCarga  !== undefined) setTipoCarga(draft.tipoCarga);
-    if (draft.pies       !== undefined) setPies(draft.pies);
-    if (draft.clasificacion !== undefined) setClasificacion(draft.clasificacion);
-    if (draft.cliente    !== undefined) setCliente(draft.cliente);
-    if (draft.segments   !== undefined) setSegments(draft.segments);
+    if (isNew) {
+      // Viaje nuevo: restaurar todo
+      if (draft.cantidad      !== undefined) setCantidad(draft.cantidad);
+      if (draft.numMIC        !== undefined) setNumMIC(draft.numMIC);
+      if (draft.fechaMIC      !== undefined) setFechaMIC(draft.fechaMIC);
+      if (draft.numCRT        !== undefined) setNumCRT(draft.numCRT);
+      if (draft.fechaCRT      !== undefined) setFechaCRT(draft.fechaCRT);
+      if (draft.obsDoc        !== undefined) setObsDoc(draft.obsDoc);
+      if (draft.statusDoc     !== undefined) setStatusDoc(draft.statusDoc);
+      if (draft.montoFactura  !== undefined) setMontoFactura(draft.montoFactura);
+      if (draft.moneda        !== undefined) setMoneda(draft.moneda);
+      if (draft.carga         !== undefined) setCarga(draft.carga);
+      if (draft.tipoCarga     !== undefined) setTipoCarga(draft.tipoCarga);
+      if (draft.pies          !== undefined) setPies(draft.pies);
+      if (draft.clasificacion !== undefined) setClasificacion(draft.clasificacion);
+      if (draft.cliente       !== undefined) setCliente(draft.cliente);
+      if (draft.segments      !== undefined) setSegments(draft.segments);
+    } else {
+      // Viaje existente: el servidor manda los datos correctos en `trip`.
+      // Solo completar con draft si el campo llegó vacío desde el servidor
+      // (puede pasar en campos opcionales como obsDoc o numCRT).
+      if (!trip?.numMIC    && draft.numMIC    !== undefined) setNumMIC(draft.numMIC);
+      if (!trip?.fechaMIC  && draft.fechaMIC  !== undefined) setFechaMIC(draft.fechaMIC);
+      if (!trip?.numCRT    && draft.numCRT    !== undefined) setNumCRT(draft.numCRT);
+      if (!trip?.fechaCRT  && draft.fechaCRT  !== undefined) setFechaCRT(draft.fechaCRT);
+      if (!trip?.obsDoc    && draft.obsDoc    !== undefined) setObsDoc(draft.obsDoc);
+      if (!trip?.cantidad  && draft.cantidad  !== undefined) setCantidad(draft.cantidad);
+    }
   }, []); // eslint-disable-line
 
   // Guardar borrador automáticamente cada vez que cambia cualquier campo relevante.
@@ -1421,21 +1493,45 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   function removeSegment(i) {
     if (segments.length>1) setSegments(p => p.filter((_,idx) => idx!==i));
   }
-  function updateSeg(i, key, val) {
+  // UPDATE: updateSeg ahora es async para soportar fetchKmPrevistos (OSRM + fallback).
+  // El campo km se actualiza en dos pasos: primero con KM_TABLE (inmediato) y
+  // luego con OSRM si la respuesta llega (reemplaza el valor silenciosamente).
+  async function updateSeg(i, key, val) {
     setSegments(p => {
       const n = [...p];
       n[i] = { ...n[i], [key]:val };
-      // FIX #2 + #8 — recalcular segId y km si cambia desde/hasta
       if (key==="desde" || key==="hasta") {
         const d = key==="desde" ? val : n[i].desde;
         const h = key==="hasta" ? val : n[i].hasta;
         n[i].segId = makeSegmentId(id, d, h, i+1);
-        const kmAuto = getKmPrevistos(d, h);
-        if (kmAuto !== null) { n[i].kmPrevistos = kmAuto; n[i].kmManual = false; }
-        else { n[i].kmManual = true; } // mantiene el valor que tenía, usuario puede editar
+        // Paso 1: KM_TABLE local (instantáneo) — el usuario ve algo enseguida
+        const kmLocal = getKmPrevistos(d, h);
+        if (kmLocal !== null) { n[i].kmPrevistos = kmLocal; n[i].kmManual = false; }
+        else { n[i].kmManual = true; }
       }
       return n;
     });
+    // Paso 2: si cambia origen/destino, intentar OSRM en background
+    if (key === "desde" || key === "hasta") {
+      setSegments(prev => {
+        const seg = prev[i];
+        const d = key==="desde" ? val : seg?.desde;
+        const h = key==="hasta" ? val : seg?.hasta;
+        if (!d || !h || d===h) return prev;
+        fetchKmPrevistos(d, h).then(km => {
+          if (km === null) return;
+          setSegments(curr => {
+            const upd = [...curr];
+            // Solo actualizar si el tramo sigue siendo el mismo origen/destino
+            if (upd[i] && String(upd[i].desde)===String(d) && String(upd[i].hasta)===String(h)) {
+              upd[i] = { ...upd[i], kmPrevistos: km, kmManual: false };
+            }
+            return upd;
+          });
+        });
+        return prev; // no cambia nada en este render
+      });
+    }
   }
 
   // FIX #5 — Validación completa de tramos
@@ -1873,11 +1969,13 @@ function Module2({ session, canEdit, dropdowns, notif }) {
           : (
             <div className="table-wrap">
               <table>
+                {/* FIX: agregar columna Responsable y Forma de pago */}
                 <thead><tr>
-                  <th>Fecha</th><th>Chofer</th>
+                  <th>Fecha</th><th>Chofer</th><th>Responsable</th>
                   <th style={{ textAlign:"right" }}>ARS</th>
                   <th style={{ textAlign:"right" }}>CLP</th>
                   <th style={{ textAlign:"right" }}>USD</th>
+                  <th>Forma de pago</th><th>Obs.</th>
                   <th>Fecha registro</th>
                 </tr></thead>
                 <tbody>
@@ -1885,6 +1983,7 @@ function Module2({ session, canEdit, dropdowns, notif }) {
                     <tr key={e.id}>
                       <td>{fmtDate(e.fecha)}</td>
                       <td style={{ fontWeight:500,color:"var(--text)" }}>{e.chofer||"—"}</td>
+                      <td style={{ color:"var(--text2)" }}>{e.responsable||"—"}</td>
                       <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
                         {e.moneda==="ARS" ? fmtNum(e.monto) : ""}
                       </td>
@@ -1894,6 +1993,9 @@ function Module2({ session, canEdit, dropdowns, notif }) {
                       <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
                         {e.moneda==="USD" ? fmtNum(e.monto) : ""}
                       </td>
+                      <td style={{ fontSize:12,color:"var(--text2)" }}>{e.formaPago||"—"}</td>
+                      <td style={{ fontSize:11,color:"var(--text3)",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis" }}
+                          title={e.obs||""}>{e.obs||""}</td>
                       <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
                     </tr>
                   ))}
@@ -1910,8 +2012,10 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   const [fecha,       setFecha]       = useState(nowISO());
   const [chofer,      setChofer]      = useState("");
   const [responsable, setResponsable] = useState("");
+  // NEW: forma de pago (obligatorio) y observaciones (opcional)
+  const [formaPago,   setFormaPago]   = useState("");
+  const [obs,         setObs]         = useState("");
   // Montos: una fila por divisa, el usuario activa las que necesita
-  // { moneda, monto } — solo se guardan las que tengan monto > 0
   const [montos, setMontos] = useState([
     { moneda:"USD", monto:"" },
     { moneda:"ARS", monto:"" },
@@ -1926,11 +2030,13 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
 
   const montosConValor = montos.filter(m => m.monto !== "" && Number(m.monto) > 0);
 
+  // UPDATE: validación incluye formaPago obligatorio
   function validate() {
     const e={};
-    if (!fecha)               e.fecha="Requerido";
-    if (!chofer)              e.chofer="Requerido";
-    if (!responsable)         e.responsable="Requerido";
+    if (!fecha)                 e.fecha="Requerido";
+    if (!chofer)                e.chofer="Requerido";
+    if (!responsable)           e.responsable="Requerido";
+    if (!formaPago)             e.formaPago="Requerido";
     if (!montosConValor.length) e.montos="Ingresá al menos un monto";
     setErrors(e); return Object.keys(e).length===0;
   }
@@ -1941,17 +2047,18 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
     const baseId = "ENT-"+Date.now();
     for (let i=0; i<montosConValor.length; i++) {
       const m = montosConValor[i];
-      // chofer se envía explícitamente — campo crítico para la rendición de gastos
+      // UPDATE: entrega incluye formaPago y obs además de los campos previos
       const entrega = {
         fecha:       fecha,
-        chofer:      chofer,        // destinatario del dinero — obligatorio para Módulo 3
+        chofer:      chofer,
         responsable: responsable,
+        formaPago:   formaPago,   // NEW: obligatorio
+        obs:         obs,         // NEW: opcional
         monto:       String(m.monto),
         moneda:      m.moneda,
         _baseId:     baseId,
       };
       const r = await onSave(entrega);
-      // Si el primer guardado falla, detener el loop
       if (r && !r.ok) break;
     }
     setSaving(false);
@@ -1991,6 +2098,28 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
               value={responsable}
               onChange={setResponsable}
               placeholder="Quién entrega el dinero..."/>
+          </div>
+
+          {/* NEW: Forma de pago — obligatorio, viene de hoja FORMAS_PAGO col A */}
+          <div className="form-group">
+            <label className="form-label">
+              Forma de pago {errors.formaPago && <span className="form-error">{errors.formaPago}</span>}
+            </label>
+            <SearchableSelect
+              options={dropdowns.FORMAS_PAGO||["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]}
+              value={formaPago}
+              onChange={setFormaPago}
+              placeholder="Seleccioná forma de pago..."/>
+          </div>
+
+          {/* NEW: Observaciones — opcional, texto libre */}
+          <div className="form-group">
+            <label className="form-label">Observaciones <span style={{color:"var(--text3)",fontWeight:400}}>(opcional)</span></label>
+            <input
+              className="form-input"
+              value={obs}
+              onChange={e=>setObs(e.target.value)}
+              placeholder="Ej: anticipo de viaje NAC-0003, cuota 2/3..."/>
           </div>
 
           {/* Montos por divisa */}
