@@ -20,6 +20,21 @@
   --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
   --radius:8px;--radius-lg:12px;
 }
+/* MODO DIURNO */
+body.light{
+  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#e8eaed;--bg4:#dde0e5;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.15);
+  --text:#1a1c22;--text2:#444858;--text3:#888ea0;
+  --accent:#2d5fe8;--accent2:#1a4fd6;--accent-glow:rgba(45,95,232,0.15);
+}
+body.light .form-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888ea0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");}
+/* toggle switch */
+.theme-switch{display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;user-select:none;}
+.theme-switch-label{font-size:11px;color:var(--text3);}
+.switch-track{width:32px;height:18px;border-radius:9px;background:var(--bg4);border:1px solid var(--border2);position:relative;transition:background .2s;flex-shrink:0;}
+.switch-thumb{width:12px;height:12px;border-radius:50%;background:var(--text3);position:absolute;top:2px;left:2px;transition:left .2s,background .2s;}
+.switch-track.on{background:var(--accent);}
+.switch-track.on .switch-thumb{left:16px;background:#fff;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;}
 ::-webkit-scrollbar{width:5px;height:5px;}
@@ -944,7 +959,14 @@ function App() {
   // dropdowns: objeto con todas las listas de opciones para los desplegables.
   // null mientras se están cargando desde el servidor.
   const [dropdowns, setDropdowns]       = useState(null);
+  const [lightMode, setLightMode]       = useState(() => lsGet("sigt_theme") === "light");
   const notif = useNotifications();
+
+  // Aplicar clase "light" al body según el modo
+  useEffect(() => {
+    document.body.classList.toggle("light", lightMode);
+    lsSet("sigt_theme", lightMode ? "light" : "dark");
+  }, [lightMode]);
 
   // Al iniciar sesión, carga todos los desplegables desde el servidor una sola vez.
   // Incluye normalización defensiva: si el servidor devuelve datos en formato viejo
@@ -1002,13 +1024,10 @@ function App() {
           "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
           "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
         ]),
-        // Proveedores de combustible desde hoja "ESTACIONES_COMBUSTIBLES" col A
         ESTACIONES_COMBUSTIBLES: withFallback(d.ESTACIONES_COMBUSTIBLES, [
           "YPF","SHELL","AXION","PUMA","OTRO"
         ]),
-        // Tasas de cambio negociadas con choferes — vienen de Google Sheets
-        // TC_USD: A2 de hoja "USD/ARS CHOFERES" — cuántos ARS vale 1 USD
-        // TC_CLP: A2 de hoja "CLP/ARS CHOFERES" — cuántos CLP vale 1 ARS (ej: 160)
+        FORMAS_PAGO: withFallback(d.FORMAS_PAGO, ["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]),
         TC_USD: d.TC_USD || 1200,
         TC_CLP: d.TC_CLP || 160,
       });
@@ -1070,7 +1089,8 @@ function App() {
       <div className="body">
         <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)}
           modules={visibleMods} active={activeModule} onSelect={setActiveModule}
-          username={session.username} role={perms.role}/>
+          username={session.username} role={perms.role}
+          lightMode={lightMode} onToggleTheme={() => setLightMode(p=>!p)}/>
         <main className="main">
           {dropdowns ? (
             <ModuleRenderer moduleId={activeModule} session={session}
@@ -1119,7 +1139,7 @@ function TopBar({ onLogout }) {
 //   onSelect  — función que se llama cuando el usuario hace clic en un módulo
 //   username  — nombre del usuario logueado (para mostrar en el pie)
 //   role      — rol del usuario (para mostrar en el pie)
-function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) {
+function Sidebar({ open, onToggle, modules, active, onSelect, username, role, lightMode, onToggleTheme }) {
   return (
     <div className={`sidebar${open?"":" collapsed"}`}>
       <div className="sidebar-header">
@@ -1141,6 +1161,14 @@ function Sidebar({ open, onToggle, modules, active, onSelect, username, role }) 
               <div className="user-name">{username}</div>
               <div className="user-role">{role}</div>
             </div>
+          </div>
+          {/* Toggle modo diurno/nocturno */}
+          <div className="theme-switch" onClick={onToggleTheme} title="Cambiar tema">
+            <span style={{fontSize:14}}>{lightMode ? "☀️" : "🌙"}</span>
+            <div className={`switch-track${lightMode?" on":""}`}>
+              <div className="switch-thumb"/>
+            </div>
+            <span className="theme-switch-label">{lightMode ? "Diurno" : "Nocturno"}</span>
           </div>
         </div>
       )}
@@ -1548,10 +1576,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   function removeSegment(i) {
     if (segments.length>1) setSegments(p => p.filter((_,idx) => idx!==i));
   }
-  // UPDATE: updateSeg ahora es async para soportar fetchKmPrevistos (OSRM + fallback).
-  // El campo km se actualiza en dos pasos: primero con KM_TABLE (inmediato) y
-  // luego con OSRM si la respuesta llega (reemplaza el valor silenciosamente).
-  async function updateSeg(i, key, val) {
+  function updateSeg(i, key, val) {
     setSegments(p => {
       const n = [...p];
       n[i] = { ...n[i], [key]:val };
@@ -1559,33 +1584,38 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         const d = key==="desde" ? val : n[i].desde;
         const h = key==="hasta" ? val : n[i].hasta;
         n[i].segId = makeSegmentId(id, d, h, i+1);
-        // Paso 1: KM_TABLE local (instantáneo) — el usuario ve algo enseguida
+        // KM_TABLE síncrono — siempre disponible, sin CORS ni red
         const kmLocal = getKmPrevistos(d, h);
         if (kmLocal !== null) { n[i].kmPrevistos = kmLocal; n[i].kmManual = false; }
         else { n[i].kmManual = true; }
       }
       return n;
     });
-    // Paso 2: si cambia origen/destino, intentar OSRM en background
-    if (key === "desde" || key === "hasta") {
-      setSegments(prev => {
-        const seg = prev[i];
-        const d = key==="desde" ? val : seg?.desde;
-        const h = key==="hasta" ? val : seg?.hasta;
-        if (!d || !h || d===h) return prev;
-        fetchKmPrevistos(d, h).then(km => {
-          if (km === null) return;
-          setSegments(curr => {
-            const upd = [...curr];
-            // Solo actualizar si el tramo sigue siendo el mismo origen/destino
-            if (upd[i] && String(upd[i].desde)===String(d) && String(upd[i].hasta)===String(h)) {
-              upd[i] = { ...upd[i], kmPrevistos: km, kmManual: false };
-            }
-            return upd;
+    // OSRM en background — actualiza si llega antes de que el usuario cambie el campo
+    if ((key === "desde" || key === "hasta") && !readonly) {
+      const d = key==="desde" ? val : null; // se resolverá en el then
+      const h = key==="hasta" ? val : null;
+      // Capturar valores actuales del tramo fuera del closure de setSegments
+      setTimeout(() => {
+        setSegments(curr => {
+          const seg = curr[i];
+          if (!seg) return curr;
+          const desde = key==="desde" ? val : seg.desde;
+          const hasta = key==="hasta" ? val : seg.hasta;
+          if (!desde || !hasta || desde===hasta) return curr;
+          fetchKmOSRM(desde, hasta).then(km => {
+            if (km === null) return;
+            setSegments(latest => {
+              const upd = [...latest];
+              if (upd[i] && String(upd[i].desde)===desde && String(upd[i].hasta)===hasta) {
+                upd[i] = { ...upd[i], kmPrevistos: km, kmManual: false };
+              }
+              return upd;
+            });
           });
+          return curr;
         });
-        return prev; // no cambia nada en este render
-      });
+      }, 0);
     }
   }
 
@@ -1603,8 +1633,10 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         e.cantidad = "Requerido";
       }
     }
-    if (!cliente)  e.cliente = "Requerido";
-    if (!numMIC)   e.numMIC = "Requerido";
+    if (!cliente)  e.cliente  = "Requerido";
+    if (!numMIC)   e.numMIC   = "Requerido";
+    if (!fechaMIC) e.fechaMIC = "Requerido";
+    if (!numCRT)   e.numCRT   = "Requerido";
     if (!fechaCRT) e.fechaCRT = "Requerido";
     setErrors(e);
     return Object.keys(e).length===0;
@@ -1635,7 +1667,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       um: umToSave,
       pies: isContenedor ? pies : "",
       clasificacion: isContenedor ? clasificacion : (tipoRow ? tipoRow.clasificacion : ""),
-      cantidad: isContenedor ? (cantidad||"1") : (cantIsInput ? cantidad : (tipoRow?.cantidad||"")),
+      cantidad: isContenedor ? (cantidad||"1") : (cantIsInput ? String(cantidad) : (tipoRow?.cantidad||"")),
       montoFactura, moneda, cliente, segments,
       numMIC, fechaMIC, numCRT, fechaCRT,
       statusDoc: extraStatus==="finalizado" ? "completo" : statusDoc,
@@ -1693,7 +1725,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">
-                Carga {errors.carga && <span className="form-error">{errors.carga}</span>}
+                Carga <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.carga && <span className="form-error">{errors.carga}</span>}
               </label>
               {/* FIX #1 — Hoja "CARGAS" col A */}
               <SearchableSelect
@@ -1706,7 +1738,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
             <div className="form-group">
               <label className="form-label">
-                Tipo de Carga {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
+                Tipo de Carga <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
               </label>
               {/* FIX #1 — Hoja "TIPO DE CARGA" col A */}
               <SearchableSelect
@@ -1784,7 +1816,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           {/* Monto + Cliente */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Monto Factura {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
+              <label className="form-label">Monto Factura <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
               <div className="input-with-currency">
                 <MoneyInput value={montoFactura} onChange={setMontoFactura} placeholder="0" disabled={readonly}/>
                 <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)} disabled={readonly}>
@@ -1793,7 +1825,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Cliente {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
+              <label className="form-label">Cliente <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
               {/* FIX #1 — hoja "CLIENTES" col A */}
               <SearchableSelect options={dropdowns.CLIENTES||[]} value={cliente} onChange={setCliente} placeholder="Buscar cliente..." disabled={readonly}/>
             </div>
@@ -1832,19 +1864,19 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">N° MIC {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
+              <label className="form-label">N° MIC <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
               <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha MIC</label>
+              <label className="form-label">Fecha MIC <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
               <input type="date" className="form-input" value={fechaMIC} onChange={e=>setFechaMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">N° CRT</label>
+              <label className="form-label">N° CRT <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
               <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha CRT {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
+              <label className="form-label">Fecha CRT <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
               <input type="date" className="form-input" value={fechaCRT} onChange={e=>setFechaCRT(e.target.value)} disabled={readonly}/>
             </div>
           </div>
@@ -1908,43 +1940,43 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
         <div className="segment-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Desde</label>
+              <label className="form-label">Desde <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
               {/* FIX #1 — hoja "LUGARES" col A */}
               <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.desde} onChange={v=>onChange("desde",v)} placeholder="Origen..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha inicio viaje</label>
+              <label className="form-label">Fecha inicio viaje <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
               {/* FIX: toInputDate() normaliza cualquier formato a "YYYY-MM-DD" */}
               <input type="date" className="form-input" value={toInputDate(seg.fechaInicio)} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Hasta</label>
+              <label className="form-label">Hasta <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
               {/* FIX #1 — hoja "LUGARES" col A */}
               <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.hasta} onChange={v=>onChange("hasta",v)} placeholder="Destino..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha prevista llegada</label>
+              <label className="form-label">Fecha prevista llegada <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
               <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaPrevista)} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Chofer</label>
-              {/* FIX #1 — hoja "CHOFERES" col A */}
+              <label className="form-label">Chofer <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              {/* FIX #1 */}
               <SearchableSelect options={dropdowns.CHOFERES||[]} value={seg.chofer} onChange={v=>onChange("chofer",v)} placeholder="Buscar chofer..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Tractor</label>
-              {/* FIX #1 — hoja "CAMIONES" col A */}
+              <label className="form-label">Tractor <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              {/* FIX #1 */}
               <SearchableSelect options={dropdowns.CAMIONES||[]} value={seg.tractor} onChange={v=>onChange("tractor",v)} placeholder="Buscar tractor..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Semi</label>
-              {/* FIX #1 — hoja "SEMIS" col A */}
+              <label className="form-label">Semi <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              {/* FIX #1 */}
               <SearchableSelect options={dropdowns.SEMIS||[]} value={seg.semi} onChange={v=>onChange("semi",v)} placeholder="Buscar semi..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha real llegada</label>
+              <label className="form-label">Fecha real llegada <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
               <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaReal)} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
             </div>
           </div>
@@ -2451,10 +2483,11 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
     CLP: dropdowns?.TC_CLP || 160,
     ARS: 1
   };
+  // TC_CLP = ARS por 100 CLP (ej: 160 = 100 CLP valen 160 ARS → 1 CLP = 1.6 ARS)
   const toARS = (monto, cur) => {
     if (cur === "ARS") return Number(monto || 0);
     if (cur === "USD") return Number(monto || 0) * TC.USD;
-    if (cur === "CLP") return Number(monto || 0) * 100 / TC.CLP;
+    if (cur === "CLP") return Number(monto || 0) * TC.CLP / 100;
     return Number(monto || 0);
   };
 
@@ -2698,7 +2731,13 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
             <span style={{ fontSize:13,color:gapKm>0?"var(--warning)":"var(--success)" }}>
               Gap: <strong>{gapKm>0?"+":""}{gapKm.toLocaleString("es-AR")} km</strong>
             </span>
-            <span style={{ fontSize:13,color:"var(--text2)" }}>Consumo: <strong>{consumo} L/100km</strong></span>
+            <span style={{ fontSize:13,color:"var(--text2)" }}>Consumo:</span>
+            <span style={{
+              fontFamily:"var(--mono)",fontSize:16,fontWeight:700,
+              color: consumo==="—" ? "var(--text3)" : Number(consumo)>40 ? "var(--danger)" : Number(consumo)>30 ? "var(--warning)" : "var(--success)",
+              padding:"2px 10px",borderRadius:"var(--radius)",
+              background: consumo==="—" ? "var(--bg4)" : Number(consumo)>40 ? "rgba(229,72,77,.1)" : Number(consumo)>30 ? "rgba(245,166,35,.1)" : "rgba(52,199,118,.1)"
+            }}>{consumo} L/100km</span>
           </div>
         </div>
       </div>
