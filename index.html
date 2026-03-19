@@ -720,6 +720,16 @@ function Notifications({ items }) {
   );
 }
 
+// ─── INDICADORES DE CAMPO OBLIGATORIO ────────────────────────────────────────
+// Req: asterisco rojo — campo siempre obligatorio (oculto en modo lectura)
+// Fin: asterisco verde — obligatorio solo para finalizar (oculto en modo lectura)
+const Req = ({ show=true }) => show
+  ? <span style={{color:"var(--danger)",fontWeight:700,marginLeft:3}}>*</span>
+  : null;
+const Fin = ({ show=true }) => show
+  ? <span style={{color:"var(--success)",fontSize:10,marginLeft:3}} title="Requerido para finalizar">✦</span>
+  : null;
+
 // ─── STATUS BADGE ─────────────────────────────────────────────────────────────
 // Componente visual reutilizable que muestra un estado como una pastillita de color.
 // Se usa en la tabla de viajes, en los tramos y en el historial.
@@ -1629,8 +1639,10 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       if (isContenedor) {
         if (!pies)          e.pies = "Requerido";
         if (!clasificacion) e.clasificacion = "Requerido";
-      } else if (tipoRow && cantIsInput && !cantidad) {
-        e.cantidad = "Requerido";
+        if (!cantidad)      e.cantidad = "Requerido";
+      } else if (tipoRow) {
+        if (cantIsInput && !cantidad) e.cantidad = "Requerido";
+        // Para tipos con cantidad fija (ej "1"), ya viene pre-cargada — no validar
       }
     }
     if (!cliente)  e.cliente  = "Requerido";
@@ -1725,7 +1737,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">
-                Carga <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.carga && <span className="form-error">{errors.carga}</span>}
+                Carga <Req show={!readonly}/> {errors.carga && <span className="form-error">{errors.carga}</span>}
               </label>
               {/* FIX #1 — Hoja "CARGAS" col A */}
               <SearchableSelect
@@ -1738,7 +1750,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
             <div className="form-group">
               <label className="form-label">
-                Tipo de Carga <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
+                Tipo de Carga <Req show={!readonly}/> {errors.tipoCarga && <span className="form-error">{errors.tipoCarga}</span>}
               </label>
               {/* FIX #1 — Hoja "TIPO DE CARGA" col A */}
               <SearchableSelect
@@ -1756,7 +1768,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             isContenedor ? (
               <div className="form-row">
                 <div className="form-group" style={{ minWidth:150 }}>
-                  <label className="form-label">Pies {errors.pies && <span className="form-error">{errors.pies}</span>}</label>
+                  <label className="form-label">Pies <Req show={!readonly}/> {errors.pies && <span className="form-error">{errors.pies}</span>}</label>
                   <SearchableSelect
                     options={[{value:"40 PIES",label:"40 PIES"},{value:"20 PIES",label:"20 PIES"}]}
                     value={pies} onChange={v=>setPies(v)}
@@ -1765,7 +1777,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                 </div>
                 {pies && (
                   <div className="form-group" style={{ minWidth:200 }}>
-                    <label className="form-label">Clasificación {errors.clasificacion && <span className="form-error">{errors.clasificacion}</span>}</label>
+                    <label className="form-label">Clasificación <Req show={!readonly}/> {errors.clasificacion && <span className="form-error">{errors.clasificacion}</span>}</label>
                     <SearchableSelect
                       options={[{value:"REFRIGERADO",label:"REFRIGERADO"},{value:"NO REFRIGERADO",label:"NO REFRIGERADO"}]}
                       value={clasificacion} onChange={v=>setClasificacion(v)}
@@ -1778,7 +1790,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                   <div className="field-readonly">UN</div>
                 </div>
                 <div className="form-group" style={{ minWidth:120 }}>
-                  <label className="form-label">Cantidad</label>
+                  <label className="form-label">Cantidad <Req show={!readonly}/></label>
                   <input className="form-input" type="number" min="1" step="1"
                     value={cantidad||"1"} onChange={e=>setCantidad(e.target.value)} disabled={readonly}/>
                 </div>
@@ -1800,7 +1812,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                 {showCant && (
                   <div className="form-group" style={{ minWidth:140 }}>
                     <label className="form-label">
-                      Cantidad {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
+                      Cantidad <Req show={!readonly}/> {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
                     </label>
                     {cantIsInput
                       ? <input className="form-input" type="number" min="0" step="0.01"
@@ -1816,7 +1828,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           {/* Monto + Cliente */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Monto Factura <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
+              <label className="form-label">Monto Factura <Req show={!readonly}/> {errors.montoFactura && <span className="form-error">{errors.montoFactura}</span>}</label>
               <div className="input-with-currency">
                 <MoneyInput value={montoFactura} onChange={setMontoFactura} placeholder="0" disabled={readonly}/>
                 <select className="form-select" style={{ width:80 }} value={moneda} onChange={e=>setMoneda(e.target.value)} disabled={readonly}>
@@ -1825,7 +1837,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Cliente <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
+              <label className="form-label">Cliente <Req show={!readonly}/> {errors.cliente && <span className="form-error">{errors.cliente}</span>}</label>
               {/* FIX #1 — hoja "CLIENTES" col A */}
               <SearchableSelect options={dropdowns.CLIENTES||[]} value={cliente} onChange={setCliente} placeholder="Buscar cliente..." disabled={readonly}/>
             </div>
@@ -1864,19 +1876,19 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">N° MIC <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
+              <label className="form-label">N° MIC <Req show={!readonly}/> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
               <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha MIC <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
+              <label className="form-label">Fecha MIC <Req show={!readonly}/> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
               <input type="date" className="form-input" value={fechaMIC} onChange={e=>setFechaMIC(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">N° CRT <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
+              <label className="form-label">N° CRT <Req show={!readonly}/> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
               <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha CRT <span style={{color:"var(--danger)",fontWeight:700}}>*</span> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
+              <label className="form-label">Fecha CRT <Req show={!readonly}/> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
               <input type="date" className="form-input" value={fechaCRT} onChange={e=>setFechaCRT(e.target.value)} disabled={readonly}/>
             </div>
           </div>
@@ -1940,43 +1952,43 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
         <div className="segment-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Desde <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Desde <Fin show={!readonly}/></label>
               {/* FIX #1 — hoja "LUGARES" col A */}
               <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.desde} onChange={v=>onChange("desde",v)} placeholder="Origen..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha inicio viaje <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Fecha inicio viaje <Fin show={!readonly}/></label>
               {/* FIX: toInputDate() normaliza cualquier formato a "YYYY-MM-DD" */}
               <input type="date" className="form-input" value={toInputDate(seg.fechaInicio)} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Hasta <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Hasta <Fin show={!readonly}/></label>
               {/* FIX #1 — hoja "LUGARES" col A */}
               <SearchableSelect options={dropdowns.LUGARES||[]} value={seg.hasta} onChange={v=>onChange("hasta",v)} placeholder="Destino..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha prevista llegada <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Fecha prevista llegada <Fin show={!readonly}/></label>
               <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaPrevista)} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Chofer <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Chofer <Fin show={!readonly}/></label>
               {/* FIX #1 */}
               <SearchableSelect options={dropdowns.CHOFERES||[]} value={seg.chofer} onChange={v=>onChange("chofer",v)} placeholder="Buscar chofer..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Tractor <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Tractor <Fin show={!readonly}/></label>
               {/* FIX #1 */}
               <SearchableSelect options={dropdowns.CAMIONES||[]} value={seg.tractor} onChange={v=>onChange("tractor",v)} placeholder="Buscar tractor..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Semi <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Semi <Fin show={!readonly}/></label>
               {/* FIX #1 */}
               <SearchableSelect options={dropdowns.SEMIS||[]} value={seg.semi} onChange={v=>onChange("semi",v)} placeholder="Buscar semi..." disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha real llegada <span style={{color:"var(--success)",fontSize:11}} title="Requerido para finalizar">✦</span></label>
+              <label className="form-label">Fecha real llegada <Fin show={!readonly}/></label>
               <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaReal)} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
             </div>
           </div>
@@ -2164,12 +2176,12 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
             Los registros no pueden editarse una vez guardados. Podés ingresar montos en las 3 divisas en una misma entrega.
           </div>
           <div className="form-group">
-            <label className="form-label">Fecha {errors.fecha && <span className="form-error">{errors.fecha}</span>}</label>
+            <label className="form-label">Fecha <Req/> {errors.fecha && <span className="form-error">{errors.fecha}</span>}</label>
             <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)}/>
           </div>
           <div className="form-group">
             <label className="form-label">
-              Chofer (destinatario) {errors.chofer && <span className="form-error">{errors.chofer}</span>}
+              Chofer (destinatario) <Req/> {errors.chofer && <span className="form-error">{errors.chofer}</span>}
             </label>
             <SearchableSelect
               options={dropdowns.CHOFERES||[]}
@@ -2179,7 +2191,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           </div>
           <div className="form-group">
             <label className="form-label">
-              Responsable de la entrega {errors.responsable && <span className="form-error">{errors.responsable}</span>}
+              Responsable de la entrega <Req/> {errors.responsable && <span className="form-error">{errors.responsable}</span>}
             </label>
             <SearchableSelect
               options={dropdowns.COLABORADORES||[]}
@@ -2191,7 +2203,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           {/* NEW: Forma de pago — obligatorio, viene de hoja FORMAS_PAGO col A */}
           <div className="form-group">
             <label className="form-label">
-              Forma de pago {errors.formaPago && <span className="form-error">{errors.formaPago}</span>}
+              Forma de pago <Req/> {errors.formaPago && <span className="form-error">{errors.formaPago}</span>}
             </label>
             <SearchableSelect
               options={dropdowns.FORMAS_PAGO||["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]}
@@ -2213,7 +2225,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           {/* Montos por divisa */}
           <div className="form-group">
             <label className="form-label">
-              Montos {errors.montos && <span className="form-error">{errors.montos}</span>}
+              Montos <Req/> {errors.montos && <span className="form-error">{errors.montos}</span>}
             </label>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {montos.map((m,i) => (
@@ -2597,7 +2609,7 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
               )}
             </div>
           ))}
-          <div style={{ display:"flex",gap:20,paddingTop:8 }}>
+          <div style={{ display:"flex",gap:20,paddingTop:8,flexWrap:"wrap" }}>
             <span style={{ fontSize:13,color:"var(--text2)" }}>Km previstos total: <strong>{fmtKm(totalKmPrev)}</strong></span>
             <span style={{ fontSize:13,color:"var(--text2)" }}>Km reales total: <strong>{fmtKm(totalKmReales)}</strong></span>
             <span style={{ fontSize:13,color:gapKm>0?"var(--warning)":"var(--success)" }}>
@@ -2725,19 +2737,23 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
               <button className="btn btn-danger btn-sm btn-icon" onClick={()=>setFuelRows(p=>p.filter((_,idx)=>idx!==i))}>✕</button>
             </div>
           ))}
-          <div style={{ display:"flex",gap:24,borderTop:"1px solid var(--border)",paddingTop:12,marginTop:8,flexWrap:"wrap" }}>
+          <div style={{ display:"flex",gap:24,borderTop:"1px solid var(--border)",paddingTop:12,marginTop:8,flexWrap:"wrap",alignItems:"center" }}>
             <span style={{ fontSize:13,color:"var(--text2)" }}>Total litros: <strong>{fmtNum(totalLitros)}</strong></span>
             <span style={{ fontSize:13,color:"var(--text2)" }}>Km reales totales: <strong>{fmtKm(totalKmReales)}</strong></span>
             <span style={{ fontSize:13,color:gapKm>0?"var(--warning)":"var(--success)" }}>
               Gap: <strong>{gapKm>0?"+":""}{gapKm.toLocaleString("es-AR")} km</strong>
             </span>
-            <span style={{ fontSize:13,color:"var(--text2)" }}>Consumo:</span>
+          </div>
+          {/* Consumo destacado */}
+          <div style={{ marginTop:12, padding:"12px 16px", borderRadius:"var(--radius)", border:"1px solid var(--border2)", background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div>
+              <div style={{ fontSize:11,fontWeight:600,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".06em" }}>⛽ Consumo de combustible</div>
+              <div style={{ fontSize:11,color:"var(--text3)",marginTop:2 }}>{fmtNum(totalLitros)} L ÷ {fmtKm(totalKmReales)}</div>
+            </div>
             <span style={{
-              fontFamily:"var(--mono)",fontSize:16,fontWeight:700,
-              color: consumo==="—" ? "var(--text3)" : Number(consumo)>40 ? "var(--danger)" : Number(consumo)>30 ? "var(--warning)" : "var(--success)",
-              padding:"2px 10px",borderRadius:"var(--radius)",
-              background: consumo==="—" ? "var(--bg4)" : Number(consumo)>40 ? "rgba(229,72,77,.1)" : Number(consumo)>30 ? "rgba(245,166,35,.1)" : "rgba(52,199,118,.1)"
-            }}>{consumo} L/100km</span>
+              fontFamily:"var(--mono)",fontSize:22,fontWeight:700,
+              color: consumo==="—" ? "var(--text3)" : Number(consumo)>40 ? "var(--danger)" : Number(consumo)>30 ? "var(--warning)" : "var(--success)"
+            }}>{consumo} <span style={{fontSize:13,fontWeight:400}}>L/100km</span></span>
           </div>
         </div>
       </div>
