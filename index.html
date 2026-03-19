@@ -230,22 +230,48 @@ function lsGet(k,def=null){try{const v=localStorage.getItem(k);return v?JSON.par
 // Ej: lsSet("sigt_session", { username:"SOL", token:"abc..." })
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 
-// Convierte una fecha técnica ("2025-03-17") al formato argentino ("17/03/2025").
-// Si recibe vacío o nulo, muestra "—" en lugar de un error.
+// FIX: parseDate — convierte cualquier representación de fecha a un objeto Date válido.
+// Maneja todos los formatos que pueden llegar del backend GAS o de los inputs:
+//   "2025-03-17"              → ISO date (input type=date)
+//   "2025-03-17T00:00:00.000Z"→ ISO datetime (JSON.stringify de Date en GAS)
+//   "17/03/2025"              → formato argentino sin hora
+//   "17/03/2025 - 14:32:05"  → formato argentino con hora (fmtTimestamp del backend)
+//   Date object               → ya es Date, usar directo
+// Devuelve null si no puede parsear.
+function parseDate(d) {
+  if (!d) return null;
+  if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+  const s = String(d).trim();
+  if (!s) return null;
+  // Formato argentino: "dd/mm/aaaa" o "dd/mm/aaaa - hh:mm:ss"
+  const arMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s*-\s*(\d{2}):(\d{2}):(\d{2}))?/);
+  if (arMatch) {
+    const [,dd,mm,yy,hh="00",mi="00",ss="00"] = arMatch;
+    // Construir ISO y parsear para evitar ambigüedad de timezone
+    const dt = new Date(`${yy}-${mm}-${dd}T${hh}:${mi}:${ss}`);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  // ISO "2025-03-17" o "2025-03-17T..." — new Date() lo maneja bien
+  const dt = new Date(s);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+// Convierte cualquier representación de fecha al formato argentino "dd/mm/aaaa".
+// Si recibe vacío, nulo o fecha inválida, muestra "—".
 function fmtDate(d){
-  if(!d)return"—";
-  const dt = new Date(d);
+  const dt = parseDate(d);
+  if (!dt) return "—";
   const dd = String(dt.getDate()).padStart(2,"0");
   const mm = String(dt.getMonth()+1).padStart(2,"0");
   const yy = dt.getFullYear();
   return `${dd}/${mm}/${yy}`;
 }
 
-// Igual que fmtDate pero incluye la hora en formato: dd/mm/aaaa - hh:mm:ss
+// Igual que fmtDate pero incluye la hora: "dd/mm/aaaa - hh:mm:ss"
 // Se usa en el historial, logs de auditoría y fecha de registro de entregas.
 function fmtDT(d){
-  if(!d)return"—";
-  const dt = new Date(d);
+  const dt = parseDate(d);
+  if (!dt) return "—";
   const dd = String(dt.getDate()).padStart(2,"0");
   const mm = String(dt.getMonth()+1).padStart(2,"0");
   const yy = dt.getFullYear();
@@ -262,6 +288,22 @@ function nowTS(){return fmtDT(new Date());}
 // Devuelve la fecha de hoy en formato técnico "YYYY-MM-DD".
 // Se usa para pre-completar campos de fecha con el día actual.
 function nowISO(){return new Date().toISOString().slice(0,10);}
+
+// FIX: Convierte cualquier representación de fecha al formato "YYYY-MM-DD"
+// que requieren los <input type="date">. Usa parseDate() internamente.
+// Si no puede parsear, devuelve "".
+// Ej: "Wed Mar 18 2026..." → "2026-03-18"
+// Ej: "18/03/2026" → "2026-03-18"
+// Ej: "2026-03-18T03:00:00.000Z" → "2026-03-18"
+// Ej: "2026-03-18" → "2026-03-18" (ya correcto)
+function toInputDate(d) {
+  if (!d) return "";
+  const dt = parseDate(d);
+  if (!dt) return "";
+  const dd = String(dt.getDate()).padStart(2,"0");
+  const mm = String(dt.getMonth()+1).padStart(2,"0");
+  return `${dt.getFullYear()}-${mm}-${dd}`;
+}
 
 // Formatea un número como kilómetros con separador de miles.
 // Ej: fmtKm(1240) → "1.240 km" | fmtKm(null) → "—"
@@ -1364,10 +1406,11 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [moneda,       setMoneda]       = useState(trip?.moneda       || "USD");
   const [cliente,      setCliente]      = useState(trip?.cliente      || "");
   const [segments,     setSegments]     = useState(trip?.segments     || [makeNewSegment(id, 1, "", "")]);
-  const [numMIC,       setNumMIC]       = useState(trip?.numMIC       || "");
-  const [fechaMIC,     setFechaMIC]     = useState(trip?.fechaMIC     || "");
-  const [numCRT,       setNumCRT]       = useState(trip?.numCRT       || "");
-  const [fechaCRT,     setFechaCRT]     = useState(trip?.fechaCRT     || "");
+  const [numMIC,       setNumMIC]       = useState(trip?.numMIC                    || "");
+  // FIX: toInputDate() convierte cualquier formato de fecha a "YYYY-MM-DD" para el input
+  const [fechaMIC,     setFechaMIC]     = useState(toInputDate(trip?.fechaMIC)     || "");
+  const [numCRT,       setNumCRT]       = useState(trip?.numCRT                    || "");
+  const [fechaCRT,     setFechaCRT]     = useState(toInputDate(trip?.fechaCRT)     || "");
   const [statusDoc,    setStatusDoc]    = useState(trip?.statusDoc    || "incompleto");
   const [obsDoc,       setObsDoc]       = useState(trip?.obsDoc       || "");
   const [saving,       setSaving]       = useState(false);
@@ -1454,12 +1497,24 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const showCant  = tipoRow && tipoRow.cantidad      !== "-";
   const cantIsInput = tipoRow && tipoRow.cantidad === "";
 
+  // FIX: usar ref para evitar resetear cantidad en el primer render.
+  // Cuando el viaje viene del servidor ya tiene cantidad cargada — no debemos pisarla.
+  // Solo resetear cuando el usuario CAMBIA tipoCarga activamente.
+  const tipoCargaPrevRef = useRef(tipoCarga);
   useEffect(() => {
+    if (tipoCargaPrevRef.current === tipoCarga) return; // primer render: no resetear
+    tipoCargaPrevRef.current = tipoCarga;
     setPies(""); setClasificacion("");
     setCantidad(!isContenedor && tipoRow && tipoRow.cantidad !== "-" && tipoRow.cantidad !== "" ? tipoRow.cantidad : "");
   }, [tipoCarga]);
 
-  useEffect(() => { if (isContenedor) setClasificacion(""); }, [pies]);
+  // FIX: también evitar reset de clasificacion en el primer render
+  const piesPrevRef = useRef(pies);
+  useEffect(() => {
+    if (piesPrevRef.current === pies) return;
+    piesPrevRef.current = pies;
+    if (isContenedor) setClasificacion("");
+  }, [pies]);
 
   // FIX #1 — Recalcular NAC/INT cuando cambian los tramos
   useEffect(() => {
@@ -1859,7 +1914,8 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             </div>
             <div className="form-group">
               <label className="form-label">Fecha inicio viaje</label>
-              <input type="date" className="form-input" value={seg.fechaInicio} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
+              {/* FIX: toInputDate() normaliza cualquier formato a "YYYY-MM-DD" */}
+              <input type="date" className="form-input" value={toInputDate(seg.fechaInicio)} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Hasta</label>
@@ -1868,7 +1924,7 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             </div>
             <div className="form-group">
               <label className="form-label">Fecha prevista llegada</label>
-              <input type="date" className="form-input" value={seg.fechaLlegadaPrevista} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
+              <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaPrevista)} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -1889,7 +1945,7 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             </div>
             <div className="form-group">
               <label className="form-label">Fecha real llegada</label>
-              <input type="date" className="form-input" value={seg.fechaLlegadaReal} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
+              <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaReal)} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -2320,28 +2376,57 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
   const [devolucion, setDevolucion] = useState({ ARS:"", CLP:"", USD:"" });
   const [saving, setSaving]       = useState(false);
 
-  // FIX #3 — Rango de fechas: min(fechaInicio) → max(fechaLlegadaReal) - 1 día
-  const allFechasInicio = segs.map(s=>s.fechaInicio).filter(Boolean).sort();
-  const allFechasLlegada = segs.map(s=>s.fechaLlegadaReal||s.fechaLlegadaPrevista).filter(Boolean).sort();
+  // FIX: normalizar fechas de tramos a ISO antes de ordenar,
+  // porque pueden venir en formato argentino ("17/03/2025") desde TRIP_SEGMENTS.
+  // El sort() sobre strings ISO "YYYY-MM-DD" es lexicográfico y da orden correcto.
+  function segFechaISO(f) {
+    if (!f) return "";
+    const dt = parseDate(f);
+    if (!dt) return "";
+    const dd = String(dt.getDate()).padStart(2,"0");
+    const mm = String(dt.getMonth()+1).padStart(2,"0");
+    return `${dt.getFullYear()}-${mm}-${dd}`;
+  }
+  const allFechasInicio  = segs.map(s=>segFechaISO(s.fechaInicio)).filter(Boolean).sort();
+  const allFechasLlegada = segs.map(s=>segFechaISO(s.fechaLlegadaReal||s.fechaLlegadaPrevista)).filter(Boolean).sort();
   const dateFrom = allFechasInicio[0] || "";
   const dateTo   = allFechasLlegada[allFechasLlegada.length-1] || "";
-  // Restar 1 día a dateTo
+  // FIX: dateToMinus1 usa parseDate() — robusto a cualquier formato de fecha.
+  // Si dateTo llega como "17/03/2025 - 14:32:05" (formato del backend), parseDate()
+  // lo convierte correctamente antes de restar 1 día.
   const dateToMinus1 = useMemo(() => {
     if (!dateTo) return "";
-    const d = new Date(dateTo + "T00:00:00");
+    const d = parseDate(dateTo);
+    if (!d) return "";
     d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0,10);
+    // Devolver en formato ISO "YYYY-MM-DD" para comparar con e.fecha
+    const dd = String(d.getDate()).padStart(2,"0");
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    return `${d.getFullYear()}-${mm}-${dd}`;
   }, [dateTo]);
 
-  // Filtro correcto: chofer === driver (campo nuevo en entrega) + rango de fechas
-  // Rango: desde mínima fecha inicio viaje hasta máxima fecha real llegada - 1 día (inclusive)
+  // FIX: normalizar las fechas de los tramos para comparar correctamente.
+  // Las fechas de segmentos pueden venir en cualquier formato — convertir a ISO "YYYY-MM-DD".
+  function toISO(fechaStr) {
+    if (!fechaStr) return "";
+    const dt = parseDate(fechaStr);
+    if (!dt) return "";
+    const dd = String(dt.getDate()).padStart(2,"0");
+    const mm = String(dt.getMonth()+1).padStart(2,"0");
+    return `${dt.getFullYear()}-${mm}-${dd}`;
+  }
+
+  // Filtro correcto: chofer === driver + rango de fechas normalizado a ISO
   const driverEntregas = useMemo(() => {
     if (!driver || !dateFrom) return [];
-    return entregas.filter(e =>
-      e.chofer === driver &&
-      e.fecha >= dateFrom &&
-      (!dateToMinus1 || e.fecha <= dateToMinus1)
-    );
+    const from = toISO(dateFrom);
+    return entregas.filter(e => {
+      if (e.chofer !== driver) return false;
+      const eFecha = toISO(e.fecha);
+      if (from && eFecha < from) return false;
+      if (dateToMinus1 && eFecha > dateToMinus1) return false;
+      return true;
+    });
   }, [entregas, driver, dateFrom, dateToMinus1]);
 
   const entByCur = { ARS:[], CLP:[], USD:[] };
