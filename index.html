@@ -1439,6 +1439,9 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [pies,          setPies]          = useState(trip?.pies          || "");
   const [clasificacion, setClasificacion] = useState(trip?.clasificacion || "");
   const [cantidad,      setCantidad]      = useState(trip?.cantidad      || "");
+  // Ref que indica si cantidad tiene un valor que vino del servidor — protege
+  // contra el reset del useEffect de tipoCarga al editar un viaje existente.
+  const cantidadFromServerRef = useRef(!isNew && (trip?.cantidad !== undefined && trip?.cantidad !== ""));
 
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
   const [moneda,       setMoneda]       = useState(trip?.moneda       || "USD");
@@ -1468,8 +1471,9 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     const draft = lsGet(draftKey);
     if (!draft) return;
     if (isNew) {
-      // Viaje nuevo: restaurar todo
-      if (draft.cantidad      !== undefined) setCantidad(draft.cantidad);
+      // Viaje nuevo: restaurar campos de texto/número pero NO los desplegables
+      // de carga/tipoCarga — esos deben arrancar vacíos siempre para que el
+      // usuario los elija explícitamente cada vez.
       if (draft.numMIC        !== undefined) setNumMIC(draft.numMIC);
       if (draft.fechaMIC      !== undefined) setFechaMIC(draft.fechaMIC);
       if (draft.numCRT        !== undefined) setNumCRT(draft.numCRT);
@@ -1478,12 +1482,9 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       if (draft.statusDoc     !== undefined) setStatusDoc(draft.statusDoc);
       if (draft.montoFactura  !== undefined) setMontoFactura(draft.montoFactura);
       if (draft.moneda        !== undefined) setMoneda(draft.moneda);
-      if (draft.carga         !== undefined) setCarga(draft.carga);
-      if (draft.tipoCarga     !== undefined) setTipoCarga(draft.tipoCarga);
-      if (draft.pies          !== undefined) setPies(draft.pies);
-      if (draft.clasificacion !== undefined) setClasificacion(draft.clasificacion);
       if (draft.cliente       !== undefined) setCliente(draft.cliente);
-      if (draft.segments      !== undefined) setSegments(draft.segments);
+      // NO restaurar: carga, tipoCarga, pies, clasificacion, cantidad, segments
+      // Estos deben arrancar siempre vacíos en un nuevo viaje.
     } else {
       // Viaje existente: el servidor manda los datos correctos en `trip`.
       // Solo completar con draft si el campo llegó vacío desde el servidor
@@ -1543,7 +1544,12 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     if (tipoCargaPrevRef.current === tipoCarga) return; // primer render: no resetear
     tipoCargaPrevRef.current = tipoCarga;
     setPies(""); setClasificacion("");
-    setCantidad(!isContenedor && tipoRow && tipoRow.cantidad !== "-" && tipoRow.cantidad !== "" ? tipoRow.cantidad : "");
+    // Solo resetear cantidad si NO viene del servidor (evita pisar valor guardado)
+    if (!cantidadFromServerRef.current) {
+      setCantidad(!isContenedor && tipoRow && tipoRow.cantidad !== "-" && tipoRow.cantidad !== "" ? tipoRow.cantidad : "");
+    }
+    // Una vez que el usuario cambió tipoCarga manualmente, ya no hay "valor del servidor"
+    cantidadFromServerRef.current = false;
   }, [tipoCarga]);
 
   // FIX: también evitar reset de clasificacion en el primer render
@@ -1688,6 +1694,14 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     };
   }
 
+  // Volver sin guardar: limpiar draft de "new" para que la próxima vez
+  // el formulario arranque vacío. Para viajes existentes NO limpiar —
+  // el draft puede tener campos que el usuario quería conservar.
+  function handleBack() {
+    if (isNew) lsSet(draftKey, null);
+    onBack();
+  }
+
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
@@ -1719,7 +1733,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             <span className="km-total">📍 {totalKm>0?totalKm.toLocaleString("es-AR"):"0"} km totales</span>
           </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
+        <button className="btn btn-secondary btn-sm" onClick={handleBack}>← Volver</button>
       </div>
 
       {/* CARD 1: Información general */}
@@ -1911,7 +1925,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
 
       {!readonly && (
         <div className="save-bar">
-          <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
+          <button className="btn btn-secondary" onClick={handleBack}>Cancelar</button>
           <button className="btn btn-success" onClick={handleFinalize} disabled={saving}>🏁 Finalizar Viaje</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar"}</button>
         </div>
