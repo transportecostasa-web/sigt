@@ -682,8 +682,8 @@ function initDB() {
         "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
         "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
       ],
-      // Hoja "ESTACIONES_COMBUSTIBLES" col A — proveedores de combustible
-      ESTACIONES_COMBUSTIBLES:["YPF","SHELL","AXION","PUMA","OTRO"],
+      // Hoja "ESTACIONES_COMBUSTIBLE" col A — proveedores de combustible
+      ESTACIONES_COMBUSTIBLE:["YPF","SHELL","AXION","PUMA","OTRO"],
     }
   };
 }
@@ -1034,7 +1034,7 @@ function App() {
           "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
           "ESTADÍA","REVISIÓN TÉCNICA","PARQUEADERO","OTRO"
         ]),
-        ESTACIONES_COMBUSTIBLES: withFallback(d.ESTACIONES_COMBUSTIBLES, [
+        ESTACIONES_COMBUSTIBLE: withFallback(d.ESTACIONES_COMBUSTIBLE, [
           "YPF","SHELL","AXION","PUMA","OTRO"
         ]),
         FORMAS_PAGO: withFallback(d.FORMAS_PAGO, ["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]),
@@ -1449,7 +1449,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   const [fechaMIC,     setFechaMIC]     = useState(toInputDate(trip?.fechaMIC)     || "");
   const [numCRT,       setNumCRT]       = useState(trip?.numCRT                    || "");
   const [fechaCRT,     setFechaCRT]     = useState(toInputDate(trip?.fechaCRT)     || "");
-  const [statusDoc,    setStatusDoc]    = useState(trip?.statusDoc    || "incompleto");
+  const [statusDoc,    setStatusDoc]    = useState(trip?.statusDoc    || (trip ? "incompleto" : ""));
   const [obsDoc,       setObsDoc]       = useState(trip?.obsDoc       || "");
   const [saving,       setSaving]       = useState(false);
   const [errors,       setErrors]       = useState({});
@@ -1809,15 +1809,15 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                     <div className="field-readonly">{tipoRow.clasificacion}</div>
                   </div>
                 )}
-                {showCant && (
+                {(showCant || (!isContenedor && !tipoRow && cantidad)) && (
                   <div className="form-group" style={{ minWidth:140 }}>
                     <label className="form-label">
                       Cantidad <Req show={!readonly}/> {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
                     </label>
-                    {cantIsInput
+                    {(cantIsInput || (!tipoRow && cantidad))
                       ? <input className="form-input" type="number" min="0" step="0.01"
                           value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} placeholder="Ingresá cantidad"/>
-                      : <div className="field-readonly">{tipoRow.cantidad}</div>
+                      : <div className="field-readonly">{tipoRow?.cantidad}</div>
                     }
                   </div>
                 )}
@@ -1896,6 +1896,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             <div className="form-group">
               <label className="form-label">Estado documentación</label>
               <select className="form-select" value={statusDoc} onChange={e=>setStatusDoc(e.target.value)} disabled={readonly}>
+                {!statusDoc && <option value="">— Seleccionar —</option>}
                 <option value="incompleto">Incompleto</option>
                 <option value="completo">Completo</option>
               </select>
@@ -2713,9 +2714,9 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Proveedor</label>
-                {/* CAMBIO 7 — desplegable desde hoja "ESTACIONES_COMBUSTIBLES" */}
+                {/* CAMBIO 7 — desplegable desde hoja "ESTACIONES_COMBUSTIBLE" */}
                 <SearchableSelect
-                  options={dropdowns?.ESTACIONES_COMBUSTIBLES||["YPF","SHELL","AXION","PUMA","OTRO"]}
+                  options={(dropdowns?.ESTACIONES_COMBUSTIBLE||[]).length > 0 ? dropdowns.ESTACIONES_COMBUSTIBLE : ["YPF","SHELL","AXION","PUMA","OTRO"]}
                   value={f.proveedor}
                   onChange={v=>{ const n=[...fuelRows];n[i]={...n[i],proveedor:v};setFuelRows(n); }}
                   placeholder="Buscar estación..."
