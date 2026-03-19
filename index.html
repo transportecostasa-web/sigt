@@ -1443,6 +1443,16 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   // contra el reset del useEffect de tipoCarga al editar un viaje existente.
   const cantidadFromServerRef = useRef(!isNew && (trip?.cantidad !== undefined && trip?.cantidad !== ""));
 
+  // Sincronizar cantidad desde el servidor si el estado quedó vacío pero trip tiene valor.
+  // Esto cubre el caso donde useState corrió antes de que el valor estuviera disponible
+  // o fue reseteado por algún efecto secundario.
+  useEffect(() => {
+    if (!isNew && trip?.cantidad !== undefined && trip?.cantidad !== "" && !cantidad) {
+      setCantidad(String(trip.cantidad));
+      cantidadFromServerRef.current = true;
+    }
+  }, [trip?.cantidad]);
+
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
   const [moneda,       setMoneda]       = useState(trip?.moneda       || "USD");
   const [cliente,      setCliente]      = useState(trip?.cliente      || "");
@@ -1829,9 +1839,11 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
                       Cantidad <Req show={!readonly}/> {errors.cantidad && <span className="form-error">{errors.cantidad}</span>}
                     </label>
                     {(cantIsInput || (!tipoRow && cantidad))
-                      ? <input className="form-input" type="number" min="0" step="0.01"
-                          value={cantidad} onChange={e=>setCantidad(e.target.value)} disabled={readonly} placeholder="Ingresá cantidad"/>
-                      : <div className="field-readonly">{tipoRow?.cantidad}</div>
+                      ? readonly
+                        ? <div className="field-readonly">{cantidad !== "" && cantidad !== undefined ? cantidad : "—"}</div>
+                        : <input className="form-input" type="number" min="0" step="0.01"
+                            value={cantidad} onChange={e=>setCantidad(e.target.value)} placeholder="Ingresá cantidad"/>
+                      : <div className="field-readonly">{tipoRow?.cantidad || cantidad || "—"}</div>
                     }
                   </div>
                 )}
