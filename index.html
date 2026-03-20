@@ -266,7 +266,14 @@ function parseDate(d) {
     const dt = new Date(`${yy}-${mm}-${dd}T${hh}:${mi}:${ss}`);
     return isNaN(dt.getTime()) ? null : dt;
   }
-  // ISO "2025-03-17" o "2025-03-17T..." — new Date() lo maneja bien
+  // ISO puro "2025-03-17" → parsear como hora local (no UTC)
+  // new Date("2025-03-17") interpreta como UTC medianoche → en Argentina
+  // devuelve el día anterior. Forzar hora local con T00:00:00.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const dt2 = new Date(s + "T00:00:00");
+    return isNaN(dt2.getTime()) ? null : dt2;
+  }
+  // ISO con tiempo "2025-03-17T03:00:00.000Z" → new Date() lo maneja bien
   const dt = new Date(s);
   return isNaN(dt.getTime()) ? null : dt;
 }
