@@ -2661,50 +2661,59 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
             Período: {fmtDate(dateFrom)} — {fmtDate(dateToMinus1||dateTo)}
             <span style={{ marginLeft:8, color:"var(--text3)" }}>(hasta el día anterior a la llegada)</span>
           </div>
-          {CURRENCIES.map(cur=>(
+                    {/* Solo mostrar divisas que tienen entregas */}
+          {CURRENCIES.filter(cur => entByCur[cur].length > 0).map(cur=>(
             <div key={cur} style={{ marginBottom:16 }}>
               <div className="section-label">{cur}</div>
-              {entByCur[cur].length===0
-                ? <div style={{ fontSize:12,color:"var(--text3)",marginBottom:8 }}>Sin entregas</div>
-                : (
-                  <div className="table-wrap" style={{ marginBottom:8 }}>
-                    <table>
-                      <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Equiv. ARS</th></tr></thead>
-                      <tbody>
-                        {entByCur[cur].map(e=>(
-                          <tr key={e.id}>
-                            <td>{fmtDate(e.fecha)}</td>
-                            <td>{e.responsable}</td>
-                            <td style={{ fontFamily:"var(--mono)" }}>{fmtNum(e.monto)}</td>
-                            <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(e.monto,cur))}</td>
-                          </tr>
-                        ))}
-                        <tr>
-                          <td colSpan={2} style={{ fontWeight:600,color:"var(--text)" }}>Subtotal {cur}</td>
-                          <td style={{ fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)" }}>{fmtNum(entBruto[cur])}</td>
-                          <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(entBruto[cur],cur))}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              }
-              {/* FIX #4 — campo devolución por moneda */}
-              <div style={{ display:"flex",alignItems:"center",gap:10,maxWidth:280 }}>
-                <label className="form-label" style={{ margin:0,whiteSpace:"nowrap" }}>Devolución {cur}</label>
-                <input className="form-input" type="number" min="0" step="0.01"
-                  value={devolucion[cur]}
-                  onChange={e=>setDevolucion(p=>({...p,[cur]:e.target.value}))}
-                  placeholder="0.00" style={{ maxWidth:160 }}/>
+              <div className="table-wrap" style={{ marginBottom:8 }}>
+                <table>
+                  <thead><tr><th>Fecha</th><th>Responsable</th><th>Monto</th><th>Equiv. ARS</th></tr></thead>
+                  <tbody>
+                    {entByCur[cur].map(e=>(
+                      <tr key={e.id}>
+                        <td>{fmtDate(e.fecha)}</td>
+                        <td>{e.responsable}</td>
+                        <td style={{ fontFamily:"var(--mono)" }}>{fmtNum(e.monto)}</td>
+                        <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(e.monto,cur))}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td colSpan={2} style={{ fontWeight:600,color:"var(--text)" }}>Subtotal {cur}</td>
+                      <td style={{ fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)" }}>{fmtNum(entBruto[cur])}</td>
+                      <td style={{ fontFamily:"var(--mono)",color:"var(--text3)" }}>{fmtNum(toARS(entBruto[cur],cur))}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              {Number(devolucion[cur])>0 && (
-                <div style={{ fontSize:12,color:"var(--success)",marginTop:4 }}>
-                  Neto {cur}: {fmtNum(entNeto[cur])} ({fmtNum(toARS(entNeto[cur],cur))} ARS)
-                </div>
-              )}
             </div>
           ))}
-          <div style={{ textAlign:"right",fontWeight:600,fontSize:14,borderTop:"1px solid var(--border)",paddingTop:12 }}>
+          {/* Sin entregas en ninguna divisa */}
+          {CURRENCIES.every(cur => entByCur[cur].length === 0) && (
+            <div style={{ fontSize:12,color:"var(--text3)",marginBottom:8 }}>Sin entregas en el período</div>
+          )}
+          {/* Devoluciones — agrupadas al pie, solo si hay entregas */}
+          {CURRENCIES.some(cur => entByCur[cur].length > 0) && (
+            <div style={{ marginTop:8, padding:"12px 16px", background:"var(--bg3)", borderRadius:"var(--radius)", border:"1px solid var(--border)" }}>
+              <div className="section-label" style={{ marginBottom:10 }}>Devoluciones</div>
+              <div style={{ display:"flex", gap:16, flexWrap:"wrap", alignItems:"center" }}>
+                {CURRENCIES.map(cur=>(
+                  <div key={cur} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <label className="form-label" style={{ margin:0, whiteSpace:"nowrap", minWidth:60 }}>Dev. {cur}</label>
+                    <input className="form-input" type="number" min="0" step="0.01"
+                      value={devolucion[cur]}
+                      onChange={e=>setDevolucion(p=>({...p,[cur]:e.target.value}))}
+                      placeholder="0.00" style={{ width:120 }}/>
+                    {Number(devolucion[cur])>0 && (
+                      <span style={{ fontSize:11, color:"var(--success)", whiteSpace:"nowrap" }}>
+                        = {fmtNum(toARS(entNeto[cur],cur))} ARS neto
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ textAlign:"right",fontWeight:600,fontSize:14,borderTop:"1px solid var(--border)",paddingTop:12,marginTop:12 }}>
             Total entregado neto (ARS equiv.): {fmtNum(entTotalARS)}
           </div>
         </div>
@@ -2723,6 +2732,7 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
             expTotal={expTotal}
             expTotalARS={expTotalARS}
             toARS={toARS}
+            isInternacional={segs.some(s => s.tripId && s.tripId.startsWith("INT"))}
           />
         </div>
       </div>
@@ -2864,7 +2874,22 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
 // Las categorías vienen del dropdown CATEGORIA_GASTOS (hoja Google Sheets).
 // Si una celda está vacía, no suma nada. El total por divisa se muestra al pie.
 // ═══════════════════════════════════════════════════════════════════════════════
-function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, toARS }) {
+function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, toARS, isInternacional }) {
+  // Columnas visibles:
+  //   NAC: ARS siempre + USD si el usuario lo activa
+  //   INT: ARS + CLP siempre + USD si el usuario lo activa
+  const [showUSD, setShowUSD] = useState(() =>
+    // Mostrar USD si ya hay algún gasto cargado en USD
+    expenses.some(e => Number(e.USD) > 0)
+  );
+
+  // Columnas activas según tipo de viaje y toggle USD
+  const activeCols = [
+    "ARS",
+    ...(isInternacional ? ["CLP"] : []),
+    ...(showUSD ? ["USD"] : []),
+  ];
+
   function updateCell(idx, cur, val) {
     setExpenses(p => {
       const n = [...p];
@@ -2880,16 +2905,16 @@ function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, 
           <thead>
             <tr>
               <th>Categoría</th>
-              <th style={{ textAlign:"right", width:140 }}>ARS</th>
-              <th style={{ textAlign:"right", width:140 }}>CLP</th>
-              <th style={{ textAlign:"right", width:140 }}>USD</th>
+              {activeCols.map(cur => (
+                <th key={cur} style={{ textAlign:"right", width:140 }}>{cur}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {expenses.map((e,i) => (
               <tr key={e.cat}>
                 <td style={{ color:"var(--text)", fontWeight:500 }}>{e.cat}</td>
-                {["ARS","CLP","USD"].map(cur => (
+                {activeCols.map(cur => (
                   <td key={cur} style={{ padding:"6px 8px" }}>
                     <MoneyInput
                       value={e[cur]}
@@ -2905,7 +2930,7 @@ function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, 
           <tfoot>
             <tr style={{ background:"var(--bg4)" }}>
               <td style={{ fontWeight:600, color:"var(--text)", padding:"10px 14px" }}>Total</td>
-              {["ARS","CLP","USD"].map(cur => (
+              {activeCols.map(cur => (
                 <td key={cur} style={{ fontFamily:"var(--mono)", fontWeight:600, color:"var(--text)", textAlign:"right", padding:"10px 14px" }}>
                   {expTotal[cur] > 0 ? fmtNum(expTotal[cur]) : "—"}
                   {expTotal[cur] > 0 && cur !== "ARS" && (
@@ -2919,8 +2944,19 @@ function GastosTabla({ dropdowns, expenses, setExpenses, expTotal, expTotalARS, 
           </tfoot>
         </table>
       </div>
-      <div style={{ textAlign:"right", fontWeight:600, fontSize:14, borderTop:"1px solid var(--border)", paddingTop:12, marginTop:12 }}>
-        Total gastos ARS equiv.: {fmtNum(expTotalARS)}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", borderTop:"1px solid var(--border)", paddingTop:12, marginTop:12 }}>
+        {/* Botón para mostrar/ocultar columna USD */}
+        {!showUSD
+          ? <button className="btn btn-secondary btn-sm" onClick={() => setShowUSD(true)}>
+              + Agregar columna USD
+            </button>
+          : <button className="btn btn-danger btn-sm" onClick={() => setShowUSD(false)}>
+              − Quitar columna USD
+            </button>
+        }
+        <span style={{ fontWeight:600, fontSize:14 }}>
+          Total gastos ARS equiv.: {fmtNum(expTotalARS)}
+        </span>
       </div>
     </>
   );
