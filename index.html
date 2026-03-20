@@ -2893,20 +2893,44 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 5 — FACTURACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// Estados posibles con sus colores
+const ESTADO_FLETERO_OPTS  = ["pendiente","facturado","pagado"];
+const ESTADO_CLIENTE_OPTS  = ["pendiente","facturado","cobrado"];
+const ESTADO_FAC_COLORS = {
+  pendiente:  { bg:"var(--bg4)",                        color:"var(--text2)"  },
+  facturado:  { bg:"rgba(79,127,255,.15)",               color:"var(--accent)" },
+  pagado:     { bg:"rgba(52,199,118,.15)",               color:"var(--success)"},
+  cobrado:    { bg:"rgba(52,199,118,.15)",               color:"var(--success)"},
+};
+function EstadoBadge({ val }) {
+  const s = ESTADO_FAC_COLORS[val] || ESTADO_FAC_COLORS.pendiente;
+  return (
+    <span style={{
+      display:"inline-flex",alignItems:"center",padding:"3px 10px",
+      borderRadius:20,fontSize:11,fontWeight:600,
+      background:s.bg, color:s.color, whiteSpace:"nowrap"
+    }}>{val}</span>
+  );
+}
+
 function Module5({ session, canEdit, dropdowns, notif }) {
-  const [view, setView]           = useState("list");
-  const [facturas, setFacturas]   = useState([]);
-  const [trips, setTrips]         = useState([]);
-  const [editFac, setEditFac]     = useState(null);
-  const [loading, setLoading]     = useState(true);
+  const [view,      setView]      = useState("list"); // "list" | "form" | "history"
+  const [facturas,  setFacturas]  = useState([]);
+  const [trips,     setTrips]     = useState([]);
+  const [editFac,   setEditFac]   = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  // Filtros
+  const [filtFletero, setFiltFletero] = useState("");
+  const [filtCliente, setFiltCliente] = useState("");
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     setLoading(true);
     const [tf, tt] = await Promise.all([
-      cachedGet("getFacturacion", "facturacion"),
-      cachedGet("getTrips", "trips")
+      cachedGet("getFacturacion","facturacion"),
+      cachedGet("getTrips","trips")
     ]);
     if (tf.ok) setFacturas(tf.data);
     if (tt.ok) setTrips(tt.data);
@@ -2914,31 +2938,64 @@ function Module5({ session, canEdit, dropdowns, notif }) {
   }
 
   async function handleSave(data) {
-    const r = await gasCall("saveFacturacion", { factura: data, user: session.username });
+    const r = await gasCall("saveFacturacion", { factura:data, user:session.username });
     if (r.ok) {
       invalidateCache("facturacion");
       notif.add("Factura guardada");
-      loadAll();
-      setView("list");
-    } else {
-      notif.add(r.error || "Error al guardar", "error");
-    }
+      loadAll(); setView("list");
+    } else notif.add(r.error||"Error al guardar","error");
   }
+
+  // Actualización inline de estado desde la tabla — sin abrir el form
+  async function handleEstadoChange(facId, field, newVal) {
+    const updates = { [field]: newVal };
+    const r = await gasCall("updateEstadoFac", { id:facId, updates, user:session.username });
+    if (r.ok) {
+      invalidateCache("facturacion");
+      setFacturas(prev => prev.map(f =>
+        f.id === facId ? { ...f, ...updates } : f
+      ));
+    } else notif.add(r.error||"Error al actualizar estado","error");
+  }
+
+  // Facturas activas: no cerradas (fletero!=pagado || cliente!=cobrado)
+  // Facturas cerradas: ambos completos → van al historial
+  const isClosed = f => f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+
+  const activas   = facturas.filter(f => !isClosed(f));
+  const historial = facturas.filter(f =>  isClosed(f));
+
+  // Viajes finalizados que aún no tienen factura
+  const facturadosTripIds = new Set(facturas.map(f => f.tripId));
+  const finalizados = (trips||[]).filter(t =>
+    t.status === "finalizado" && !facturadosTripIds.has(t.id)
+  );
+
+  // Filtros
+  const shown = activas.filter(f => {
+    if (filtFletero && f.estadoFletero !== filtFletero) return false;
+    if (filtCliente && f.estadoCliente !== filtCliente) return false;
+    return true;
+  });
+
+  // Valores únicos para los filtros
+  const fleteroVals = [...new Set(activas.map(f => f.estadoFletero).filter(Boolean))];
+  const clienteVals = [...new Set(activas.map(f => f.estadoCliente).filter(Boolean))];
 
   if (view === "form") return (
     <FacturaForm
       factura={editFac}
-      trips={trips}
+      trips={[...finalizados, ...(editFac ? trips.filter(t=>t.id===editFac.tripId) : [])]}
       dropdowns={dropdowns}
       canEdit={canEdit}
       onSave={handleSave}
-      onBack={() => setView("list")}
+      onBack={() => { setView("list"); setEditFac(null); }}
     />
   );
 
-  // Lista
-  const pendFletero  = facturas.filter(f => f.estadoFletero  === "pendiente").length;
-  const pendCliente  = facturas.filter(f => f.estadoCliente  === "pendiente").length;
+  if (view === "history") return (
+    <FacturacionHistorial historial={historial} onBack={() => setView("list")} />
+  );
 
   return (
     <div className="module-container">
@@ -2946,48 +3003,117 @@ function Module5({ session, canEdit, dropdowns, notif }) {
         <div>
           <div className="module-title">🧾 Facturación</div>
           <div className="module-subtitle">
-            {facturas.length} factura(s)
-            {pendFletero > 0 && <span className="badge badge-yellow" style={{marginLeft:8}}>{pendFletero} fletero pendiente</span>}
-            {pendCliente > 0 && <span className="badge badge-red"    style={{marginLeft:6}}>{pendCliente} cliente pendiente</span>}
+            {shown.length} factura(s) activa(s)
+            {activas.filter(f=>f.estadoFletero==="pendiente").length > 0 &&
+              <span className="badge badge-yellow" style={{marginLeft:8}}>
+                {activas.filter(f=>f.estadoFletero==="pendiente").length} fletero pendiente
+              </span>}
+            {activas.filter(f=>f.estadoCliente==="pendiente").length > 0 &&
+              <span className="badge badge-red" style={{marginLeft:6}}>
+                {activas.filter(f=>f.estadoCliente==="pendiente").length} cliente pendiente
+              </span>}
           </div>
         </div>
-        {canEdit && (
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditFac(null); setView("form"); }}>
-            + Nueva Factura
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setView("history")}>
+            📂 Ver Historial {historial.length > 0 && `(${historial.length})`}
+          </button>
+          {canEdit && finalizados.length > 0 && (
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditFac(null); setView("form"); }}>
+              + Nueva Factura
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado fletero</span>
+          <select className="form-select" style={{width:140}} value={filtFletero} onChange={e=>setFiltFletero(e.target.value)}>
+            <option value="">Todos</option>
+            {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado cliente</span>
+          <select className="form-select" style={{width:140}} value={filtCliente} onChange={e=>setFiltCliente(e.target.value)}>
+            <option value="">Todos</option>
+            {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        {(filtFletero||filtCliente) && (
+          <button className="btn btn-secondary btn-sm" onClick={()=>{setFiltFletero("");setFiltCliente("");}}>
+            ✕ Limpiar filtros
           </button>
         )}
       </div>
 
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
-        : facturas.length === 0
-          ? <div className="empty"><div className="empty-icon">🧾</div><p>No hay facturas registradas.</p></div>
+        : shown.length === 0
+          ? <div className="empty">
+              <div className="empty-icon">🧾</div>
+              <p>{activas.length === 0 ? "No hay facturas activas." : "Ninguna factura coincide con los filtros."}</p>
+              {finalizados.length > 0 && canEdit && (
+                <button className="btn btn-primary btn-sm" style={{marginTop:12}}
+                  onClick={() => { setEditFac(null); setView("form"); }}>
+                  + Crear factura para viaje finalizado
+                </button>
+              )}
+            </div>
           : (
             <div className="table-wrap">
               <table>
                 <thead><tr>
                   <th></th>
-                  <th>Viaje</th><th>Chofer</th><th>Cliente</th><th>Carga</th>
-                  <th>FC Fletero</th><th>Estado Fletero</th>
-                  <th>FC Cliente</th><th>Estado Cliente</th>
+                  <th>ID Viaje</th>
+                  <th>Cliente</th>
                   <th>Reserva</th>
+                  <th>Carga</th>
+                  <th>FC Fletero</th>
+                  <th>Estado Fletero</th>
+                  <th>FC Cliente</th>
+                  <th>Estado Cliente</th>
                 </tr></thead>
                 <tbody>
-                  {facturas.map(f => (
+                  {shown.map(f => (
                     <tr key={f.id}>
                       <td>
                         <button className="btn btn-secondary btn-icon btn-sm"
-                          onClick={() => { setEditFac(f); setView("form"); }} title="Ver/Editar">🔍</button>
+                          onClick={() => { setEditFac(f); setView("form"); }} title="Ver/Editar">🔍
+                        </button>
                       </td>
                       <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{f.tripId}</span></td>
-                      <td>{f.chofer||"—"}</td>
                       <td>{f.cliente||"—"}</td>
+                      <td style={{fontSize:12,color:"var(--text3)"}}>{f.reserva||"—"}</td>
                       <td>{f.carga||"—"}</td>
                       <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcFletero||"—"}</td>
-                      <td><StatusBadge status={f.estadoFletero||"pendiente"}/></td>
+                      <td>
+                        {canEdit
+                          ? <select
+                              className="form-select"
+                              style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
+                              value={f.estadoFletero||"pendiente"}
+                              onChange={e => handleEstadoChange(f.id,"estadoFletero",e.target.value)}>
+                              {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                            </select>
+                          : <EstadoBadge val={f.estadoFletero||"pendiente"}/>
+                        }
+                      </td>
                       <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcCliente||"—"}</td>
-                      <td><StatusBadge status={f.estadoCliente||"pendiente"}/></td>
-                      <td style={{fontSize:12,color:"var(--text3)"}}>{f.reserva||"—"}</td>
+                      <td>
+                        {canEdit
+                          ? <select
+                              className="form-select"
+                              style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
+                              value={f.estadoCliente||"pendiente"}
+                              onChange={e => handleEstadoChange(f.id,"estadoCliente",e.target.value)}>
+                              {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                            </select>
+                          : <EstadoBadge val={f.estadoCliente||"pendiente"}/>
+                        }
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2999,34 +3125,75 @@ function Module5({ session, canEdit, dropdowns, notif }) {
   );
 }
 
+// ─── HISTORIAL FACTURACIÓN ────────────────────────────────────────────────────
+function FacturacionHistorial({ historial, onBack }) {
+  return (
+    <div className="module-container">
+      <div className="module-header">
+        <div>
+          <div className="module-title">📂 Historial de Facturación</div>
+          <div className="module-subtitle">{historial.length} factura(s) cerrada(s)</div>
+        </div>
+        <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
+      </div>
+
+      {historial.length === 0
+        ? <div className="empty"><div className="empty-icon">📂</div><p>No hay facturas cerradas todavía.</p></div>
+        : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>ID Viaje</th>
+                <th>Cliente</th>
+                <th>Reserva</th>
+                <th>Carga</th>
+                <th>FC Fletero</th>
+                <th>Estado Fletero</th>
+                <th>FC Cliente</th>
+                <th>Estado Cliente</th>
+                <th>Fecha cobro</th>
+              </tr></thead>
+              <tbody>
+                {historial.map(f => (
+                  <tr key={f.id}>
+                    <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{f.tripId}</span></td>
+                    <td>{f.cliente||"—"}</td>
+                    <td style={{fontSize:12,color:"var(--text3)"}}>{f.reserva||"—"}</td>
+                    <td>{f.carga||"—"}</td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcFletero||"—"}</td>
+                    <td><EstadoBadge val={f.estadoFletero}/></td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcCliente||"—"}</td>
+                    <td><EstadoBadge val={f.estadoCliente}/></td>
+                    <td style={{fontSize:12,color:"var(--text3)"}}>{fmtDate(f.fechaCobro)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
 // ─── FACTURA FORM ─────────────────────────────────────────────────────────────
 function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
   const readonly = !canEdit;
   const isNew    = !factura;
 
-  // ── Selector de viaje (solo en nuevo) ──────────────────────────────────────
   const [tripId, setTripId] = useState(factura?.tripId || "");
   const selectedTrip = useMemo(() => trips.find(t => t.id === tripId) || null, [trips, tripId]);
 
-  // ── Función para calcular el tramo desde los segmentos ─────────────────────
   function buildTramo(trip) {
-    if (!trip || !trip.segments || trip.segments.length === 0) return "";
+    if (!trip?.segments?.length) return "";
     const lugares = [];
-    trip.segments.forEach((s, i) => {
-      if (i === 0) lugares.push(s.desde);
-      lugares.push(s.hasta);
-    });
-    // Eliminar duplicados consecutivos (viaje redondo: A-B-A → A-B-A pero B-B → B)
-    const deduped = lugares.filter((l, i) => i === 0 || l !== lugares[i-1]);
-    return deduped.join(" - ");
+    trip.segments.forEach((s, i) => { if (i===0) lugares.push(s.desde); lugares.push(s.hasta); });
+    return lugares.filter((l,i) => i===0 || l!==lugares[i-1]).join(" → ");
   }
 
-  // ── Campos precargados desde el viaje ──────────────────────────────────────
   const preloaded = useMemo(() => {
     const t = selectedTrip;
     if (!t) return {};
-    const segs = t.segments || [];
-    const chofer = segs.length > 0 ? segs[0].chofer : "";
     return {
       numMIC:        t.numMIC        || "",
       fechaMIC:      toInputDate(t.fechaMIC),
@@ -3034,99 +3201,82 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
       fechaCRT:      toInputDate(t.fechaCRT),
       reserva:       t.reserva       || "",
       numContenedor: t.numContenedor || "",
-      chofer,
+      chofer:        (t.segments||[])[0]?.chofer || "",
       carga:         t.carga         || "",
       cliente:       t.cliente       || "",
       tramo:         buildTramo(t),
     };
   }, [selectedTrip]);
 
-  // ── Estado editable ────────────────────────────────────────────────────────
-  const [fletero,       setFletero]       = useState(factura?.fletero       || "");
-  const [fcFletero,     setFcFletero]     = useState(factura?.fcFletero     || "");
-  const [montoFcFletero,setMontoFcFletero]= useState(factura?.montoFcFletero|| "");
-  const [divisaFletero, setDivisaFletero] = useState(factura?.divisaFletero || "USD");
-  const [fechaFcFletero,setFechaFcFletero]= useState(toInputDate(factura?.fechaFcFletero));
-  const [estadoFletero, setEstadoFletero] = useState(factura?.estadoFletero || "pendiente");
+  const P = (k) => factura?.[k] || preloaded[k] || "";
 
-  const [destinatario,   setDestinatario]  = useState(factura?.destinatario   || "");
-  const [fcCliente,      setFcCliente]     = useState(factura?.fcCliente      || "");
-  const [montoFcCliente, setMontoFcCliente]= useState(factura?.montoFcCliente || "");
-  const [divisaCliente,  setDivisaCliente] = useState(factura?.divisaCliente  || "USD");
-  const [fechaFcCliente, setFechaFcCliente]= useState(toInputDate(factura?.fechaFcCliente));
-  const [estadoCliente,  setEstadoCliente] = useState(factura?.estadoCliente  || "pendiente");
+  const [fletero,          setFletero]          = useState(factura?.fletero          || "");
+  const [fcFletero,        setFcFletero]         = useState(factura?.fcFletero        || "");
+  const [montoFcFletero,   setMontoFcFletero]    = useState(factura?.montoFcFletero   || "");
+  const [divisaFletero,    setDivisaFletero]     = useState(factura?.divisaFletero    || "USD");
+  const [fechaFcFletero,   setFechaFcFletero]    = useState(toInputDate(factura?.fechaFcFletero));
+  const [estadoFletero,    setEstadoFletero]     = useState(factura?.estadoFletero    || "pendiente");
+  const [destinatario,     setDestinatario]      = useState(factura?.destinatario     || "");
+  const [fcCliente,        setFcCliente]         = useState(factura?.fcCliente        || "");
+  const [montoFcCliente,   setMontoFcCliente]    = useState(factura?.montoFcCliente   || "");
+  const [divisaCliente,    setDivisaCliente]     = useState(factura?.divisaCliente    || "USD");
+  const [fechaFcCliente,   setFechaFcCliente]    = useState(toInputDate(factura?.fechaFcCliente));
+  const [estadoCliente,    setEstadoCliente]     = useState(factura?.estadoCliente    || "pendiente");
+  const [cancelacion,      setCancelacion]       = useState(factura?.cancelacion      || "");
+  const [descripcionCanc,  setDescripcionCanc]   = useState(factura?.descripcionCancelacion || "");
+  const [tipoCanc,         setTipoCanc]          = useState(factura?.tipoCancelacion  || "");
+  const [fechaCobro,       setFechaCobro]        = useState(toInputDate(factura?.fechaCobro));
+  const [errors,           setErrors]            = useState({});
+  const [saving,           setSaving]            = useState(false);
 
-  const [cancelacion,          setCancelacion]          = useState(factura?.cancelacion          || "");
-  const [descripcionCancelacion,setDescripcionCancelacion]=useState(factura?.descripcionCancelacion||"");
-  const [tipoCancelacion,      setTipoCancelacion]      = useState(factura?.tipoCancelacion      || "");
-  const [fechaCobro,           setFechaCobro]           = useState(toInputDate(factura?.fechaCobro));
-
-  const [errors,  setErrors]  = useState({});
-  const [saving,  setSaving]  = useState(false);
-
-  // Diferencia = monto FC cliente - cancelación
   const diferencia = useMemo(() => {
     const mc = parseFloat(String(montoFcCliente).replace(/\./g,"").replace(",",".")) || 0;
-    const ca = parseFloat(String(cancelacion).replace(/\./g,"").replace(",",".")) || 0;
+    const ca = parseFloat(String(cancelacion).replace(/\./g,"").replace(",","."))   || 0;
     return mc - ca;
   }, [montoFcCliente, cancelacion]);
 
   function validate() {
     const e = {};
-    if (!tripId)     e.tripId = "Seleccioná un viaje";
-    if (!fletero)    e.fletero = "Requerido";
-    if (!destinatario) e.destinatario = "Requerido";
+    if (!tripId)      e.tripId      = "Seleccioná un viaje";
+    if (!fletero)     e.fletero     = "Requerido";
+    if (!destinatario)e.destinatario= "Requerido";
     setErrors(e);
     return Object.keys(e).length === 0;
-  }
-
-  function buildData() {
-    const pre = preloaded;
-    return {
-      id:            factura?.id || ("FAC-" + Date.now()),
-      tripId,
-      // Precargados
-      numMIC:        factura?.numMIC        || pre.numMIC,
-      fechaMIC:      factura?.fechaMIC      || pre.fechaMIC,
-      numCRT:        factura?.numCRT        || pre.numCRT,
-      fechaCRT:      factura?.fechaCRT      || pre.fechaCRT,
-      reserva:       factura?.reserva       || pre.reserva,
-      numContenedor: factura?.numContenedor || pre.numContenedor,
-      chofer:        factura?.chofer        || pre.chofer,
-      carga:         factura?.carga         || pre.carga,
-      tramo:         factura?.tramo         || pre.tramo,
-      cliente:       factura?.cliente       || pre.cliente,
-      // Editables
-      fletero, fcFletero, montoFcFletero, divisaFletero, fechaFcFletero, estadoFletero,
-      destinatario, fcCliente, montoFcCliente, divisaCliente, fechaFcCliente, estadoCliente,
-      cancelacion, descripcionCancelacion, tipoCancelacion, fechaCobro,
-    };
   }
 
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    await onSave(buildData());
+    await onSave({
+      id: factura?.id || ("FAC-"+Date.now()),
+      tripId,
+      numMIC: P("numMIC"), fechaMIC: P("fechaMIC"),
+      numCRT: P("numCRT"), fechaCRT: P("fechaCRT"),
+      reserva: P("reserva"), numContenedor: P("numContenedor"),
+      chofer: P("chofer"), carga: P("carga"),
+      cliente: P("cliente"), tramo: P("tramo"),
+      fletero, fcFletero, montoFcFletero, divisaFletero, fechaFcFletero, estadoFletero,
+      destinatario, fcCliente, montoFcCliente, divisaCliente, fechaFcCliente, estadoCliente,
+      cancelacion, descripcionCancelacion:descripcionCanc, tipoCancelacion:tipoCanc, fechaCobro,
+    });
     setSaving(false);
   }
 
-  // Opciones de fletero y destinatario (por ahora hardcoded, luego desplegable)
-  const FLETEROS     = ["PEPE","JUAN"];
-  const DESTINATARIOS= ["ANA","CARLA"];
+  const FLETEROS      = ["PEPE","JUAN"];
+  const DESTINATARIOS = ["ANA","CARLA"];
 
-  const pre = preloaded;
-  const fields_preloaded = [
-    ["MIC",                    factura?.numMIC        || pre.numMIC        || "—"],
-    ["Fecha MIC",              fmtDate(factura?.fechaMIC  || pre.fechaMIC)],
-    ["CRT",                    factura?.numCRT        || pre.numCRT        || "—"],
-    ["Fecha CRT",              fmtDate(factura?.fechaCRT  || pre.fechaCRT)],
-    ["Reserva",                factura?.reserva       || pre.reserva       || "—"],
-    ["N° Contenedor",          factura?.numContenedor || pre.numContenedor || "—"],
-    ["Chofer",                 factura?.chofer        || pre.chofer        || "—"],
-    ["Carga",                  factura?.carga         || pre.carga         || "—"],
-    ["Cliente",                factura?.cliente       || pre.cliente       || "—"],
-    ["Tramo",                  factura?.tramo         || pre.tramo         || "—"],
-  ];
+  const preFields = [
+    ["MIC",           P("numMIC")       || "—"],
+    ["Fecha MIC",     fmtDate(P("fechaMIC"))],
+    ["CRT",           P("numCRT")       || "—"],
+    ["Fecha CRT",     fmtDate(P("fechaCRT"))],
+    ["Reserva",       P("reserva")      || "—"],
+    ["N° Contenedor", P("numContenedor")|| "—"],
+    ["Chofer",        P("chofer")       || "—"],
+    ["Carga",         P("carga")        || "—"],
+    ["Cliente",       P("cliente")      || "—"],
+    ["Tramo",         P("tramo")        || "—"],
+  ].filter(([,v]) => v && v !== "—" || true);
 
   return (
     <div className="module-container">
@@ -3139,32 +3289,29 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* Selector de viaje (solo en nuevo) */}
+      {/* Selector de viaje */}
       {isNew && (
         <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><div className="card-title">🚚 Seleccioná el viaje</div></div>
+          <div className="card-header"><div className="card-title">🚚 Viaje</div></div>
           <div className="card-body">
-            <div className="form-group" style={{maxWidth:400}}>
-              <label className="form-label">Viaje <Req/> {errors.tripId && <span className="form-error">{errors.tripId}</span>}</label>
+            <div className="form-group" style={{maxWidth:480}}>
+              <label className="form-label">Viaje finalizado <Req/> {errors.tripId && <span className="form-error">{errors.tripId}</span>}</label>
               <SearchableSelect
-                options={trips.map(t => ({ value:t.id, label:`${t.id} — ${t.carga||""} → ${t.cliente||""}` }))}
-                value={tripId}
-                onChange={setTripId}
-                placeholder="Buscar viaje..."
-              />
+                options={trips.map(t=>({ value:t.id, label:`${t.id} — ${t.carga||""} | ${t.cliente||""}` }))}
+                value={tripId} onChange={setTripId} placeholder="Buscar viaje finalizado..."/>
             </div>
           </div>
         </div>
       )}
 
-      {/* Datos precargados del viaje */}
+      {/* Datos precargados */}
       {(tripId || factura) && (
         <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><div className="card-title">📋 Datos del Viaje (precargados)</div></div>
+          <div className="card-header"><div className="card-title">📋 Datos del Viaje</div></div>
           <div className="card-body">
-            <div className="form-row" style={{flexWrap:"wrap",gap:8}}>
-              {fields_preloaded.map(([lbl, val]) => (
-                <div key={lbl} style={{minWidth:160}}>
+            <div className="form-row" style={{flexWrap:"wrap",gap:10}}>
+              {preFields.map(([lbl,val]) => (
+                <div key={lbl} style={{minWidth:150}}>
                   <div className="form-label">{lbl}</div>
                   <div className="field-readonly" style={{fontFamily:"var(--font)",fontSize:13}}>{val}</div>
                 </div>
@@ -3176,7 +3323,10 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
 
       {/* FC Fletero */}
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><div className="card-title">🚛 Factura Fletero</div></div>
+        <div className="card-header">
+          <div className="card-title">🚛 Factura Fletero</div>
+          {!readonly && <EstadoBadge val={estadoFletero}/>}
+        </div>
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
@@ -3194,7 +3344,7 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group" style={{maxWidth:90}}>
               <label className="form-label">Divisa</label>
               <select className="form-select" value={divisaFletero} onChange={e=>setDivisaFletero(e.target.value)} disabled={readonly}>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {CURRENCIES.map(cur=><option key={cur}>{cur}</option>)}
               </select>
             </div>
           </div>
@@ -3206,8 +3356,7 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group">
               <label className="form-label">Estado</label>
               <select className="form-select" value={estadoFletero} onChange={e=>setEstadoFletero(e.target.value)} disabled={readonly}>
-                <option value="pendiente">Pendiente</option>
-                <option value="pagado">Pagado</option>
+                {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
             </div>
           </div>
@@ -3216,7 +3365,10 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
 
       {/* FC Cliente */}
       <div className="card" style={{marginBottom:16}}>
-        <div className="card-header"><div className="card-title">🏢 Factura Cliente</div></div>
+        <div className="card-header">
+          <div className="card-title">🏢 Factura Cliente</div>
+          {!readonly && <EstadoBadge val={estadoCliente}/>}
+        </div>
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
@@ -3234,7 +3386,7 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group" style={{maxWidth:90}}>
               <label className="form-label">Divisa</label>
               <select className="form-select" value={divisaCliente} onChange={e=>setDivisaCliente(e.target.value)} disabled={readonly}>
-                {CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}
+                {CURRENCIES.map(cur=><option key={cur}>{cur}</option>)}
               </select>
             </div>
           </div>
@@ -3246,8 +3398,7 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group">
               <label className="form-label">Estado</label>
               <select className="form-select" value={estadoCliente} onChange={e=>setEstadoCliente(e.target.value)} disabled={readonly}>
-                <option value="pendiente">Pendiente</option>
-                <option value="cobrado">Cobrado</option>
+                {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
             </div>
           </div>
@@ -3266,7 +3417,9 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group">
               <label className="form-label">Diferencia (FC Cliente − Cancelación)</label>
               <div className="field-readonly" style={{
-                color: diferencia < 0 ? "var(--danger)" : diferencia > 0 ? "var(--success)" : "var(--text2)"
+                color: !montoFcCliente && !cancelacion ? "var(--text3)"
+                     : diferencia < 0 ? "var(--danger)"
+                     : diferencia > 0 ? "var(--success)" : "var(--text2)"
               }}>
                 {montoFcCliente || cancelacion ? fmtNum(diferencia) : "—"}
               </div>
@@ -3275,17 +3428,13 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
           <div className="form-row">
             <div className="form-group" style={{flex:2}}>
               <label className="form-label">Descripción de cancelación</label>
-              <input className="form-input" value={descripcionCancelacion} onChange={e=>setDescripcionCancelacion(e.target.value)} disabled={readonly} placeholder="Opcional"/>
+              <input className="form-input" value={descripcionCanc} onChange={e=>setDescripcionCanc(e.target.value)} disabled={readonly} placeholder="Opcional"/>
             </div>
             <div className="form-group">
-              <label className="form-label">Tipo</label>
+              <label className="form-label">Tipo de cobro</label>
               <SearchableSelect
                 options={dropdowns.FORMAS_PAGO||["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]}
-                value={tipoCancelacion}
-                onChange={setTipoCancelacion}
-                placeholder="Forma de pago..."
-                disabled={readonly}
-              />
+                value={tipoCanc} onChange={setTipoCanc} placeholder="Forma de pago..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha de cobro</label>
@@ -3306,7 +3455,6 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GASTOS TABLA
