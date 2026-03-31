@@ -375,7 +375,7 @@ function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
 // Busca el nombre del lugar dentro de la lista de países extranjeros
 // y de ciudades conocidas fuera del país.
 // Se llama para cada origen y destino de un tramo al crear el ID del viaje.
-// Ej: isLugarExtranjero("ASUNCIÓN") → true | isLugarExtranjero("ROSARIO") → false
+// Ej: isLugarExtranjero("ASUNCIÓN") → true | isLugarExtranjero("ROSARIO")→ false
 function isLugarExtranjero(lugar, lugares) {
   if (!lugar) return false;
   const l = lugar.toUpperCase();
