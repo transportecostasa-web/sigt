@@ -375,7 +375,7 @@ function isAlphanumeric(pw){return /^[a-zA-Z0-9]+$/.test(pw);}
 // Busca el nombre del lugar dentro de la lista de países extranjeros
 // y de ciudades conocidas fuera del país.
 // Se llama para cada origen y destino de un tramo al crear el ID del viaje.
-// Ej: isLugarExtranjero("ASUNCIÓN") → true | isLugarExtranjero("ROSARIO")→ false
+// Ej: isLugarExtranjero("ASUNCIÓN") → true | isLugarExtranjero("ROSARIO") → false
 function isLugarExtranjero(lugar, lugares) {
   if (!lugar) return false;
   const l = lugar.toUpperCase();
@@ -1044,7 +1044,9 @@ function App() {
         ESTACIONES_COMBUSTIBLE: withFallback(d.ESTACIONES_COMBUSTIBLE, [
           "YPF","SHELL","AXION","PUMA","OTRO"
         ]),
-        FORMAS_PAGO: withFallback(d.FORMAS_PAGO, ["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]),
+        FORMAS_PAGO:  withFallback(d.FORMAS_PAGO,  ["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]),
+        FLETEROS:     withFallback(d.FLETEROS,      ["PEPE","JUAN"]),
+        EXTRA_COSTOS: withFallback(d.EXTRA_COSTOS,  ["COMBUSTIBLE EXTRA","PEAJE","ESTADÍA","REPARACIÓN","ADUANA","OTROS"]),
         TC_USD: d.TC_USD || 1200,
         TC_CLP: d.TC_CLP || 160,
       });
@@ -2894,14 +2896,13 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
 // MODULE 5 — FACTURACIÓN
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Estados posibles con sus colores
-const ESTADO_FLETERO_OPTS  = ["pendiente","facturado","pagado"];
-const ESTADO_CLIENTE_OPTS  = ["pendiente","facturado","cobrado"];
+const ESTADO_FLETERO_OPTS = ["pendiente","facturado","pagado"];
+const ESTADO_CLIENTE_OPTS = ["pendiente","facturado","cobrado"];
 const ESTADO_FAC_COLORS = {
-  pendiente:  { bg:"var(--bg4)",                        color:"var(--text2)"  },
-  facturado:  { bg:"rgba(79,127,255,.15)",               color:"var(--accent)" },
-  pagado:     { bg:"rgba(52,199,118,.15)",               color:"var(--success)"},
-  cobrado:    { bg:"rgba(52,199,118,.15)",               color:"var(--success)"},
+  pendiente: { bg:"var(--bg4)",               color:"var(--text2)"  },
+  facturado: { bg:"rgba(79,127,255,.15)",      color:"var(--accent)" },
+  pagado:    { bg:"rgba(52,199,118,.15)",      color:"var(--success)"},
+  cobrado:   { bg:"rgba(52,199,118,.15)",      color:"var(--success)"},
 };
 function EstadoBadge({ val }) {
   const s = ESTADO_FAC_COLORS[val] || ESTADO_FAC_COLORS.pendiente;
@@ -2909,20 +2910,25 @@ function EstadoBadge({ val }) {
     <span style={{
       display:"inline-flex",alignItems:"center",padding:"3px 10px",
       borderRadius:20,fontSize:11,fontWeight:600,
-      background:s.bg, color:s.color, whiteSpace:"nowrap"
+      background:s.bg,color:s.color,whiteSpace:"nowrap"
     }}>{val}</span>
   );
 }
 
+// ─── MODULE 5 LIST VIEW ───────────────────────────────────────────────────────
 function Module5({ session, canEdit, dropdowns, notif }) {
-  const [view,      setView]      = useState("list"); // "list" | "form" | "history"
-  const [facturas,  setFacturas]  = useState([]);
-  const [trips,     setTrips]     = useState([]);
-  const [editFac,   setEditFac]   = useState(null);
-  const [loading,   setLoading]   = useState(true);
+  const [facturas,    setFacturas]    = useState([]);
+  const [trips,       setTrips]       = useState([]);
+  const [editFac,     setEditFac]     = useState(null);   // factura obj o null
+  const [editTripId,  setEditTripId]  = useState(null);   // tripId para nueva factura
+  const [view,        setView]        = useState("list"); // "list" | "form" | "history"
+  const [loading,     setLoading]     = useState(true);
   // Filtros
-  const [filtFletero, setFiltFletero] = useState("");
-  const [filtCliente, setFiltCliente] = useState("");
+  const [filtFacturado, setFiltFacturado] = useState("todos"); // "todos"|"sin_facturar"|"facturado"
+  const [filtFletero,   setFiltFletero]   = useState("");
+  const [filtCliente,   setFiltCliente]   = useState("");
+  // Spinner inline por id de factura y campo
+  const [updatingField, setUpdatingField] = useState(null); // "facId:campo"
 
   useEffect(() => { loadAll(); }, []);
 
@@ -2942,59 +2948,75 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     if (r.ok) {
       invalidateCache("facturacion");
       notif.add("Factura guardada");
-      loadAll(); setView("list");
+      loadAll(); setView("list"); setEditFac(null); setEditTripId(null);
     } else notif.add(r.error||"Error al guardar","error");
   }
 
-  // Actualización inline de estado desde la tabla — sin abrir el form
   async function handleEstadoChange(facId, field, newVal) {
-    const updates = { [field]: newVal };
-    const r = await gasCall("updateEstadoFac", { id:facId, updates, user:session.username });
+    const key = `${facId}:${field}`;
+    setUpdatingField(key);
+    const r = await gasCall("updateEstadoFac", { id:facId, updates:{ [field]:newVal }, user:session.username });
+    setUpdatingField(null);
     if (r.ok) {
       invalidateCache("facturacion");
-      setFacturas(prev => prev.map(f =>
-        f.id === facId ? { ...f, ...updates } : f
-      ));
+      setFacturas(prev => prev.map(f => f.id === facId ? { ...f, [field]:newVal } : f));
     } else notif.add(r.error||"Error al actualizar estado","error");
   }
 
-  // Facturas activas: no cerradas (fletero!=pagado || cliente!=cobrado)
-  // Facturas cerradas: ambos completos → van al historial
-  const isClosed = f => f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+  // Unificar viajes finalizados + facturas en una sola lista
+  const facByTripId = useMemo(() => {
+    const m = {};
+    facturas.forEach(f => { m[f.tripId] = f; });
+    return m;
+  }, [facturas]);
 
-  const activas   = facturas.filter(f => !isClosed(f));
-  const historial = facturas.filter(f =>  isClosed(f));
+  const finalizados = useMemo(() =>
+    (trips||[]).filter(t => t.status === "finalizado")
+  , [trips]);
 
-  // Viajes finalizados que aún no tienen factura
-  const facturadosTripIds = new Set(facturas.map(f => f.tripId));
-  const finalizados = (trips||[]).filter(t =>
-    t.status === "finalizado" && !facturadosTripIds.has(t.id)
-  );
+  // Construir filas unificadas: cada viaje finalizado, con o sin factura
+  const rows = useMemo(() => finalizados.map(t => ({
+    trip: t,
+    factura: facByTripId[t.id] || null,
+    tieneFactura: !!facByTripId[t.id],
+  })), [finalizados, facByTripId]);
 
-  // Filtros
-  const shown = activas.filter(f => {
-    if (filtFletero && f.estadoFletero !== filtFletero) return false;
-    if (filtCliente && f.estadoCliente !== filtCliente) return false;
+  const isClosed = f => f && f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+
+  // Filtros aplicados
+  const shown = rows.filter(row => {
+    // Filtro principal: facturado / sin facturar
+    if (filtFacturado === "sin_facturar" && row.tieneFactura) return false;
+    if (filtFacturado === "facturado"    && !row.tieneFactura) return false;
+    // Filtros de estado (solo aplican si tiene factura)
+    if (filtFletero && (!row.factura || row.factura.estadoFletero !== filtFletero)) return false;
+    if (filtCliente && (!row.factura || row.factura.estadoCliente !== filtCliente)) return false;
     return true;
   });
 
-  // Valores únicos para los filtros
-  const fleteroVals = [...new Set(activas.map(f => f.estadoFletero).filter(Boolean))];
-  const clienteVals = [...new Set(activas.map(f => f.estadoCliente).filter(Boolean))];
+  const historialRows = rows.filter(r => isClosed(r.factura));
+  const sinFacturar   = rows.filter(r => !r.tieneFactura).length;
+  const conFactura    = rows.filter(r => r.tieneFactura).length;
 
   if (view === "form") return (
     <FacturaForm
       factura={editFac}
-      trips={[...finalizados, ...(editFac ? trips.filter(t=>t.id===editFac.tripId) : [])]}
+      trip={editTripId ? trips.find(t => t.id === editTripId) : (editFac ? trips.find(t => t.id === editFac.tripId) : null)}
       dropdowns={dropdowns}
-      canEdit={canEdit}
+      canEdit={canEdit && !isClosed(editFac)}
       onSave={handleSave}
-      onBack={() => { setView("list"); setEditFac(null); }}
+      onBack={() => { setView("list"); setEditFac(null); setEditTripId(null); }}
     />
   );
 
   if (view === "history") return (
-    <FacturacionHistorial historial={historial} onBack={() => setView("list")} />
+    <FacturacionHistorial
+      historialRows={historialRows}
+      trips={trips}
+      dropdowns={dropdowns}
+      onBack={() => setView("list")}
+      onView={(row) => { setEditFac(row.factura); setView("form"); }}
+    />
   );
 
   return (
@@ -3003,65 +3025,61 @@ function Module5({ session, canEdit, dropdowns, notif }) {
         <div>
           <div className="module-title">🧾 Facturación</div>
           <div className="module-subtitle">
-            {shown.length} factura(s) activa(s)
-            {activas.filter(f=>f.estadoFletero==="pendiente").length > 0 &&
-              <span className="badge badge-yellow" style={{marginLeft:8}}>
-                {activas.filter(f=>f.estadoFletero==="pendiente").length} fletero pendiente
-              </span>}
-            {activas.filter(f=>f.estadoCliente==="pendiente").length > 0 &&
-              <span className="badge badge-red" style={{marginLeft:6}}>
-                {activas.filter(f=>f.estadoCliente==="pendiente").length} cliente pendiente
-              </span>}
+            {sinFacturar > 0 && <span className="badge badge-yellow" style={{marginRight:6}}>{sinFacturar} sin facturar</span>}
+            {conFactura > 0  && <span className="badge badge-blue">{conFactura} facturado(s)</span>}
           </div>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setView("history")}>
-            📂 Ver Historial {historial.length > 0 && `(${historial.length})`}
-          </button>
-          {canEdit && finalizados.length > 0 && (
-            <button className="btn btn-primary btn-sm" onClick={() => { setEditFac(null); setView("form"); }}>
-              + Nueva Factura
-            </button>
-          )}
-        </div>
+        <button className="btn btn-secondary btn-sm" onClick={() => setView("history")}>
+          📂 Historial {historialRows.length > 0 && `(${historialRows.length})`}
+        </button>
       </div>
 
       {/* Filtros */}
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Filtro principal */}
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado fletero</span>
-          <select className="form-select" style={{width:140}} value={filtFletero} onChange={e=>setFiltFletero(e.target.value)}>
-            <option value="">Todos</option>
-            {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-          </select>
+          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado</span>
+          <div style={{display:"flex",gap:4}}>
+            {[["todos","Todos"],["sin_facturar","Sin facturar"],["facturado","Facturado"]].map(([v,l])=>(
+              <button key={v}
+                className={`btn btn-sm ${filtFacturado===v?"btn-primary":"btn-secondary"}`}
+                onClick={()=>setFiltFacturado(v)}
+                style={{padding:"4px 10px",fontSize:12}}>
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado cliente</span>
-          <select className="form-select" style={{width:140}} value={filtCliente} onChange={e=>setFiltCliente(e.target.value)}>
-            <option value="">Todos</option>
-            {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-        {(filtFletero||filtCliente) && (
-          <button className="btn btn-secondary btn-sm" onClick={()=>{setFiltFletero("");setFiltCliente("");}}>
-            ✕ Limpiar filtros
-          </button>
-        )}
+        {/* Filtros de estado solo si hay facturas */}
+        {conFactura > 0 && <>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Fletero</span>
+            <select className="form-select" style={{width:130,padding:"5px 24px 5px 8px",fontSize:12}}
+              value={filtFletero} onChange={e=>setFiltFletero(e.target.value)}>
+              <option value="">Todos</option>
+              {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Cliente</span>
+            <select className="form-select" style={{width:130,padding:"5px 24px 5px 8px",fontSize:12}}
+              value={filtCliente} onChange={e=>setFiltCliente(e.target.value)}>
+              <option value="">Todos</option>
+              {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+          {(filtFletero||filtCliente) && (
+            <button className="btn btn-secondary btn-sm" onClick={()=>{setFiltFletero("");setFiltCliente("");}}>
+              ✕ Limpiar
+            </button>
+          )}
+        </>}
       </div>
 
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
         : shown.length === 0
-          ? <div className="empty">
-              <div className="empty-icon">🧾</div>
-              <p>{activas.length === 0 ? "No hay facturas activas." : "Ninguna factura coincide con los filtros."}</p>
-              {finalizados.length > 0 && canEdit && (
-                <button className="btn btn-primary btn-sm" style={{marginTop:12}}
-                  onClick={() => { setEditFac(null); setView("form"); }}>
-                  + Crear factura para viaje finalizado
-                </button>
-              )}
-            </div>
+          ? <div className="empty"><div className="empty-icon">🧾</div><p>No hay viajes que coincidan con los filtros.</p></div>
           : (
             <div className="table-wrap">
               <table>
@@ -3069,53 +3087,89 @@ function Module5({ session, canEdit, dropdowns, notif }) {
                   <th></th>
                   <th>ID Viaje</th>
                   <th>Cliente</th>
-                  <th>Reserva</th>
                   <th>Carga</th>
+                  <th>Reserva</th>
+                  <th>Monto viaje</th>
+                  <th>Estado</th>
                   <th>FC Fletero</th>
                   <th>Estado Fletero</th>
                   <th>FC Cliente</th>
                   <th>Estado Cliente</th>
                 </tr></thead>
                 <tbody>
-                  {shown.map(f => (
-                    <tr key={f.id}>
-                      <td>
-                        <button className="btn btn-secondary btn-icon btn-sm"
-                          onClick={() => { setEditFac(f); setView("form"); }} title="Ver/Editar">🔍
-                        </button>
-                      </td>
-                      <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{f.tripId}</span></td>
-                      <td>{f.cliente||"—"}</td>
-                      <td style={{fontSize:12,color:"var(--text3)"}}>{f.reserva||"—"}</td>
-                      <td>{f.carga||"—"}</td>
-                      <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcFletero||"—"}</td>
-                      <td>
-                        {canEdit
-                          ? <select
-                              className="form-select"
-                              style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
-                              value={f.estadoFletero||"pendiente"}
-                              onChange={e => handleEstadoChange(f.id,"estadoFletero",e.target.value)}>
-                              {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-                            </select>
-                          : <EstadoBadge val={f.estadoFletero||"pendiente"}/>
-                        }
-                      </td>
-                      <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcCliente||"—"}</td>
-                      <td>
-                        {canEdit
-                          ? <select
-                              className="form-select"
-                              style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
-                              value={f.estadoCliente||"pendiente"}
-                              onChange={e => handleEstadoChange(f.id,"estadoCliente",e.target.value)}>
-                              {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-                            </select>
-                          : <EstadoBadge val={f.estadoCliente||"pendiente"}/>
-                        }
-                      </td>
-                    </tr>
-                  ))}
+                  {shown.map(({ trip, factura, tieneFactura }) => {
+                    const closed = isClosed(factura);
+                    return (
+                      <tr key={trip.id} style={closed ? {opacity:.6} : {}}>
+                        <td>
+                          <button className="btn btn-secondary btn-icon btn-sm"
+                            title={tieneFactura ? "Ver/Editar factura" : "Crear factura"}
+                            onClick={() => {
+                              if (tieneFactura) { setEditFac(factura); setEditTripId(null); }
+                              else              { setEditFac(null);    setEditTripId(trip.id); }
+                              setView("form");
+                            }}>
+                            {tieneFactura ? "🔍" : "➕"}
+                          </button>
+                        </td>
+                        <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{trip.id}</span></td>
+                        <td>{trip.cliente||"—"}</td>
+                        <td>{trip.carga||"—"}</td>
+                        <td style={{fontSize:12,color:"var(--text3)"}}>{trip.reserva||"—"}</td>
+                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>
+                          {trip.montoFactura ? `${fmtNum(trip.montoFactura)} ${trip.moneda||""}` : "—"}
+                        </td>
+                        <td>
+                          {!tieneFactura
+                            ? <span className="badge badge-gray">sin facturar</span>
+                            : closed
+                              ? <EstadoBadge val="cobrado"/>
+                              : <span className="badge badge-blue">en curso</span>
+                          }
+                        </td>
+                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura?.fcFletero||"—"}</td>
+                        <td style={{minWidth:130}}>
+                          {!tieneFactura ? <span style={{color:"var(--text3)",fontSize:12}}>—</span>
+                          : closed ? <EstadoBadge val={factura.estadoFletero}/>
+                          : canEdit ? (
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <select
+                                className="form-select"
+                                style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
+                                value={factura.estadoFletero||"pendiente"}
+                                disabled={updatingField===`${factura.id}:estadoFletero`}
+                                onChange={e=>handleEstadoChange(factura.id,"estadoFletero",e.target.value)}>
+                                {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                              </select>
+                              {updatingField===`${factura.id}:estadoFletero` &&
+                                <div className="spinner" style={{width:14,height:14,borderWidth:2,flexShrink:0}}/>}
+                            </div>
+                          ) : <EstadoBadge val={factura.estadoFletero||"pendiente"}/>
+                          }
+                        </td>
+                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura?.fcCliente||"—"}</td>
+                        <td style={{minWidth:130}}>
+                          {!tieneFactura ? <span style={{color:"var(--text3)",fontSize:12}}>—</span>
+                          : closed ? <EstadoBadge val={factura.estadoCliente}/>
+                          : canEdit ? (
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <select
+                                className="form-select"
+                                style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
+                                value={factura.estadoCliente||"pendiente"}
+                                disabled={updatingField===`${factura.id}:estadoCliente`}
+                                onChange={e=>handleEstadoChange(factura.id,"estadoCliente",e.target.value)}>
+                                {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                              </select>
+                              {updatingField===`${factura.id}:estadoCliente` &&
+                                <div className="spinner" style={{width:14,height:14,borderWidth:2,flexShrink:0}}/>}
+                            </div>
+                          ) : <EstadoBadge val={factura.estadoCliente||"pendiente"}/>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -3125,46 +3179,45 @@ function Module5({ session, canEdit, dropdowns, notif }) {
   );
 }
 
-// ─── HISTORIAL FACTURACIÓN ────────────────────────────────────────────────────
-function FacturacionHistorial({ historial, onBack }) {
+// ─── HISTORIAL ────────────────────────────────────────────────────────────────
+function FacturacionHistorial({ historialRows, trips, dropdowns, onBack, onView }) {
   return (
     <div className="module-container">
       <div className="module-header">
         <div>
           <div className="module-title">📂 Historial de Facturación</div>
-          <div className="module-subtitle">{historial.length} factura(s) cerrada(s)</div>
+          <div className="module-subtitle">{historialRows.length} factura(s) cerrada(s)</div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-
-      {historial.length === 0
+      {historialRows.length === 0
         ? <div className="empty"><div className="empty-icon">📂</div><p>No hay facturas cerradas todavía.</p></div>
         : (
           <div className="table-wrap">
             <table>
               <thead><tr>
-                <th>ID Viaje</th>
-                <th>Cliente</th>
-                <th>Reserva</th>
-                <th>Carga</th>
-                <th>FC Fletero</th>
-                <th>Estado Fletero</th>
-                <th>FC Cliente</th>
-                <th>Estado Cliente</th>
+                <th></th>
+                <th>ID Viaje</th><th>Cliente</th><th>Reserva</th><th>Carga</th>
+                <th>FC Fletero</th><th>Estado Fletero</th>
+                <th>FC Cliente</th><th>Estado Cliente</th>
                 <th>Fecha cobro</th>
               </tr></thead>
               <tbody>
-                {historial.map(f => (
-                  <tr key={f.id}>
-                    <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{f.tripId}</span></td>
-                    <td>{f.cliente||"—"}</td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>{f.reserva||"—"}</td>
-                    <td>{f.carga||"—"}</td>
-                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcFletero||"—"}</td>
-                    <td><EstadoBadge val={f.estadoFletero}/></td>
-                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{f.fcCliente||"—"}</td>
-                    <td><EstadoBadge val={f.estadoCliente}/></td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>{fmtDate(f.fechaCobro)}</td>
+                {historialRows.map(({ trip, factura }) => (
+                  <tr key={trip.id}>
+                    <td>
+                      <button className="btn btn-secondary btn-icon btn-sm"
+                        title="Ver detalle" onClick={() => onView({ trip, factura })}>🔍</button>
+                    </td>
+                    <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{trip.id}</span></td>
+                    <td>{factura.cliente||"—"}</td>
+                    <td style={{fontSize:12,color:"var(--text3)"}}>{factura.reserva||"—"}</td>
+                    <td>{factura.carga||"—"}</td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura.fcFletero||"—"}</td>
+                    <td><EstadoBadge val={factura.estadoFletero}/></td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura.fcCliente||"—"}</td>
+                    <td><EstadoBadge val={factura.estadoCliente}/></td>
+                    <td style={{fontSize:12,color:"var(--text3)"}}>{fmtDate(factura.fechaCobro)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3177,69 +3230,99 @@ function FacturacionHistorial({ historial, onBack }) {
 }
 
 // ─── FACTURA FORM ─────────────────────────────────────────────────────────────
-function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
+function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   const readonly = !canEdit;
   const isNew    = !factura;
 
-  const [tripId, setTripId] = useState(factura?.tripId || "");
-  const selectedTrip = useMemo(() => trips.find(t => t.id === tripId) || null, [trips, tripId]);
-
-  function buildTramo(trip) {
-    if (!trip?.segments?.length) return "";
+  // Datos precargados del viaje (inmutables)
+  const pre = useMemo(() => {
+    if (!trip) return {};
+    const segs = trip.segments || [];
     const lugares = [];
-    trip.segments.forEach((s, i) => { if (i===0) lugares.push(s.desde); lugares.push(s.hasta); });
-    return lugares.filter((l,i) => i===0 || l!==lugares[i-1]).join(" → ");
-  }
-
-  const preloaded = useMemo(() => {
-    const t = selectedTrip;
-    if (!t) return {};
+    segs.forEach((s,i) => { if(i===0) lugares.push(s.desde); lugares.push(s.hasta); });
+    const tramo = lugares.filter((l,i) => i===0||l!==lugares[i-1]).join(" → ");
     return {
-      numMIC:        t.numMIC        || "",
-      fechaMIC:      toInputDate(t.fechaMIC),
-      numCRT:        t.numCRT        || "",
-      fechaCRT:      toInputDate(t.fechaCRT),
-      reserva:       t.reserva       || "",
-      numContenedor: t.numContenedor || "",
-      chofer:        (t.segments||[])[0]?.chofer || "",
-      carga:         t.carga         || "",
-      cliente:       t.cliente       || "",
-      tramo:         buildTramo(t),
+      tripId:        trip.id,
+      numMIC:        trip.numMIC        || "",
+      fechaMIC:      toInputDate(trip.fechaMIC),
+      numCRT:        trip.numCRT        || "",
+      fechaCRT:      toInputDate(trip.fechaCRT),
+      reserva:       trip.reserva       || "",
+      numContenedor: trip.numContenedor || "",
+      chofer:        segs[0]?.chofer    || "",
+      carga:         trip.carga         || "",
+      cliente:       trip.cliente       || "",
+      tramo,
+      montoViajeOrig:  String(trip.montoFactura || ""),
+      divisaViajeOrig: trip.moneda || "USD",
     };
-  }, [selectedTrip]);
+  }, [trip]);
 
-  const P = (k) => factura?.[k] || preloaded[k] || "";
+  const G = k => factura?.[k] ?? pre[k] ?? "";
 
-  const [fletero,          setFletero]          = useState(factura?.fletero          || "");
-  const [fcFletero,        setFcFletero]         = useState(factura?.fcFletero        || "");
-  const [montoFcFletero,   setMontoFcFletero]    = useState(factura?.montoFcFletero   || "");
-  const [divisaFletero,    setDivisaFletero]     = useState(factura?.divisaFletero    || "USD");
-  const [fechaFcFletero,   setFechaFcFletero]    = useState(toInputDate(factura?.fechaFcFletero));
-  const [estadoFletero,    setEstadoFletero]     = useState(factura?.estadoFletero    || "pendiente");
-  const [destinatario,     setDestinatario]      = useState(factura?.destinatario     || "");
-  const [fcCliente,        setFcCliente]         = useState(factura?.fcCliente        || "");
-  const [montoFcCliente,   setMontoFcCliente]    = useState(factura?.montoFcCliente   || "");
-  const [divisaCliente,    setDivisaCliente]     = useState(factura?.divisaCliente    || "USD");
-  const [fechaFcCliente,   setFechaFcCliente]    = useState(toInputDate(factura?.fechaFcCliente));
-  const [estadoCliente,    setEstadoCliente]     = useState(factura?.estadoCliente    || "pendiente");
-  const [cancelacion,      setCancelacion]       = useState(factura?.cancelacion      || "");
-  const [descripcionCanc,  setDescripcionCanc]   = useState(factura?.descripcionCancelacion || "");
-  const [tipoCanc,         setTipoCanc]          = useState(factura?.tipoCancelacion  || "");
-  const [fechaCobro,       setFechaCobro]        = useState(toInputDate(factura?.fechaCobro));
-  const [errors,           setErrors]            = useState({});
-  const [saving,           setSaving]            = useState(false);
+  // Estados editables
+  const [fletero,        setFletero]        = useState(factura?.fletero        || "");
+  const [fcFletero,      setFcFletero]      = useState(factura?.fcFletero      || "");
+  const [montoFcFletero, setMontoFcFletero] = useState(factura?.montoFcFletero || "");
+  const [divisaFletero,  setDivisaFletero]  = useState(factura?.divisaFletero  || "USD");
+  const [fechaFcFletero, setFechaFcFletero] = useState(toInputDate(factura?.fechaFcFletero));
+  const [estadoFletero,  setEstadoFletero]  = useState(factura?.estadoFletero  || "pendiente");
 
+  const [destinatario,   setDestinatario]   = useState(factura?.destinatario   || "");
+  const [fcCliente,      setFcCliente]      = useState(factura?.fcCliente      || "");
+  const [montoFcCliente, setMontoFcCliente] = useState(factura?.montoFcCliente || "");
+  const [divisaCliente,  setDivisaCliente]  = useState(factura?.divisaCliente  || "USD");
+  const [fechaFcCliente, setFechaFcCliente] = useState(toInputDate(factura?.fechaFcCliente));
+  const [estadoCliente,  setEstadoCliente]  = useState(factura?.estadoCliente  || "pendiente");
+
+  const [cancelacion,     setCancelacion]    = useState(factura?.cancelacion    || "");
+  const [descripcionCanc, setDescripcionCanc]= useState(factura?.descripcionCancelacion || "");
+  const [tipoCanc,        setTipoCanc]       = useState(factura?.tipoCancelacion || "");
+  const [fechaCobro,      setFechaCobro]     = useState(toInputDate(factura?.fechaCobro));
+
+  // Extra costos — múltiples filas
+  const [extraCostos, setExtraCostos] = useState(() =>
+    factura?.extraCostos?.length > 0
+      ? factura.extraCostos
+      : []
+  );
+
+  const [errors,  setErrors]  = useState({});
+  const [saving,  setSaving]  = useState(false);
+
+  // Alerta de diferencia de monto
+  const montoViajeNum = parseFloat(String(G("montoViajeOrig")).replace(/\./g,"").replace(",",".")) || 0;
+  const montoFcNum    = parseFloat(String(montoFcCliente).replace(/\./g,"").replace(",",".")) || 0;
+  const hayDiferencia = montoViajeNum > 0 && montoFcNum > 0 && (
+    montoFcNum !== montoViajeNum || divisaCliente !== G("divisaViajeOrig")
+  );
+
+  // Diferencia cancelación
   const diferencia = useMemo(() => {
     const mc = parseFloat(String(montoFcCliente).replace(/\./g,"").replace(",",".")) || 0;
     const ca = parseFloat(String(cancelacion).replace(/\./g,"").replace(",","."))   || 0;
     return mc - ca;
   }, [montoFcCliente, cancelacion]);
 
+  function addExtraCosto() {
+    setExtraCostos(p => [...p, { cat:"", descripcion:"", monto:"", divisa:"USD" }]);
+  }
+  function removeExtraCosto(i) {
+    setExtraCostos(p => p.filter((_,idx)=>idx!==i));
+  }
+  function updateExtraCosto(i, key, val) {
+    setExtraCostos(p => { const n=[...p]; n[i]={...n[i],[key]:val}; return n; });
+  }
+
   function validate() {
     const e = {};
-    if (!tripId)      e.tripId      = "Seleccioná un viaje";
-    if (!fletero)     e.fletero     = "Requerido";
-    if (!destinatario)e.destinatario= "Requerido";
+    if (!G("tripId"))   e.tripId      = "Falta viaje";
+    // Validar extra costos
+    extraCostos.forEach((ec, i) => {
+      if (!ec.cat)   e[`ec_cat_${i}`]   = "Requerido";
+      if (!ec.monto) e[`ec_monto_${i}`] = "Requerido";
+      if (ec.cat === "OTROS" && !ec.descripcion) e[`ec_desc_${i}`] = "Requerido";
+    });
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -3248,94 +3331,98 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
     if (!validate()) return;
     setSaving(true);
     await onSave({
-      id: factura?.id || ("FAC-"+Date.now()),
-      tripId,
-      numMIC: P("numMIC"), fechaMIC: P("fechaMIC"),
-      numCRT: P("numCRT"), fechaCRT: P("fechaCRT"),
-      reserva: P("reserva"), numContenedor: P("numContenedor"),
-      chofer: P("chofer"), carga: P("carga"),
-      cliente: P("cliente"), tramo: P("tramo"),
+      id:            factura?.id || ("FAC-"+Date.now()),
+      tripId:        G("tripId"),
+      numMIC:        G("numMIC"),   fechaMIC:  G("fechaMIC"),
+      numCRT:        G("numCRT"),   fechaCRT:  G("fechaCRT"),
+      reserva:       G("reserva"),  numContenedor: G("numContenedor"),
+      chofer:        G("chofer"),   carga:     G("carga"),
+      cliente:       G("cliente"),  tramo:     G("tramo"),
+      montoViajeOrig:  G("montoViajeOrig"),
+      divisaViajeOrig: G("divisaViajeOrig"),
       fletero, fcFletero, montoFcFletero, divisaFletero, fechaFcFletero, estadoFletero,
       destinatario, fcCliente, montoFcCliente, divisaCliente, fechaFcCliente, estadoCliente,
-      cancelacion, descripcionCancelacion:descripcionCanc, tipoCancelacion:tipoCanc, fechaCobro,
+      cancelacion, descripcionCancelacion:descripcionCanc,
+      tipoCancelacion:tipoCanc, fechaCobro,
+      alertaDiferencia: hayDiferencia,
+      extraCostos,
     });
     setSaving(false);
   }
 
-  const FLETEROS      = ["PEPE","JUAN"];
-  const DESTINATARIOS = ["ANA","CARLA"];
-
   const preFields = [
-    ["MIC",           P("numMIC")       || "—"],
-    ["Fecha MIC",     fmtDate(P("fechaMIC"))],
-    ["CRT",           P("numCRT")       || "—"],
-    ["Fecha CRT",     fmtDate(P("fechaCRT"))],
-    ["Reserva",       P("reserva")      || "—"],
-    ["N° Contenedor", P("numContenedor")|| "—"],
-    ["Chofer",        P("chofer")       || "—"],
-    ["Carga",         P("carga")        || "—"],
-    ["Cliente",       P("cliente")      || "—"],
-    ["Tramo",         P("tramo")        || "—"],
-  ].filter(([,v]) => v && v !== "—" || true);
+    ["MIC",           G("numMIC")       || "—"],
+    ["Fecha MIC",     fmtDate(G("fechaMIC"))],
+    ["CRT",           G("numCRT")       || "—"],
+    ["Fecha CRT",     fmtDate(G("fechaCRT"))],
+    ["Reserva",       G("reserva")      || "—"],
+    ["N° Contenedor", G("numContenedor")|| "—"],
+    ["Chofer",        G("chofer")       || "—"],
+    ["Carga",         G("carga")        || "—"],
+    ["Cliente",       G("cliente")      || "—"],
+    ["Tramo",         G("tramo")        || "—"],
+  ];
 
   return (
     <div className="module-container">
       <div className="module-header">
         <div>
           <div className="module-title">
-            {isNew ? "Nueva Factura" : `Factura — ${factura.tripId}`}
+            {isNew ? `Nueva Factura — ${G("tripId")}` : `Factura — ${G("tripId")}`}
+            {readonly && <span className="readonly-badge" style={{marginLeft:10}}>🔒 Solo lectura</span>}
           </div>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* Selector de viaje */}
-      {isNew && (
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><div className="card-title">🚚 Viaje</div></div>
-          <div className="card-body">
-            <div className="form-group" style={{maxWidth:480}}>
-              <label className="form-label">Viaje finalizado <Req/> {errors.tripId && <span className="form-error">{errors.tripId}</span>}</label>
-              <SearchableSelect
-                options={trips.map(t=>({ value:t.id, label:`${t.id} — ${t.carga||""} | ${t.cliente||""}` }))}
-                value={tripId} onChange={setTripId} placeholder="Buscar viaje finalizado..."/>
+      {/* Datos del viaje (lectura) */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header"><div className="card-title">📋 Datos del Viaje</div></div>
+        <div className="card-body">
+          <div className="form-row" style={{flexWrap:"wrap",gap:10,marginBottom:12}}>
+            {preFields.map(([lbl,val]) => (
+              <div key={lbl} style={{minWidth:150}}>
+                <div className="form-label">{lbl}</div>
+                <div className="field-readonly" style={{fontFamily:"var(--font)",fontSize:13}}>{val}</div>
+              </div>
+            ))}
+          </div>
+          {/* Monto original del viaje */}
+          <div style={{display:"flex",gap:12,alignItems:"center",paddingTop:8,borderTop:"1px solid var(--border)"}}>
+            <div>
+              <div className="form-label">Monto cotizado del viaje</div>
+              <div className="field-readonly" style={{fontFamily:"var(--mono)",minWidth:160}}>
+                {G("montoViajeOrig") ? `${fmtNum(G("montoViajeOrig"))} ${G("divisaViajeOrig")}` : "—"}
+              </div>
             </div>
+            {hayDiferencia && (
+              <div className="alert alert-warning" style={{margin:0,flex:1}}>
+                ⚠️ El monto de la FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado del viaje ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}). Se registrará la diferencia.
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Datos precargados */}
-      {(tripId || factura) && (
-        <div className="card" style={{marginBottom:16}}>
-          <div className="card-header"><div className="card-title">📋 Datos del Viaje</div></div>
-          <div className="card-body">
-            <div className="form-row" style={{flexWrap:"wrap",gap:10}}>
-              {preFields.map(([lbl,val]) => (
-                <div key={lbl} style={{minWidth:150}}>
-                  <div className="form-label">{lbl}</div>
-                  <div className="field-readonly" style={{fontFamily:"var(--font)",fontSize:13}}>{val}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FC Fletero */}
+      {/* FC Fletero — card opcional */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header">
-          <div className="card-title">🚛 Factura Fletero</div>
+          <div className="card-title">🚛 Factura Fletero <span style={{fontSize:11,fontWeight:400,color:"var(--text3)"}}>(opcional — solo si terciarizás)</span></div>
           {!readonly && <EstadoBadge val={estadoFletero}/>}
         </div>
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Fletero <Req show={!readonly}/> {errors.fletero && <span className="form-error">{errors.fletero}</span>}</label>
-              <SearchableSelect options={FLETEROS} value={fletero} onChange={setFletero} placeholder="Seleccionar..." disabled={readonly}/>
+              <label className="form-label">Fletero</label>
+              <SearchableSelect
+                options={dropdowns.FLETEROS||["PEPE","JUAN"]}
+                value={fletero} onChange={setFletero}
+                placeholder="Seleccionar fletero..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">N° FC Fletero</label>
-              <input className="form-input" value={fcFletero} onChange={e=>setFcFletero(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
+              <input className="form-input" value={fcFletero}
+                onChange={e=>setFcFletero(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
             </div>
             <div className="form-group">
               <label className="form-label">Monto FC Fletero</label>
@@ -3343,19 +3430,22 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             </div>
             <div className="form-group" style={{maxWidth:90}}>
               <label className="form-label">Divisa</label>
-              <select className="form-select" value={divisaFletero} onChange={e=>setDivisaFletero(e.target.value)} disabled={readonly}>
-                {CURRENCIES.map(cur=><option key={cur}>{cur}</option>)}
+              <select className="form-select" value={divisaFletero}
+                onChange={e=>setDivisaFletero(e.target.value)} disabled={readonly}>
+                {CURRENCIES.map(c=><option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Fecha FC Fletero</label>
-              <input type="date" className="form-input" value={fechaFcFletero} onChange={e=>setFechaFcFletero(e.target.value)} disabled={readonly}/>
+              <input type="date" className="form-input" value={fechaFcFletero}
+                onChange={e=>setFechaFcFletero(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
-              <select className="form-select" value={estadoFletero} onChange={e=>setEstadoFletero(e.target.value)} disabled={readonly}>
+              <select className="form-select" value={estadoFletero}
+                onChange={e=>setEstadoFletero(e.target.value)} disabled={readonly}>
                 {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
             </div>
@@ -3373,11 +3463,15 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Destinatario <Req show={!readonly}/> {errors.destinatario && <span className="form-error">{errors.destinatario}</span>}</label>
-              <SearchableSelect options={DESTINATARIOS} value={destinatario} onChange={setDestinatario} placeholder="Seleccionar..." disabled={readonly}/>
+              <SearchableSelect
+                options={dropdowns.COLABORADORES||[]}
+                value={destinatario} onChange={setDestinatario}
+                placeholder="Seleccionar..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">N° FC Cliente</label>
-              <input className="form-input" value={fcCliente} onChange={e=>setFcCliente(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
+              <input className="form-input" value={fcCliente}
+                onChange={e=>setFcCliente(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
             </div>
             <div className="form-group">
               <label className="form-label">Monto FC Cliente</label>
@@ -3385,23 +3479,98 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             </div>
             <div className="form-group" style={{maxWidth:90}}>
               <label className="form-label">Divisa</label>
-              <select className="form-select" value={divisaCliente} onChange={e=>setDivisaCliente(e.target.value)} disabled={readonly}>
-                {CURRENCIES.map(cur=><option key={cur}>{cur}</option>)}
+              <select className="form-select" value={divisaCliente}
+                onChange={e=>setDivisaCliente(e.target.value)} disabled={readonly}>
+                {CURRENCIES.map(c=><option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Fecha FC Cliente</label>
-              <input type="date" className="form-input" value={fechaFcCliente} onChange={e=>setFechaFcCliente(e.target.value)} disabled={readonly}/>
+              <input type="date" className="form-input" value={fechaFcCliente}
+                onChange={e=>setFechaFcCliente(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
-              <select className="form-select" value={estadoCliente} onChange={e=>setEstadoCliente(e.target.value)} disabled={readonly}>
+              <select className="form-select" value={estadoCliente}
+                onChange={e=>setEstadoCliente(e.target.value)} disabled={readonly}>
                 {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Extra Costos */}
+      <div className="card" style={{marginBottom:16}}>
+        <div className="card-header">
+          <div className="card-title">➕ Extra Costos</div>
+          {!readonly && (
+            <button className="btn btn-secondary btn-sm" onClick={addExtraCosto}>+ Agregar</button>
+          )}
+        </div>
+        <div className="card-body">
+          {extraCostos.length === 0 && (
+            <div style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>
+              {readonly ? "Sin extra costos registrados." : "Sin extra costos. Usá el botón para agregar."}
+            </div>
+          )}
+          {extraCostos.map((ec, i) => (
+            <div key={i} style={{
+              background:"var(--bg3)",borderRadius:"var(--radius)",
+              padding:"12px 16px",marginBottom:10,
+              border:"1px solid var(--border)"
+            }}>
+              <div className="form-row" style={{alignItems:"flex-end"}}>
+                <div className="form-group" style={{flex:2}}>
+                  <label className="form-label">
+                    Categoría <Req show={!readonly}/>
+                    {errors[`ec_cat_${i}`] && <span className="form-error"> {errors[`ec_cat_${i}`]}</span>}
+                  </label>
+                  <SearchableSelect
+                    options={dropdowns.EXTRA_COSTOS||["COMBUSTIBLE EXTRA","PEAJE","ESTADÍA","REPARACIÓN","ADUANA","OTROS"]}
+                    value={ec.cat}
+                    onChange={v => updateExtraCosto(i,"cat",v)}
+                    placeholder="Seleccionar categoría..."
+                    disabled={readonly}/>
+                </div>
+                <div className="form-group" style={{flex:1}}>
+                  <label className="form-label">
+                    Monto <Req show={!readonly}/>
+                    {errors[`ec_monto_${i}`] && <span className="form-error"> {errors[`ec_monto_${i}`]}</span>}
+                  </label>
+                  <MoneyInput value={ec.monto} onChange={v=>updateExtraCosto(i,"monto",v)} disabled={readonly}/>
+                </div>
+                <div className="form-group" style={{maxWidth:90}}>
+                  <label className="form-label">Divisa</label>
+                  <select className="form-select" value={ec.divisa||"USD"}
+                    onChange={e=>updateExtraCosto(i,"divisa",e.target.value)} disabled={readonly}>
+                    {CURRENCIES.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                {!readonly && (
+                  <button className="btn btn-danger btn-sm btn-icon"
+                    style={{marginBottom:16}} onClick={()=>removeExtraCosto(i)}>✕</button>
+                )}
+              </div>
+              {/* Descripción obligatoria si cat = OTROS */}
+              {(ec.cat === "OTROS" || (readonly && ec.descripcion)) && (
+                <div className="form-group" style={{margin:0}}>
+                  <label className="form-label">
+                    Descripción <Req show={!readonly && ec.cat==="OTROS"}/>
+                    {errors[`ec_desc_${i}`] && <span className="form-error"> {errors[`ec_desc_${i}`]}</span>}
+                  </label>
+                  {readonly
+                    ? <div className="field-readonly" style={{fontFamily:"var(--font)"}}>{ec.descripcion||"—"}</div>
+                    : <input className="form-input" value={ec.descripcion||""}
+                        onChange={e=>updateExtraCosto(i,"descripcion",e.target.value)}
+                        placeholder="Describí el costo adicional..."/>
+                  }
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -3417,6 +3586,7 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group">
               <label className="form-label">Diferencia (FC Cliente − Cancelación)</label>
               <div className="field-readonly" style={{
+                fontFamily:"var(--mono)",
                 color: !montoFcCliente && !cancelacion ? "var(--text3)"
                      : diferencia < 0 ? "var(--danger)"
                      : diferencia > 0 ? "var(--success)" : "var(--text2)"
@@ -3428,17 +3598,20 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
           <div className="form-row">
             <div className="form-group" style={{flex:2}}>
               <label className="form-label">Descripción de cancelación</label>
-              <input className="form-input" value={descripcionCanc} onChange={e=>setDescripcionCanc(e.target.value)} disabled={readonly} placeholder="Opcional"/>
+              <input className="form-input" value={descripcionCanc}
+                onChange={e=>setDescripcionCanc(e.target.value)} disabled={readonly} placeholder="Opcional"/>
             </div>
             <div className="form-group">
               <label className="form-label">Tipo de cobro</label>
               <SearchableSelect
                 options={dropdowns.FORMAS_PAGO||["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]}
-                value={tipoCanc} onChange={setTipoCanc} placeholder="Forma de pago..." disabled={readonly}/>
+                value={tipoCanc} onChange={setTipoCanc}
+                placeholder="Forma de pago..." disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha de cobro</label>
-              <input type="date" className="form-input" value={fechaCobro} onChange={e=>setFechaCobro(e.target.value)} disabled={readonly}/>
+              <input type="date" className="form-input" value={fechaCobro}
+                onChange={e=>setFechaCobro(e.target.value)} disabled={readonly}/>
             </div>
           </div>
         </div>
@@ -3455,6 +3628,8 @@ function FacturaForm({ factura, trips, dropdowns, canEdit, onSave, onBack }) {
     </div>
   );
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GASTOS TABLA
