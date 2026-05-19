@@ -563,8 +563,22 @@ async function gasCall(action, payload={}) {
   const url = `${GAS_URL}?p=${encodeURIComponent(p)}&t=${encodeURIComponent(token)}`;
   try {
     const res = await fetch(url, { redirect:"follow" });
-    return JSON.parse(await res.text());
+    if (!res.ok) return { ok:false, error:`Error HTTP ${res.status}: ${res.statusText}` };
+    const text = await res.text();
+    // A veces GAS devuelve HTML de error en lugar de JSON (ej: cuota excedida, error 500)
+    if (!text || text.trim().startsWith("<")) {
+      return { ok:false, error:"El servidor devolvió una respuesta inesperada. Intentá de nuevo." };
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { ok:false, error:"Respuesta inválida del servidor." };
+    }
   } catch(err) {
+    // Error de red: sin conexión, timeout, CORS
+    if (err.name === "TypeError" && err.message.includes("fetch")) {
+      return { ok:false, error:"Sin conexión al servidor. Verificá tu internet." };
+    }
     return { ok:false, error:"Error de red: "+err.message };
   }
 }
@@ -1080,7 +1094,7 @@ function App() {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
-  // Verifica cada minuto si el token expiró en el servidor (8hs desde el login).
+  // Verifica cada 5 minutos si el token expiró en el servidor (8hs desde el login).
   // Si el servidor rechaza la solicitud, cierra la sesión automáticamente.
   useEffect(() => {
     if (!session) return;
@@ -1089,7 +1103,7 @@ function App() {
       if (!r.ok && r.error && r.error.includes("Sesión inválida")) {
         handleLogout();
       }
-    }, 60 * 1000);
+    }, 5 * 60 * 1000); // cada 5 minutos (era 1 minuto — demasiado agresivo)
     return () => clearInterval(interval);
   }, [session]);
 
@@ -1236,8 +1250,21 @@ function LoginScreen({ onLogin }) {
           <input type="password" className="form-input" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••"/>
         </div>
         <button className="btn btn-primary btn-full" disabled={loading}>{loading?"Ingresando...":"Ingresar"}</button>
-        <div style={{ marginTop:16, fontSize:11, color:"var(--text3)", textAlign:"center" }}>
+        <div style={{ marginTop:16, fontSize:11, color:"var(--text3)", textAlign:"center", lineHeight:1.6 }}>
           Credenciales iniciales: usuario = contraseña (ej: SOL / SOL)
+        </div>
+        <div style={{ marginTop:12, textAlign:"center" }}>
+          <button
+            type="button"
+            style={{ background:"none", border:"none", fontSize:11, color:"var(--text3)",
+                     cursor:"pointer", textDecoration:"underline" }}
+            onClick={() => {
+              localStorage.removeItem("sigt_session");
+              localStorage.removeItem("sigt_theme");
+              window.location.reload();
+            }}>
+            ¿Problemas para ingresar? Limpiar sesión guardada
+          </button>
         </div>
       </form>
     </div>
