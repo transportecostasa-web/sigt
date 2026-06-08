@@ -167,6 +167,7 @@ tr:hover td{background:var(--bg3);}
 .ss-option:hover,.ss-option.focused{background:var(--bg4);color:var(--text);}
 .ss-option.selected{color:var(--accent);}
 .ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
+.form-input-error{border-color:var(--danger) !important;box-shadow:0 0 0 3px rgba(229,72,77,.15);}
 </style>
 </head>
 <body>
@@ -185,13 +186,12 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wO
 // "id" es el número de módulo, "short" es el nombre que aparece en el menú lateral.
 // Para agregar un módulo nuevo: añadir una entrada acá y crear su componente Module_N más abajo.
 const MODULES = [
-  { id:1, icon:"🚚", label:"Inicio de Viaje",     short:"Viajes" },
-  { id:2, icon:"💵", label:"Entrega de Plata",    short:"Entregas" },
-  { id:3, icon:"📊", label:"Rendición de Gastos", short:"Rendición" },
-  { id:4, icon:"📦", label:"Extra Costos",         short:"Extra Costos" },
-  { id:5, icon:"🧾", label:"Facturación",          short:"Facturación" },
-  { id:6, icon:"👥", label:"RRHH",                 short:"RRHH" },
-  { id:7, icon:"🏗",  label:"Costos Fijos",         short:"Costos Fijos" },
+  { id:1, icon:"🚚", label:"Inicio de Viaje",      short:"Viajes" },
+  { id:2, icon:"💵", label:"Entrega de Plata",     short:"Entregas" },
+  { id:3, icon:"📊", label:"Rendición de Gastos",  short:"Rendición Viajes" },
+  { id:5, icon:"🧾", label:"Facturación",           short:"Facturación" },
+  { id:6, icon:"👥", label:"RRHH",                  short:"RRHH" },
+  { id:7, icon:"🏗",  label:"Gastos Generales",     short:"Gastos Generales" },
 ];
 
 // Permisos por usuario.
@@ -199,12 +199,12 @@ const MODULES = [
 // "edit": en cuáles puede EDITAR (en el resto solo lee).
 // Para cambiar permisos: modificar los arrays de cada usuario.
 const PERMISSIONS = {
-  SOL:      { role:"Editor global",  mods:[1,2,3,4,5,6,7], edit:[1,2,3,4,5,6,7] },
-  PABLO:    { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
-  JAVIER:   { role:"Solo lectura",   mods:[1,2,3,4,5,6,7], edit:[] },
-  SEBASTIAN:{ role:"Editor parcial", mods:[1,2,4,5],       edit:[1,2,4,5] },
-  ROLANDO:  { role:"Editor parcial", mods:[2,3],           edit:[2,3] },
-  LUCIANA:  { role:"Editor parcial", mods:[5,6],           edit:[5,6] },
+  SOL:      { role:"Editor global",  mods:[1,2,3,5,6,7], edit:[1,2,3,5,6,7] },
+  PABLO:    { role:"Solo lectura",   mods:[1,2,3,5,6,7], edit:[] },
+  JAVIER:   { role:"Solo lectura",   mods:[1,2,3,5,6,7], edit:[] },
+  SEBASTIAN:{ role:"Editor parcial", mods:[1,2,5],        edit:[1,2,5] },
+  ROLANDO:  { role:"Editor parcial", mods:[2,3],          edit:[2,3] },
+  AUGUSTO:  { role:"Editor parcial", mods:[5,6],          edit:[5,6] },
 };
 
 // Divisas disponibles en todos los campos de dinero del sistema.
@@ -440,80 +440,29 @@ function makeSegmentId(tripId, desde, hasta, seq) {
 // Tabla de distancias viales aproximadas entre ciudades (en km por carretera).
 // Es bidireccional: funciona igual si se busca A→B que B→A.
 // Para agregar una ruta nueva: añadir una línea con el formato "CIUDAD A|CIUDAD B": km
-const KM_TABLE = {
-  "BUENOS AIRES|ROSARIO": 300, "BUENOS AIRES|CÓRDOBA": 710, "BUENOS AIRES|MENDOZA": 1040,
-  "BUENOS AIRES|MONTEVIDEO": 280, "BUENOS AIRES|ASUNCIÓN": 1365, "BUENOS AIRES|SANTIAGO": 1440,
-  "ROSARIO|CÓRDOBA": 400, "ROSARIO|MENDOZA": 760, "ROSARIO|ASUNCIÓN": 1065,
-  "CÓRDOBA|MENDOZA": 690, "CÓRDOBA|SANTIAGO": 1365, "CÓRDOBA|ASUNCIÓN": 1010,
-  "MENDOZA|SANTIAGO": 380, "MONTEVIDEO|ASUNCIÓN": 1640,
-  "BUENOS AIRES|SANTA FE": 475, "ROSARIO|SANTA FE": 165,
-};
+// KM_TABLE eliminada — los km se leen desde la hoja KM_PREVISTOS del config spreadsheet
+// Ver handleGetDropdowns() en el backend → dropdowns.KM_PREVISTOS
 
-// UPDATE: Busca km entre dos ciudades.
-// Flujo: 1) KM_TABLE local (inmediato) → 2) OSRM API (async, más preciso) → 3) manual.
-// La versión síncrona (getKmPrevistos) se mantiene para compatibilidad interna.
-// La versión async (fetchKmPrevistos) intenta OSRM y cae al KM_TABLE si falla.
-function getKmPrevistos(desde, hasta) {
+// Busca km entre dos ciudades usando la hoja KM_PREVISTOS del backend.
+// kmTable: dropdowns.KM_PREVISTOS (array de {lugar1, lugar2, km})
+// Bidireccional: A→B == B→A
+// Los nombres siempre coinciden porque vienen de desplegables estandarizados.
+function getKmPrevistos(desde, hasta, kmTable) {
   if (!desde || !hasta || desde === hasta) return null;
-  const key1 = `${desde.toUpperCase()}|${hasta.toUpperCase()}`;
-  const key2 = `${hasta.toUpperCase()}|${desde.toUpperCase()}`;
-  return KM_TABLE[key1] || KM_TABLE[key2] || null;
+  if (!kmTable || !kmTable.length) return null;
+  const d = desde.toUpperCase().trim();
+  const h = hasta.toUpperCase().trim();
+  const found = kmTable.find(r =>
+    (r.lugar1 === d && r.lugar2 === h) ||
+    (r.lugar1 === h && r.lugar2 === d)
+  );
+  return found ? found.km : null;
 }
 
-// NEW: Coordenadas aproximadas de ciudades conocidas para usar con OSRM.
-// OSRM (Open Source Routing Machine) es una API de ruteo gratuita y sin API key.
-// URL pública: https://router.project-osrm.org
-// Si la ciudad no está en este mapa, no se intenta OSRM y se cae al KM_TABLE.
-const CITY_COORDS = {
-  "BUENOS AIRES":  [-34.6037, -58.3816],
-  "ROSARIO":       [-32.9468, -60.6393],
-  "CÓRDOBA":       [-31.4135, -64.1811],
-  "MENDOZA":       [-32.8908, -68.8272],
-  "SANTA FE":      [-31.6333, -60.7000],
-  "ASUNCIÓN":      [-25.2867, -57.6470],
-  "MONTEVIDEO":    [-34.9011, -56.1645],
-  "SANTIAGO":      [-33.4489, -70.6693],
-  "LA PAZ":        [-16.5000, -68.1500],
-  "LIMA":          [-12.0464, -77.0428],
-  "ENCARNACIÓN":   [-27.3365, -55.8666],
-  "CIUDAD DEL ESTE":[-25.5097, -54.6114],
-};
+// CITY_COORDS eliminado — ya no se usa OSRM
 
-// NEW: Consulta OSRM para obtener distancia vial real entre dos ciudades.
-// Si la ciudad no está en CITY_COORDS, o si OSRM falla, devuelve null.
-// Timeout de 4 segundos para no bloquear la UI si la red es lenta.
-async function fetchKmOSRM(desde, hasta) {
-  const coordsD = CITY_COORDS[desde?.toUpperCase()];
-  const coordsH = CITY_COORDS[hasta?.toUpperCase()];
-  if (!coordsD || !coordsH) return null;
-  try {
-    const [latD, lngD] = coordsD;
-    const [latH, lngH] = coordsH;
-    const url = `https://router.project-osrm.org/route/v1/driving/${lngD},${latD};${lngH},${latH}?overview=false`;
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 4000);
-    const res  = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(tid);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.[0]) return null;
-    // OSRM devuelve distancia en metros — convertir a km redondeado
-    return Math.round(data.routes[0].distance / 1000);
-  } catch {
-    return null; // timeout o error de red → fallback silencioso
-  }
-}
 
-// NEW: Obtiene km previstos con fallback en cadena:
-// 1. OSRM (API externa, distancia vial real)
-// 2. KM_TABLE (tabla local, estimación)
-// 3. null (campo manual)
-async function fetchKmPrevistos(desde, hasta) {
-  if (!desde || !hasta || desde === hasta) return null;
-  const osrm = await fetchKmOSRM(desde, hasta);
-  if (osrm !== null) return osrm;
-  return getKmPrevistos(desde, hasta); // KM_TABLE como fallback
-}
+// fetchKmOSRM y fetchKmPrevistos eliminados
 
 // ─── CACHÉ EN MEMORIA ────────────────────────────────────────────────────────
 // Almacena los datos ya cargados del servidor para no volver a pedirlos
@@ -769,6 +718,393 @@ function StatusBadge({ status }) {
   };
   return <span className={map[status]||"badge badge-gray"}>{status}</span>;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATE INPUT — Campo de fecha con date picker nativo + ingreso manual DD/MM/AAAA
+//
+// Props:
+//   value:    string "YYYY-MM-DD" (formato interno estándar)
+//   onChange: fn(string) → recibe "YYYY-MM-DD" o "" si inválido
+//   disabled: bool
+//   required: bool — si true, marca error cuando está vacío y pierde foco
+//   label:    no se usa aquí, es solo para el input
+//
+// Comportamiento:
+//   - Muestra el valor en formato DD/MM/AAAA mientras el usuario escribe
+//   - Acepta tanto el picker nativo (click en ícono) como escritura manual
+//   - Aplica máscara automática: inserta "/" al teclear dígitos
+//   - Al salir del campo: valida, si incompleto marca error en rojo
+//   - Llama a onChange con "YYYY-MM-DD" solo cuando la fecha es válida
+//   - Si el campo se borra completamente, llama a onChange("")
+// ═══════════════════════════════════════════════════════════════════════════════
+function DateInput({ value="", onChange, disabled=false, required=false, placeholder="DD/MM/AAAA" }) {
+  // display: lo que el usuario ve (DD/MM/AAAA)
+  // error: mensaje de error debajo del campo
+  const [display, setDisplay] = useState(() => value ? fmtDate(value) : "");
+  const [error,   setError]   = useState("");
+  const inputRef = useRef(null);
+
+  // Sincronizar cuando el valor externo cambia (ej: al resetear el formulario)
+  useEffect(() => {
+    const formatted = value ? fmtDate(value) : "";
+    setDisplay(formatted);
+    if (formatted) setError("");
+  }, [value]);
+
+  // Convierte display "DD/MM/AAAA" a ISO "YYYY-MM-DD"
+  function displayToISO(str) {
+    const clean = str.replace(/\D/g,"");
+    if (clean.length < 8) return null;
+    const dd = clean.slice(0,2);
+    const mm = clean.slice(2,4);
+    const yy = clean.slice(4,8);
+    const d = new Date(`${yy}-${mm}-${dd}T00:00:00`);
+    if (isNaN(d.getTime())) return null;
+    // Verificar que la fecha reconstruida coincide (evita 32/01/2026)
+    if (String(d.getDate()).padStart(2,"0") !== dd) return null;
+    if (String(d.getMonth()+1).padStart(2,"0") !== mm) return null;
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  // Aplica máscara mientras el usuario tipea: inserta "/" automáticamente
+  function handleChange(e) {
+    const raw = e.target.value;
+    // Solo dígitos y barras
+    const digits = raw.replace(/[^\d]/g,"");
+    let masked = "";
+    for (let i = 0; i < digits.length && i < 8; i++) {
+      if (i === 2 || i === 4) masked += "/";
+      masked += digits[i];
+    }
+    setDisplay(masked);
+    setError("");
+    if (masked === "") { onChange(""); return; }
+    const iso = displayToISO(masked);
+    if (iso) onChange(iso);
+  }
+
+  // Al salir del campo: validar completitud
+  function handleBlur() {
+    if (!display) {
+      if (required) setError("Campo requerido");
+      onChange("");
+      return;
+    }
+    const digits = display.replace(/\D/g,"");
+    if (digits.length < 8) {
+      setError("Fecha incompleta — usar DD/MM/AAAA");
+      return;
+    }
+    const iso = displayToISO(display);
+    if (!iso) {
+      setError("Fecha inválida");
+      return;
+    }
+    setError("");
+    onChange(iso);
+    // Reformatear el display para que quede prolijo
+    setDisplay(fmtDate(iso));
+  }
+
+  // El picker nativo llama onChange con "YYYY-MM-DD" directamente
+  function handleNativePick(e) {
+    const iso = e.target.value; // "YYYY-MM-DD"
+    if (!iso) { setDisplay(""); onChange(""); return; }
+    setDisplay(fmtDate(iso));
+    setError("");
+    onChange(iso);
+  }
+
+  return (
+    <div style={{position:"relative"}}>
+      <div style={{display:"flex",gap:0}}>
+        {/* Campo de texto con máscara */}
+        <input
+          ref={inputRef}
+          className={"form-input" + (error ? " form-input-error" : "")}
+          style={{
+            borderRadius: "var(--radius) 0 0 var(--radius)",
+            borderRight: "none",
+            borderColor: error ? "var(--danger)" : undefined,
+          }}
+          type="text"
+          inputMode="numeric"
+          value={display}
+          placeholder={placeholder}
+          disabled={disabled}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          maxLength={10}
+          autoComplete="off"
+        />
+        {/* Botón para abrir el picker nativo — input date invisible */}
+        <div style={{position:"relative",width:36,flexShrink:0}}>
+          <input
+            type="date"
+            value={value || ""}
+            onChange={handleNativePick}
+            disabled={disabled}
+            style={{
+              position:"absolute",inset:0,opacity:0,cursor:disabled?"not-allowed":"pointer",
+              width:"100%",height:"100%",zIndex:2
+            }}
+            tabIndex={-1}
+          />
+          <div style={{
+            height:"100%",background:"var(--bg3)",
+            border:"1px solid var(--border2)",
+            borderRadius:"0 var(--radius) var(--radius) 0",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            color:"var(--text3)",fontSize:14,cursor:disabled?"not-allowed":"pointer",
+            pointerEvents:"none"
+          }}>📅</div>
+        </div>
+      </div>
+      {error && (
+        <div style={{fontSize:10,color:"var(--danger)",marginTop:3,lineHeight:1.2}}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATA TABLE — Tabla reutilizable con sort, filtro por columna y búsqueda global
+// 
+// Props:
+//   columns: [{ key, label, sortable?, render?, style?, align? }]
+//   data:    array de objetos
+//   searchPlaceholder?: string
+//   emptyText?: string
+//   stickyHeader?: bool
+// ═══════════════════════════════════════════════════════════════════════════════
+function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText="Sin registros.", stickyHeader=false }) {
+  const [sortKey,    setSortKey]    = useState(null);
+  const [sortDir,    setSortDir]    = useState("asc");  // "asc" | "desc"
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [colFilters, setColFilters] = useState({}); // { key: value }
+
+  // Columnas que tienen filtro activo
+  const [openFilter, setOpenFilter] = useState(null); // key de col con filtro abierto
+  const filterRefs = useRef({});
+
+  // Cerrar filtro al hacer click fuera
+  useEffect(() => {
+    function handle(e) {
+      if (openFilter && filterRefs.current[openFilter] &&
+          !filterRefs.current[openFilter].contains(e.target)) {
+        setOpenFilter(null);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [openFilter]);
+
+  // Valores únicos por columna para el dropdown de filtro
+  const colUniqueValues = useMemo(() => {
+    const map = {};
+    columns.forEach(col => {
+      if (col.filterable !== false) {
+        const vals = [...new Set(
+          data.map(row => {
+            const v = row[col.key];
+            return v !== null && v !== undefined ? String(v) : "";
+          }).filter(v => v !== "")
+        )].sort();
+        map[col.key] = vals;
+      }
+    });
+    return map;
+  }, [columns, data]);
+
+  // Pipeline: búsqueda global → filtros por columna → sort
+  const processed = useMemo(() => {
+    let rows = [...data];
+
+    // 1. Búsqueda global
+    if (globalSearch.trim()) {
+      const q = globalSearch.toLowerCase();
+      rows = rows.filter(row =>
+        columns.some(col => {
+          const v = row[col.key];
+          return v !== null && v !== undefined && String(v).toLowerCase().includes(q);
+        })
+      );
+    }
+
+    // 2. Filtros por columna
+    Object.entries(colFilters).forEach(([key, val]) => {
+      if (val) rows = rows.filter(row => String(row[key]||"") === val);
+    });
+
+    // 3. Sort
+    if (sortKey) {
+      rows.sort((a, b) => {
+        const av = a[sortKey] ?? "";
+        const bv = b[sortKey] ?? "";
+        // Intentar comparación numérica si ambos son números
+        const an = parseFloat(String(av).replace(/\./g,"").replace(",","."));
+        const bn = parseFloat(String(bv).replace(/\./g,"").replace(",","."));
+        let cmp;
+        if (!isNaN(an) && !isNaN(bn)) {
+          cmp = an - bn;
+        } else {
+          cmp = String(av).localeCompare(String(bv), "es-AR");
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return rows;
+  }, [data, globalSearch, colFilters, sortKey, sortDir]);
+
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function setColFilter(key, val) {
+    setColFilters(p => ({ ...p, [key]: val }));
+    setOpenFilter(null);
+  }
+
+  function clearAllFilters() {
+    setColFilters({});
+    setGlobalSearch("");
+    setSortKey(null);
+    setSortDir("asc");
+  }
+
+  const hasActiveFilters = globalSearch || Object.values(colFilters).some(Boolean);
+  const SortIcon = ({ k }) => {
+    if (sortKey !== k) return <span style={{color:"var(--text3)",marginLeft:4,fontSize:10}}>⇅</span>;
+    return <span style={{color:"var(--accent)",marginLeft:4,fontSize:10}}>{sortDir==="asc"?"↑":"↓"}</span>;
+  };
+
+  return (
+    <div>
+      {/* Barra de búsqueda + limpiar */}
+      <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{position:"relative",flex:1,minWidth:200}}>
+          <input
+            className="form-input"
+            style={{paddingLeft:28,fontSize:12}}
+            placeholder={searchPlaceholder}
+            value={globalSearch}
+            onChange={e=>setGlobalSearch(e.target.value)}
+          />
+          <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",
+                        color:"var(--text3)",fontSize:12,pointerEvents:"none"}}>🔍</span>
+        </div>
+        {hasActiveFilters && (
+          <button className="btn btn-secondary btn-sm" onClick={clearAllFilters}
+            style={{fontSize:12,whiteSpace:"nowrap"}}>
+            ✕ Limpiar filtros
+          </button>
+        )}
+        <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
+          {processed.length} de {data.length}
+        </span>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {columns.map(col => {
+                const hasFilter = colFilters[col.key];
+                const isOpen    = openFilter === col.key;
+                const uniqueVals = colUniqueValues[col.key] || [];
+                return (
+                  <th key={col.key} style={{...col.style, position:"relative", userSelect:"none"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      {/* Sort */}
+                      {col.sortable !== false ? (
+                        <span style={{cursor:"pointer",flex:1,display:"flex",alignItems:"center"}}
+                          onClick={()=>toggleSort(col.key)}>
+                          {col.label}
+                          <SortIcon k={col.key}/>
+                        </span>
+                      ) : (
+                        <span style={{flex:1}}>{col.label}</span>
+                      )}
+                      {/* Filter toggle */}
+                      {col.filterable !== false && uniqueVals.length > 1 && (
+                        <div ref={el=>filterRefs.current[col.key]=el} style={{position:"relative"}}>
+                          <button
+                            onClick={e=>{e.stopPropagation();setOpenFilter(isOpen?null:col.key);}}
+                            style={{
+                              background:"none",border:"none",cursor:"pointer",
+                              color: hasFilter ? "var(--accent)" : "var(--text3)",
+                              fontSize:10,padding:"0 2px",lineHeight:1
+                            }}
+                            title="Filtrar">▼</button>
+                          {isOpen && (
+                            <div style={{
+                              position:"absolute",top:"100%",right:0,zIndex:500,
+                              background:"var(--bg3)",border:"1px solid var(--border2)",
+                              borderRadius:"var(--radius)",minWidth:160,
+                              boxShadow:"0 8px 24px rgba(0,0,0,.4)",
+                              maxHeight:200,overflowY:"auto"
+                            }}>
+                              <div style={{padding:"6px 8px",cursor:"pointer",
+                                           color:!hasFilter?"var(--accent)":"var(--text2)",
+                                           fontSize:12,borderBottom:"1px solid var(--border)"}}
+                                onClick={()=>setColFilter(col.key,"")}>
+                                — Todos —
+                              </div>
+                              {uniqueVals.map(v=>(
+                                <div key={v} style={{
+                                  padding:"6px 8px",cursor:"pointer",fontSize:12,
+                                  color:colFilters[col.key]===v?"var(--accent)":"var(--text2)",
+                                  background:colFilters[col.key]===v?"var(--bg4)":"transparent"
+                                }}
+                                onClick={()=>setColFilter(col.key,v)}>{v||"(vacío)"}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {/* Indicador de filtro activo */}
+                    {hasFilter && (
+                      <div style={{fontSize:9,color:"var(--accent)",fontWeight:400,
+                                   overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        = {colFilters[col.key]}
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {processed.length === 0 ? (
+              <tr><td colSpan={columns.length} style={{textAlign:"center",padding:32,color:"var(--text3)"}}>{emptyText}</td></tr>
+            ) : (
+              processed.map((row, i) => (
+                <tr key={row.id || row._key || i}>
+                  {columns.map(col => (
+                    <td key={col.key} style={{textAlign:col.align||"left",...col.tdStyle}}>
+                      {col.render ? col.render(row[col.key], row) : (row[col.key]??"")}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SEARCHABLE SELECT
@@ -1059,8 +1395,10 @@ function App() {
           "YPF","SHELL","AXION","PUMA","OTRO"
         ]),
         FORMAS_PAGO:  withFallback(d.FORMAS_PAGO,  ["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]),
-        FLETEROS:     withFallback(d.FLETEROS,      ["PEPE","JUAN"]),
-        EXTRA_COSTOS: withFallback(d.EXTRA_COSTOS,  ["COMBUSTIBLE EXTRA","PEAJE","ESTADÍA","REPARACIÓN","ADUANA","OTROS"]),
+        FLETEROS:      withFallback(d.FLETEROS,      ["PEPE","JUAN"]),
+        EXTRA_COSTOS:  withFallback(d.EXTRA_COSTOS,  ["COMBUSTIBLE EXTRA","PEAJE","ESTADÍA","REPARACIÓN","ADUANA","OTROS"]),
+        DESTINATARIOS: withFallback(d.DESTINATARIOS, ["ANA","CARLA"]),
+        KM_PREVISTOS:  d.KM_PREVISTOS || [],
         TC_USD: d.TC_USD || 1200,
         TC_CLP: d.TC_CLP || 160,
       });
@@ -1345,6 +1683,8 @@ function ModuleRenderer({ moduleId, session, canEdit, dropdowns, notif }) {
   if (moduleId===2) return <Module2 {...props}/>;
   if (moduleId===3) return <Module3 {...props}/>;
   if (moduleId===5) return <Module5 {...props}/>;
+  if (moduleId===6) return <Module6 {...props}/>;
+  if (moduleId===7) return <Module7 {...props}/>;
   return (
     <div className="module-container">
       <div className="empty"><div className="empty-icon">🔧</div><p>Módulo {moduleId} — próximamente</p></div>
@@ -1628,7 +1968,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     // FIX #2 — segId incluye desde-hasta
     const segId = makeSegmentId(tripId, desde, hasta, seq);
     // FIX #8 — km previstos automático
-    const kmAuto = getKmPrevistos(desde, hasta);
+    const kmAuto = getKmPrevistos(desde, hasta, dropdowns?.KM_PREVISTOS||[]);
     return {
       segId, desde, fechaInicio:"", hasta, fechaLlegadaPrevista:"",
       chofer:"", tractor:"", semi:"", fechaLlegadaReal:"",
@@ -1653,38 +1993,13 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         const h = key==="hasta" ? val : n[i].hasta;
         n[i].segId = makeSegmentId(id, d, h, i+1);
         // KM_TABLE síncrono — siempre disponible, sin CORS ni red
-        const kmLocal = getKmPrevistos(d, h);
+        const kmLocal = getKmPrevistos(d, h, dropdowns.KM_PREVISTOS||[]);
         if (kmLocal !== null) { n[i].kmPrevistos = kmLocal; n[i].kmManual = false; }
         else { n[i].kmManual = true; }
       }
       return n;
     });
-    // OSRM en background — actualiza si llega antes de que el usuario cambie el campo
-    if ((key === "desde" || key === "hasta") && !readonly) {
-      const d = key==="desde" ? val : null; // se resolverá en el then
-      const h = key==="hasta" ? val : null;
-      // Capturar valores actuales del tramo fuera del closure de setSegments
-      setTimeout(() => {
-        setSegments(curr => {
-          const seg = curr[i];
-          if (!seg) return curr;
-          const desde = key==="desde" ? val : seg.desde;
-          const hasta = key==="hasta" ? val : seg.hasta;
-          if (!desde || !hasta || desde===hasta) return curr;
-          fetchKmOSRM(desde, hasta).then(km => {
-            if (km === null) return;
-            setSegments(latest => {
-              const upd = [...latest];
-              if (upd[i] && String(upd[i].desde)===desde && String(upd[i].hasta)===hasta) {
-                upd[i] = { ...upd[i], kmPrevistos: km, kmManual: false };
-              }
-              return upd;
-            });
-          });
-          return curr;
-        });
-      }, 0);
-    }
+
   }
 
   // FIX #5 — Validación completa de tramos
@@ -1947,19 +2262,19 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">N° MIC <Req show={!readonly}/> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
-              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value)} disabled={readonly}/>
+              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha MIC <Req show={!readonly}/> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
-              <input type="date" className="form-input" value={fechaMIC} onChange={e=>setFechaMIC(e.target.value)} disabled={readonly}/>
+              <DateInput value={fechaMIC} onChange={setFechaMIC} disabled={readonly} required={!readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">N° CRT <Req show={!readonly}/> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
-              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value)} disabled={readonly}/>
+              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha CRT <Req show={!readonly}/> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
-              <input type="date" className="form-input" value={fechaCRT} onChange={e=>setFechaCRT(e.target.value)} disabled={readonly}/>
+              <DateInput value={fechaCRT} onChange={setFechaCRT} disabled={readonly} required={!readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -2045,7 +2360,7 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             <div className="form-group">
               <label className="form-label">Fecha inicio viaje <Fin show={!readonly}/></label>
               {/* FIX: toInputDate() normaliza cualquier formato a "YYYY-MM-DD" */}
-              <input type="date" className="form-input" value={toInputDate(seg.fechaInicio)} onChange={e=>onChange("fechaInicio",e.target.value)} disabled={readonly}/>
+              <DateInput value={toInputDate(seg.fechaInicio)} onChange={v=>onChange("fechaInicio",v)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Hasta <Fin show={!readonly}/></label>
@@ -2054,7 +2369,7 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             </div>
             <div className="form-group">
               <label className="form-label">Fecha prevista llegada <Fin show={!readonly}/></label>
-              <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaPrevista)} onChange={e=>onChange("fechaLlegadaPrevista",e.target.value)} disabled={readonly}/>
+              <DateInput value={toInputDate(seg.fechaLlegadaPrevista)} onChange={v=>onChange("fechaLlegadaPrevista",v)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -2075,7 +2390,7 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
             </div>
             <div className="form-group">
               <label className="form-label">Fecha real llegada <Fin show={!readonly}/></label>
-              <input type="date" className="form-input" value={toInputDate(seg.fechaLlegadaReal)} onChange={e=>onChange("fechaLlegadaReal",e.target.value)} disabled={readonly}/>
+              <DateInput value={toInputDate(seg.fechaLlegadaReal)} onChange={v=>onChange("fechaLlegadaReal",v)} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
@@ -2152,43 +2467,40 @@ function Module2({ session, canEdit, dropdowns, notif }) {
         ? <div style={{ textAlign:"center",padding:32 }}><div className="spinner" style={{ margin:"0 auto" }}/></div>
         : entregas.length===0
           ? <div className="empty"><div className="empty-icon">💵</div><p>No hay entregas registradas.</p></div>
-          : (
-            <div className="table-wrap">
-              <table>
-                {/* FIX: agregar columna Responsable y Forma de pago */}
-                <thead><tr>
-                  <th>Fecha</th><th>Chofer</th><th>Responsable</th>
-                  <th style={{ textAlign:"right" }}>ARS</th>
-                  <th style={{ textAlign:"right" }}>CLP</th>
-                  <th style={{ textAlign:"right" }}>USD</th>
-                  <th>Forma de pago</th><th>Obs.</th>
-                  <th>Fecha registro</th>
-                </tr></thead>
-                <tbody>
-                  {entregas.map(e=>(
-                    <tr key={e.id}>
-                      <td>{fmtDate(e.fecha)}</td>
-                      <td style={{ fontWeight:500,color:"var(--text)" }}>{e.chofer||"—"}</td>
-                      <td style={{ color:"var(--text2)" }}>{e.responsable||"—"}</td>
-                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
-                        {e.moneda==="ARS" ? fmtNum(e.monto) : ""}
-                      </td>
-                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
-                        {e.moneda==="CLP" ? fmtNum(e.monto) : ""}
-                      </td>
-                      <td style={{ fontFamily:"var(--mono)", textAlign:"right" }}>
-                        {e.moneda==="USD" ? fmtNum(e.monto) : ""}
-                      </td>
-                      <td style={{ fontSize:12,color:"var(--text2)" }}>{e.formaPago||"—"}</td>
-                      <td style={{ fontSize:11,color:"var(--text3)",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis" }}
-                          title={e.obs||""}>{e.obs||""}</td>
-                      <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDT(e.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
+          : (() => {
+            // Consolidar entregas por _baseId (o por fecha+chofer+responsable si no hay _baseId)
+            const grouped = [];
+            const seen = {};
+            entregas.forEach(e => {
+              const key = e._baseId || `${e.fecha}__${e.chofer}__${e.responsable}__${e.formaPago}`;
+              if (!seen[key]) {
+                seen[key] = { key, fecha:e.fecha, chofer:e.chofer, responsable:e.responsable,
+                               formaPago:e.formaPago, obs:e.obs, createdAt:e.createdAt,
+                               ARS:"", CLP:"", USD:"" };
+                grouped.push(seen[key]);
+              }
+              seen[key][e.moneda] = e.monto;
+            });
+            const cols = [
+              { key:"fecha",      label:"Fecha",       render:(v)=>fmtDate(v) },
+              { key:"chofer",     label:"Chofer",      render:(v)=><span style={{fontWeight:500,color:"var(--text)"}}>{v||"—"}</span> },
+              { key:"responsable",label:"Responsable" },
+              { key:"ARS",        label:"ARS",         align:"right", render:(v)=><span style={{fontFamily:"var(--mono)"}}>{v?fmtNum(v):"—"}</span> },
+              { key:"CLP",        label:"CLP",         align:"right", render:(v)=><span style={{fontFamily:"var(--mono)"}}>{v?fmtNum(v):"—"}</span> },
+              { key:"USD",        label:"USD",         align:"right", render:(v)=><span style={{fontFamily:"var(--mono)"}}>{v?fmtNum(v):"—"}</span> },
+              { key:"formaPago",  label:"Forma de pago", render:(v)=><span style={{fontSize:12}}>{v||"—"}</span> },
+              { key:"obs",        label:"Obs.",        render:(v)=><span style={{fontSize:11,color:"var(--text3)"}} title={v||""}>{v||""}</span> },
+              { key:"createdAt",  label:"Registrado",  render:(v)=><span style={{fontSize:11,color:"var(--text3)"}}>{fmtDT(v)}</span> },
+            ];
+            return (
+              <DataTable
+                columns={cols}
+                data={grouped}
+                searchPlaceholder="Buscar entregas..."
+                emptyText="No hay entregas."
+              />
+            );
+          })()
       }
     </div>
   );
@@ -2203,9 +2515,9 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
   const [obs,         setObs]         = useState("");
   // Montos: una fila por divisa, el usuario activa las que necesita
   const [montos, setMontos] = useState([
-    { moneda:"USD", monto:"" },
     { moneda:"ARS", monto:"" },
     { moneda:"CLP", monto:"" },
+    { moneda:"USD", monto:"" },
   ]);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -2263,7 +2575,7 @@ function EntregaForm({ dropdowns, onSave, onBack }) {
           </div>
           <div className="form-group">
             <label className="form-label">Fecha <Req/> {errors.fecha && <span className="form-error">{errors.fecha}</span>}</label>
-            <input type="date" className="form-input" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+            <DateInput value={fecha} onChange={setFecha} required/>
           </div>
           <div className="form-group">
             <label className="form-label">
@@ -2624,6 +2936,14 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
   const saldoChofer   = porcChofer - anticipoSueldo;
 
   async function handleSave() {
+    // Validar que cada fila de combustible tenga todos los campos obligatorios
+    for (var fi = 0; fi < fuelRows.length; fi++) {
+      const f = fuelRows[fi];
+      if (!f.fecha)    { alert(`Combustible ${fi+1}: falta FECHA.`);           setSaving(false); return; }
+      if (!f.proveedor){ alert(`Combustible ${fi+1}: falta PROVEEDOR.`);        setSaving(false); return; }
+      if (!f.litros)   { alert(`Combustible ${fi+1}: falta LITROS.`);           setSaving(false); return; }
+      if (!f.total)    { alert(`Combustible ${fi+1}: falta TOTAL FACTURA.`);    setSaving(false); return; }
+    }
     setSaving(true);
     // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
     await onSave({
@@ -2690,7 +3010,9 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
               </div>
               {totalSegARS > tripTotal && (
                 <div className="alert alert-danger" style={{ marginTop:8 }}>
-                  ⚠️ El total de tramos supera el monto del viaje. Disponible: {fmtNum(tripTotal - totalSegARS + toARS(segMonto[s.segId]?.monto||0, segMonto[s.segId]?.moneda||"USD"))} ARS
+                  ⚠️ El total de tramos supera el monto del viaje.
+                  Monto cotizado: {fmtNum(segs[0]?.tripMonto||0)} {segs[0]?.tripMoneda||"USD"} —
+                  Total tramos: {fmtNum(toARS(segs[0]?.tripMonto||0, segs[0]?.tripMoneda||"USD") > 0 ? totalSegARS : 0)} ARS equiv.
                 </div>
               )}
             </div>
@@ -2804,8 +3126,7 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
             <div key={i} className="form-row" style={{ alignItems:"flex-end",marginBottom:8 }}>
               <div className="form-group">
                 <label className="form-label">Fecha</label>
-                <input type="date" className="form-input" value={f.fecha}
-                  onChange={e=>{ const n=[...fuelRows];n[i]={...n[i],fecha:e.target.value};setFuelRows(n); }}/>
+                <DateInput value={f.fecha} onChange={v=>{ const n=[...fuelRows];n[i]={...n[i],fecha:v};setFuelRows(n); }} required/>
               </div>
               <div className="form-group" style={{ flex:2 }}>
                 <label className="form-label">Proveedor</label>
@@ -2925,6 +3246,8 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
 
 const ESTADO_FLETERO_OPTS = ["pendiente","facturado","pagado"];
 const ESTADO_CLIENTE_OPTS = ["pendiente","facturado","cobrado"];
+const MAX_FLETEROS = 5; // máximo de facturas fletero por registro
+
 const ESTADO_FAC_COLORS = {
   pendiente: { bg:"var(--bg4)",               color:"var(--text2)"  },
   facturado: { bg:"rgba(79,127,255,.15)",      color:"var(--accent)" },
@@ -2942,20 +3265,39 @@ function EstadoBadge({ val }) {
   );
 }
 
+// Calcula días transcurridos desde una fecha — se detiene si stopped=true
+function DiasCounter({ fecha, stopped=false, label="" }) {
+  if (!fecha) return null;
+  const dt = new Date(fecha + "T00:00:00");
+  if (isNaN(dt.getTime())) return null;
+  const hoy  = new Date();
+  hoy.setHours(0,0,0,0);
+  const dias = Math.round((hoy - dt) / 86400000);
+  if (stopped) return (
+    <span style={{fontSize:10,color:"var(--success)",marginLeft:6}}>✓ {label}</span>
+  );
+  const color = dias > 30 ? "var(--danger)" : dias > 15 ? "var(--warning)" : "var(--text3)";
+  return (
+    <span style={{fontSize:10,color,marginLeft:6}}>
+      {dias === 0 ? "hoy" : `${dias}d`} {label && `· ${label}`}
+    </span>
+  );
+}
+
 // ─── MODULE 5 LIST VIEW ───────────────────────────────────────────────────────
 function Module5({ session, canEdit, dropdowns, notif }) {
   const [facturas,    setFacturas]    = useState([]);
   const [trips,       setTrips]       = useState([]);
-  const [editFac,     setEditFac]     = useState(null);   // factura obj o null
-  const [editTripId,  setEditTripId]  = useState(null);   // tripId para nueva factura
-  const [view,        setView]        = useState("list"); // "list" | "form" | "history"
+  const [editFac,     setEditFac]     = useState(null);
+  const [editTripId,  setEditTripId]  = useState(null);
+  const [view,        setView]        = useState("list");
   const [loading,     setLoading]     = useState(true);
-  // Filtros
-  const [filtFacturado, setFiltFacturado] = useState("todos"); // "todos"|"sin_facturar"|"facturado"
-  const [filtFletero,   setFiltFletero]   = useState("");
-  const [filtCliente,   setFiltCliente]   = useState("");
-  // Spinner inline por id de factura y campo
-  const [updatingField, setUpdatingField] = useState(null); // "facId:campo"
+  const [updatingField, setUpdatingField] = useState(null);
+
+  // R10: Filtro por fecha relativa
+  const [filtTipoFecha, setFiltTipoFecha] = useState("fcCliente"); // "fcCliente"|"fcFletero1"
+  const [filtDesde,     setFiltDesde]     = useState("");
+  const [filtHasta,     setFiltHasta]     = useState("");
 
   useEffect(() => { loadAll(); }, []);
 
@@ -2987,10 +3329,9 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     if (r.ok) {
       invalidateCache("facturacion");
       setFacturas(prev => prev.map(f => f.id === facId ? { ...f, [field]:newVal } : f));
-    } else notif.add(r.error||"Error al actualizar estado","error");
+    } else notif.add(r.error||"Error","error");
   }
 
-  // Unificar viajes finalizados + facturas en una sola lista
   const facByTripId = useMemo(() => {
     const m = {};
     facturas.forEach(f => { m[f.tripId] = f; });
@@ -3001,34 +3342,107 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     (trips||[]).filter(t => t.status === "finalizado")
   , [trips]);
 
-  // Construir filas unificadas: cada viaje finalizado, con o sin factura
   const rows = useMemo(() => finalizados.map(t => ({
     trip: t,
     factura: facByTripId[t.id] || null,
     tieneFactura: !!facByTripId[t.id],
+    // campos planos para DataTable
+    _tripId:    t.id,
+    _cliente:   t.cliente || "",
+    _carga:     t.carga   || "",
+    _reserva:   t.reserva || "",
+    _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
+    _estado:    facByTripId[t.id] ? "Facturado" : "Sin facturar",
+    _fcFletero: (facByTripId[t.id]?.fleteros||[])[0]?.fcFletero || "—",
+    _fcCliente: facByTripId[t.id]?.fcCliente || "—",
   })), [finalizados, facByTripId]);
 
   const isClosed = f => f && f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+  const historialRows = rows.filter(r => isClosed(r.factura));
 
-  // Filtros aplicados
-  const shown = rows.filter(row => {
-    // Filtro principal: facturado / sin facturar
-    if (filtFacturado === "sin_facturar" && row.tieneFactura) return false;
-    if (filtFacturado === "facturado"    && !row.tieneFactura) return false;
-    // Filtros de estado (solo aplican si tiene factura)
-    if (filtFletero && (!row.factura || row.factura.estadoFletero !== filtFletero)) return false;
-    if (filtCliente && (!row.factura || row.factura.estadoCliente !== filtCliente)) return false;
+  // R10: Filtro fecha relativa
+  const getDateVal = (row, tipo) => {
+    if (!row.factura) return "";
+    if (tipo === "fcCliente") return row.factura.fechaFcCliente || "";
+    if (tipo === "fcFletero1") return (row.factura.fleteros||[])[0]?.fechaFcFletero || "";
+    return row.factura.createdAt ? row.factura.createdAt.slice(0,10) : "";
+  };
+  const shownRows = rows.filter(row => {
+    if (!filtDesde && !filtHasta) return true;
+    const dateVal = getDateVal(row, filtTipoFecha);
+    if (!dateVal) return !filtDesde && !filtHasta;
+    if (filtDesde && dateVal < filtDesde) return false;
+    if (filtHasta && dateVal > filtHasta) return false;
     return true;
   });
 
-  const historialRows = rows.filter(r => isClosed(r.factura));
-  const sinFacturar   = rows.filter(r => !r.tieneFactura).length;
-  const conFactura    = rows.filter(r => r.tieneFactura).length;
+  // Columnas para DataTable (lista principal)
+  const tableCols = [
+    {
+      key:"_tripId", label:"ID Viaje", sortable:true,
+      render:(v,row) => (
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button className="btn btn-secondary btn-icon btn-sm"
+            title={row.tieneFactura ? "Ver/Editar" : "Crear factura"}
+            onClick={() => {
+              if (row.tieneFactura) { setEditFac(row.factura); setEditTripId(null); }
+              else                  { setEditFac(null); setEditTripId(row.trip.id); }
+              setView("form");
+            }}>
+            {row.tieneFactura ? "🔍" : "➕"}
+          </button>
+          <span style={{fontFamily:"var(--mono)",fontSize:11}}>{v}</span>
+        </div>
+      )
+    },
+    { key:"_cliente",   label:"Cliente",     sortable:true  },
+    { key:"_carga",     label:"Carga",       sortable:true  },
+    { key:"_reserva",   label:"Reserva",     sortable:true  },
+    { key:"_monto",     label:"Monto viaje", sortable:false },
+    {
+      key:"_estado", label:"Estado", sortable:true,
+      render:(v,row) => row.tieneFactura
+        ? <span className="badge badge-blue">Facturado</span>
+        : <span className="badge badge-gray">Sin facturar</span>
+    },
+    { key:"_fcFletero", label:"FC Fletero",  sortable:true  },
+    {
+      key:"_fcCliente", label:"FC Cliente", sortable:true,
+      render:(v,row) => {
+        if (!row.factura) return <span style={{color:"var(--text3)"}}>—</span>;
+        const f = row.factura;
+        const closed = isClosed(f);
+        return (
+          <div>
+            <span style={{fontFamily:"var(--mono)",fontSize:12}}>{v}</span>
+            {f.fechaFcCliente && (
+              <DiasCounter fecha={f.fechaFcCliente} stopped={f.estadoCliente==="cobrado"}/>
+            )}
+            {canEdit && !closed && (
+              <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                <select
+                  className="form-select"
+                  style={{padding:"2px 20px 2px 6px",fontSize:11,width:"auto",minWidth:100}}
+                  value={f.estadoCliente||"pendiente"}
+                  disabled={updatingField===`${f.id}:estadoCliente`}
+                  onChange={e=>handleEstadoChange(f.id,"estadoCliente",e.target.value)}>
+                  {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+                {updatingField===`${f.id}:estadoCliente` &&
+                  <div className="spinner" style={{width:12,height:12,borderWidth:2}}/>}
+              </div>
+            )}
+            {(!canEdit || closed) && <EstadoBadge val={f.estadoCliente||"pendiente"}/>}
+          </div>
+        );
+      }
+    },
+  ];
 
   if (view === "form") return (
     <FacturaForm
       factura={editFac}
-      trip={editTripId ? trips.find(t => t.id === editTripId) : (editFac ? trips.find(t => t.id === editFac.tripId) : null)}
+      trip={editTripId ? trips.find(t=>t.id===editTripId) : (editFac ? trips.find(t=>t.id===editFac.tripId) : null)}
       dropdowns={dropdowns}
       canEdit={canEdit && !isClosed(editFac)}
       onSave={handleSave}
@@ -3039,12 +3453,13 @@ function Module5({ session, canEdit, dropdowns, notif }) {
   if (view === "history") return (
     <FacturacionHistorial
       historialRows={historialRows}
-      trips={trips}
-      dropdowns={dropdowns}
       onBack={() => setView("list")}
-      onView={(row) => { setEditFac(row.factura); setView("form"); }}
+      onView={row => { setEditFac(row.factura); setView("form"); }}
     />
   );
+
+  const sinFacturar = rows.filter(r=>!r.tieneFactura).length;
+  const conFactura  = rows.filter(r=>r.tieneFactura).length;
 
   return (
     <div className="module-container">
@@ -3052,162 +3467,81 @@ function Module5({ session, canEdit, dropdowns, notif }) {
         <div>
           <div className="module-title">🧾 Facturación</div>
           <div className="module-subtitle">
-            {sinFacturar > 0 && <span className="badge badge-yellow" style={{marginRight:6}}>{sinFacturar} sin facturar</span>}
-            {conFactura > 0  && <span className="badge badge-blue">{conFactura} facturado(s)</span>}
+            {sinFacturar>0 && <span className="badge badge-yellow" style={{marginRight:6}}>{sinFacturar} sin facturar</span>}
+            {conFactura>0  && <span className="badge badge-blue">{conFactura} facturado(s)</span>}
           </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setView("history")}>
-          📂 Historial {historialRows.length > 0 && `(${historialRows.length})`}
+        <button className="btn btn-secondary btn-sm" onClick={()=>setView("history")}>
+          📂 Historial {historialRows.length>0&&`(${historialRows.length})`}
         </button>
       </div>
 
-      {/* Filtros */}
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        {/* Filtro principal */}
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Estado</span>
-          <div style={{display:"flex",gap:4}}>
-            {[["todos","Todos"],["sin_facturar","Sin facturar"],["facturado","Facturado"]].map(([v,l])=>(
-              <button key={v}
-                className={`btn btn-sm ${filtFacturado===v?"btn-primary":"btn-secondary"}`}
-                onClick={()=>setFiltFacturado(v)}
-                style={{padding:"4px 10px",fontSize:12}}>
-                {l}
-              </button>
-            ))}
-          </div>
+      {/* R10: Filtro fecha relativa */}
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end",
+                   padding:"12px 16px",background:"var(--bg2)",borderRadius:"var(--radius)",
+                   border:"1px solid var(--border)"}}>
+        <div className="form-group" style={{margin:0,minWidth:160}}>
+          <label className="form-label">Filtrar por fecha de</label>
+          <select className="form-select" style={{fontSize:12}}
+            value={filtTipoFecha} onChange={e=>setFiltTipoFecha(e.target.value)}>
+            <option value="fcCliente">FC Cliente</option>
+            <option value="fcFletero1">FC Fletero</option>
+          </select>
         </div>
-        {/* Filtros de estado solo si hay facturas */}
-        {conFactura > 0 && <>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Fletero</span>
-            <select className="form-select" style={{width:130,padding:"5px 24px 5px 8px",fontSize:12}}
-              value={filtFletero} onChange={e=>setFiltFletero(e.target.value)}>
-              <option value="">Todos</option>
-              {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>Cliente</span>
-            <select className="form-select" style={{width:130,padding:"5px 24px 5px 8px",fontSize:12}}
-              value={filtCliente} onChange={e=>setFiltCliente(e.target.value)}>
-              <option value="">Todos</option>
-              {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          {(filtFletero||filtCliente) && (
-            <button className="btn btn-secondary btn-sm" onClick={()=>{setFiltFletero("");setFiltCliente("");}}>
-              ✕ Limpiar
-            </button>
-          )}
-        </>}
+        <div className="form-group" style={{margin:0}}>
+          <label className="form-label">Desde</label>
+          <DateInput value={filtDesde} onChange={setFiltDesde} placeholder="DD/MM/AAAA"/>
+        </div>
+        <div className="form-group" style={{margin:0}}>
+          <label className="form-label">Hasta</label>
+          <DateInput value={filtHasta} onChange={setFiltHasta} placeholder="DD/MM/AAAA"/>
+        </div>
+        {(filtDesde||filtHasta) && (
+          <button className="btn btn-secondary btn-sm" onClick={()=>{setFiltDesde("");setFiltHasta("");}}>
+            ✕ Limpiar fechas
+          </button>
+        )}
       </div>
 
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
-        : shown.length === 0
-          ? <div className="empty"><div className="empty-icon">🧾</div><p>No hay viajes que coincidan con los filtros.</p></div>
-          : (
-            <div className="table-wrap">
-              <table>
-                <thead><tr>
-                  <th></th>
-                  <th>ID Viaje</th>
-                  <th>Cliente</th>
-                  <th>Carga</th>
-                  <th>Reserva</th>
-                  <th>Monto viaje</th>
-                  <th>Estado</th>
-                  <th>FC Fletero</th>
-                  <th>Estado Fletero</th>
-                  <th>FC Cliente</th>
-                  <th>Estado Cliente</th>
-                </tr></thead>
-                <tbody>
-                  {shown.map(({ trip, factura, tieneFactura }) => {
-                    const closed = isClosed(factura);
-                    return (
-                      <tr key={trip.id} style={closed ? {opacity:.6} : {}}>
-                        <td>
-                          <button className="btn btn-secondary btn-icon btn-sm"
-                            title={tieneFactura ? "Ver/Editar factura" : "Crear factura"}
-                            onClick={() => {
-                              if (tieneFactura) { setEditFac(factura); setEditTripId(null); }
-                              else              { setEditFac(null);    setEditTripId(trip.id); }
-                              setView("form");
-                            }}>
-                            {tieneFactura ? "🔍" : "➕"}
-                          </button>
-                        </td>
-                        <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{trip.id}</span></td>
-                        <td>{trip.cliente||"—"}</td>
-                        <td>{trip.carga||"—"}</td>
-                        <td style={{fontSize:12,color:"var(--text3)"}}>{trip.reserva||"—"}</td>
-                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>
-                          {trip.montoFactura ? `${fmtNum(trip.montoFactura)} ${trip.moneda||""}` : "—"}
-                        </td>
-                        <td>
-                          {!tieneFactura
-                            ? <span className="badge badge-gray">sin facturar</span>
-                            : closed
-                              ? <EstadoBadge val="cobrado"/>
-                              : <span className="badge badge-blue">en curso</span>
-                          }
-                        </td>
-                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura?.fcFletero||"—"}</td>
-                        <td style={{minWidth:130}}>
-                          {!tieneFactura ? <span style={{color:"var(--text3)",fontSize:12}}>—</span>
-                          : closed ? <EstadoBadge val={factura.estadoFletero}/>
-                          : canEdit ? (
-                            <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <select
-                                className="form-select"
-                                style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
-                                value={factura.estadoFletero||"pendiente"}
-                                disabled={updatingField===`${factura.id}:estadoFletero`}
-                                onChange={e=>handleEstadoChange(factura.id,"estadoFletero",e.target.value)}>
-                                {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-                              </select>
-                              {updatingField===`${factura.id}:estadoFletero` &&
-                                <div className="spinner" style={{width:14,height:14,borderWidth:2,flexShrink:0}}/>}
-                            </div>
-                          ) : <EstadoBadge val={factura.estadoFletero||"pendiente"}/>
-                          }
-                        </td>
-                        <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura?.fcCliente||"—"}</td>
-                        <td style={{minWidth:130}}>
-                          {!tieneFactura ? <span style={{color:"var(--text3)",fontSize:12}}>—</span>
-                          : closed ? <EstadoBadge val={factura.estadoCliente}/>
-                          : canEdit ? (
-                            <div style={{display:"flex",alignItems:"center",gap:6}}>
-                              <select
-                                className="form-select"
-                                style={{padding:"3px 24px 3px 8px",fontSize:12,width:"auto",minWidth:110}}
-                                value={factura.estadoCliente||"pendiente"}
-                                disabled={updatingField===`${factura.id}:estadoCliente`}
-                                onChange={e=>handleEstadoChange(factura.id,"estadoCliente",e.target.value)}>
-                                {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-                              </select>
-                              {updatingField===`${factura.id}:estadoCliente` &&
-                                <div className="spinner" style={{width:14,height:14,borderWidth:2,flexShrink:0}}/>}
-                            </div>
-                          ) : <EstadoBadge val={factura.estadoCliente||"pendiente"}/>
-                          }
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
+        : <DataTable
+            columns={tableCols}
+            data={shownRows}
+            searchPlaceholder="Buscar por viaje, cliente, carga..."
+            emptyText="No hay viajes finalizados."
+          />
       }
     </div>
   );
 }
 
 // ─── HISTORIAL ────────────────────────────────────────────────────────────────
-function FacturacionHistorial({ historialRows, trips, dropdowns, onBack, onView }) {
+function FacturacionHistorial({ historialRows, onBack, onView }) {
+  const cols = [
+    { key:"_tripId",    label:"ID Viaje",  render:(v,row)=>(
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <button className="btn btn-secondary btn-icon btn-sm" onClick={()=>onView(row)}>🔍</button>
+        <span style={{fontFamily:"var(--mono)",fontSize:11}}>{v}</span>
+      </div>
+    )},
+    { key:"_cliente",   label:"Cliente"   },
+    { key:"_reserva",   label:"Reserva"   },
+    { key:"_carga",     label:"Carga"     },
+    { key:"_fcFletero", label:"FC Fletero"},
+    { key:"_fcCliente", label:"FC Cliente"},
+    { key:"_fechaCobro",label:"Fecha cobro", render:v=>fmtDate(v) },
+  ];
+  const data = historialRows.map(r=>({
+    ...r,
+    _tripId:     r.trip.id,
+    _cliente:    r.factura?.cliente   || "—",
+    _reserva:    r.factura?.reserva   || "—",
+    _carga:      r.factura?.carga     || "—",
+    _fcFletero:  (r.factura?.fleteros||[])[0]?.fcFletero || "—",
+    _fcCliente:  r.factura?.fcCliente || "—",
+    _fechaCobro: r.factura?.fechaCobro|| "",
+  }));
   return (
     <div className="module-container">
       <div className="module-header">
@@ -3217,41 +3551,7 @@ function FacturacionHistorial({ historialRows, trips, dropdowns, onBack, onView 
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      {historialRows.length === 0
-        ? <div className="empty"><div className="empty-icon">📂</div><p>No hay facturas cerradas todavía.</p></div>
-        : (
-          <div className="table-wrap">
-            <table>
-              <thead><tr>
-                <th></th>
-                <th>ID Viaje</th><th>Cliente</th><th>Reserva</th><th>Carga</th>
-                <th>FC Fletero</th><th>Estado Fletero</th>
-                <th>FC Cliente</th><th>Estado Cliente</th>
-                <th>Fecha cobro</th>
-              </tr></thead>
-              <tbody>
-                {historialRows.map(({ trip, factura }) => (
-                  <tr key={trip.id}>
-                    <td>
-                      <button className="btn btn-secondary btn-icon btn-sm"
-                        title="Ver detalle" onClick={() => onView({ trip, factura })}>🔍</button>
-                    </td>
-                    <td><span style={{fontFamily:"var(--mono)",fontSize:12}}>{trip.id}</span></td>
-                    <td>{factura.cliente||"—"}</td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>{factura.reserva||"—"}</td>
-                    <td>{factura.carga||"—"}</td>
-                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura.fcFletero||"—"}</td>
-                    <td><EstadoBadge val={factura.estadoFletero}/></td>
-                    <td style={{fontFamily:"var(--mono)",fontSize:12}}>{factura.fcCliente||"—"}</td>
-                    <td><EstadoBadge val={factura.estadoCliente}/></td>
-                    <td style={{fontSize:12,color:"var(--text3)"}}>{fmtDate(factura.fechaCobro)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
+      <DataTable columns={cols} data={data} searchPlaceholder="Buscar historial..." emptyText="Sin historial."/>
     </div>
   );
 }
@@ -3261,7 +3561,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   const readonly = !canEdit;
   const isNew    = !factura;
 
-  // Datos precargados del viaje (inmutables)
+  // Datos precargados del viaje
   const pre = useMemo(() => {
     if (!trip) return {};
     const segs = trip.segments || [];
@@ -3287,14 +3587,24 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
 
   const G = k => factura?.[k] ?? pre[k] ?? "";
 
-  // Estados editables
-  const [fletero,        setFletero]        = useState(factura?.fletero        || "");
-  const [fcFletero,      setFcFletero]      = useState(factura?.fcFletero      || "");
-  const [montoFcFletero, setMontoFcFletero] = useState(factura?.montoFcFletero || "");
-  const [divisaFletero,  setDivisaFletero]  = useState(factura?.divisaFletero  || "USD");
-  const [fechaFcFletero, setFechaFcFletero] = useState(toInputDate(factura?.fechaFcFletero));
-  const [estadoFletero,  setEstadoFletero]  = useState(factura?.estadoFletero  || "pendiente");
+  // Facturas fletero — array dinámico
+  const [fleteros, setFleteros] = useState(() => {
+    if (factura?.fleteros?.length) return factura.fleteros;
+    return []; // empieza vacío — card opcional
+  });
 
+  function addFletero() {
+    if (fleteros.length >= MAX_FLETEROS) return;
+    setFleteros(p => [...p, { fletero:"", fcFletero:"", montoFcFletero:"", divisaFletero:"USD", fechaFcFletero:"", estadoFletero:"pendiente" }]);
+  }
+  function removeFletero(i) {
+    setFleteros(p => p.filter((_,idx)=>idx!==i));
+  }
+  function updateFletero(i, key, val) {
+    setFleteros(p => { const n=[...p]; n[i]={...n[i],[key]:val}; return n; });
+  }
+
+  // FC Cliente
   const [destinatario,   setDestinatario]   = useState(factura?.destinatario   || "");
   const [fcCliente,      setFcCliente]      = useState(factura?.fcCliente      || "");
   const [montoFcCliente, setMontoFcCliente] = useState(factura?.montoFcCliente || "");
@@ -3302,53 +3612,73 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   const [fechaFcCliente, setFechaFcCliente] = useState(toInputDate(factura?.fechaFcCliente));
   const [estadoCliente,  setEstadoCliente]  = useState(factura?.estadoCliente  || "pendiente");
 
+  // Cancelación
   const [cancelacion,     setCancelacion]    = useState(factura?.cancelacion    || "");
   const [descripcionCanc, setDescripcionCanc]= useState(factura?.descripcionCancelacion || "");
   const [tipoCanc,        setTipoCanc]       = useState(factura?.tipoCancelacion || "");
   const [fechaCobro,      setFechaCobro]     = useState(toInputDate(factura?.fechaCobro));
 
-  // Extra costos — múltiples filas
-  const [extraCostos, setExtraCostos] = useState(() =>
-    factura?.extraCostos?.length > 0
-      ? factura.extraCostos
-      : []
-  );
+  // Extra costos
+  const [extraCostos, setExtraCostos] = useState(factura?.extraCostos?.length > 0 ? factura.extraCostos : []);
 
   const [errors,  setErrors]  = useState({});
   const [saving,  setSaving]  = useState(false);
 
-  // Alerta de diferencia de monto
-  const montoViajeNum = parseFloat(String(G("montoViajeOrig")).replace(/\./g,"").replace(",",".")) || 0;
-  const montoFcNum    = parseFloat(String(montoFcCliente).replace(/\./g,"").replace(",",".")) || 0;
-  const hayDiferencia = montoViajeNum > 0 && montoFcNum > 0 && (
-    montoFcNum !== montoViajeNum || divisaCliente !== G("divisaViajeOrig")
-  );
+  // R11: Auto-cobrado
+  useEffect(() => {
+    const shouldBeCobrado = tipoCanc && fechaCobro;
+    if (shouldBeCobrado && estadoCliente !== "cobrado") {
+      setEstadoCliente("cobrado");
+    } else if (!shouldBeCobrado && estadoCliente === "cobrado") {
+      setEstadoCliente("pendiente");
+    }
+  }, [tipoCanc, fechaCobro]);
+
+  // R13: Alerta suma fleteros + extra costos vs FC cliente (en USD)
+  const TC = { USD: dropdowns?.TC_USD||1200, CLP: dropdowns?.TC_CLP||160, ARS: 1 };
+  function toUSD(monto, divisa) {
+    const n = parseFloat(String(monto||"").replace(/\./g,"").replace(",",".")) || 0;
+    if (divisa === "USD") return n;
+    if (divisa === "ARS") return n / TC.USD;
+    if (divisa === "CLP") return (n * TC.CLP / 100) / TC.USD;
+    return n;
+  }
+  const sumFleteros = fleteros.reduce((s,fl) => s + toUSD(fl.montoFcFletero, fl.divisaFletero), 0);
+  const sumExtra    = extraCostos.reduce((s,ec) => s + toUSD(ec.monto, ec.divisa||"USD"), 0);
+  const totalCostos = sumFleteros + sumExtra;
+  const montoClienteUSD = toUSD(montoFcCliente, divisaCliente);
+  const alertaCostos = montoClienteUSD > 0 && totalCostos >= montoClienteUSD;
 
   // Diferencia cancelación
   const diferencia = useMemo(() => {
-    const mc = parseFloat(String(montoFcCliente).replace(/\./g,"").replace(",",".")) || 0;
-    const ca = parseFloat(String(cancelacion).replace(/\./g,"").replace(",","."))   || 0;
+    const mc = parseFloat(String(montoFcCliente||"").replace(/\./g,"").replace(",",".")) || 0;
+    const ca = parseFloat(String(cancelacion||"").replace(/\./g,"").replace(",","."))   || 0;
     return mc - ca;
   }, [montoFcCliente, cancelacion]);
+
+  // Alerta diferencia monto viaje vs factura
+  const montoViajeNum = parseFloat(String(G("montoViajeOrig")||"").replace(/\./g,"").replace(",",".")) || 0;
+  const montoFcNum    = parseFloat(String(montoFcCliente||"").replace(/\./g,"").replace(",","."))      || 0;
+  const hayDifMonto   = montoViajeNum > 0 && montoFcNum > 0 &&
+    (montoFcNum !== montoViajeNum || divisaCliente !== G("divisaViajeOrig"));
 
   function addExtraCosto() {
     setExtraCostos(p => [...p, { cat:"", descripcion:"", monto:"", divisa:"USD" }]);
   }
-  function removeExtraCosto(i) {
-    setExtraCostos(p => p.filter((_,idx)=>idx!==i));
-  }
-  function updateExtraCosto(i, key, val) {
-    setExtraCostos(p => { const n=[...p]; n[i]={...n[i],[key]:val}; return n; });
+  function removeExtraCosto(i) { setExtraCostos(p => p.filter((_,idx)=>idx!==i)); }
+  function updateExtraCosto(i,k,v) {
+    setExtraCostos(p => { const n=[...p]; n[i]={...n[i],[k]:v}; return n; });
   }
 
   function validate() {
     const e = {};
-    if (!G("tripId"))   e.tripId      = "Falta viaje";
-    // Validar extra costos
-    extraCostos.forEach((ec, i) => {
-      if (!ec.cat)   e[`ec_cat_${i}`]   = "Requerido";
-      if (!ec.monto) e[`ec_monto_${i}`] = "Requerido";
-      if (ec.cat === "OTROS" && !ec.descripcion) e[`ec_desc_${i}`] = "Requerido";
+    if (!G("tripId")) e.tripId = "Falta viaje";
+    // R13: bloquear si costos >= FC cliente
+    if (alertaCostos) e.alertaCostos = `La suma de facturas fletero + extra costos (${toUSD(totalCostos,"USD").toFixed(0)} USD) supera el monto FC Cliente (${montoClienteUSD.toFixed(0)} USD). Revisá los montos antes de guardar.`;
+    extraCostos.forEach((ec,i) => {
+      if (!ec.cat)   e[`ec_cat_${i}`]  = "Requerido";
+      if (!ec.monto) e[`ec_monto_${i}`]= "Requerido";
+      if (ec.cat==="OTROS"&&!ec.descripcion) e[`ec_desc_${i}`]="Requerido";
     });
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -3367,27 +3697,22 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       cliente:       G("cliente"),  tramo:     G("tramo"),
       montoViajeOrig:  G("montoViajeOrig"),
       divisaViajeOrig: G("divisaViajeOrig"),
-      fletero, fcFletero, montoFcFletero, divisaFletero, fechaFcFletero, estadoFletero,
+      fleteros,
       destinatario, fcCliente, montoFcCliente, divisaCliente, fechaFcCliente, estadoCliente,
       cancelacion, descripcionCancelacion:descripcionCanc,
       tipoCancelacion:tipoCanc, fechaCobro,
-      alertaDiferencia: hayDiferencia,
+      alertaDiferencia: hayDifMonto,
       extraCostos,
     });
     setSaving(false);
   }
 
   const preFields = [
-    ["MIC",           G("numMIC")       || "—"],
-    ["Fecha MIC",     fmtDate(G("fechaMIC"))],
-    ["CRT",           G("numCRT")       || "—"],
-    ["Fecha CRT",     fmtDate(G("fechaCRT"))],
-    ["Reserva",       G("reserva")      || "—"],
-    ["N° Contenedor", G("numContenedor")|| "—"],
-    ["Chofer",        G("chofer")       || "—"],
-    ["Carga",         G("carga")        || "—"],
-    ["Cliente",       G("cliente")      || "—"],
-    ["Tramo",         G("tramo")        || "—"],
+    ["MIC",           G("numMIC")       ||"—"], ["Fecha MIC",     fmtDate(G("fechaMIC"))],
+    ["CRT",           G("numCRT")       ||"—"], ["Fecha CRT",     fmtDate(G("fechaCRT"))],
+    ["Reserva",       G("reserva")      ||"—"], ["N° Contenedor", G("numContenedor")||"—"],
+    ["Chofer",        G("chofer")       ||"—"], ["Carga",         G("carga")||"—"],
+    ["Cliente",       G("cliente")      ||"—"], ["Tramo",         G("tramo")||"—"],
   ];
 
   return (
@@ -3402,81 +3727,110 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
 
-      {/* Datos del viaje (lectura) */}
+      {/* Datos del viaje */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header"><div className="card-title">📋 Datos del Viaje</div></div>
         <div className="card-body">
           <div className="form-row" style={{flexWrap:"wrap",gap:10,marginBottom:12}}>
-            {preFields.map(([lbl,val]) => (
+            {preFields.map(([lbl,val])=>(
               <div key={lbl} style={{minWidth:150}}>
                 <div className="form-label">{lbl}</div>
                 <div className="field-readonly" style={{fontFamily:"var(--font)",fontSize:13}}>{val}</div>
               </div>
             ))}
           </div>
-          {/* Monto original del viaje */}
           <div style={{display:"flex",gap:12,alignItems:"center",paddingTop:8,borderTop:"1px solid var(--border)"}}>
             <div>
-              <div className="form-label">Monto cotizado del viaje</div>
+              <div className="form-label">Monto cotizado</div>
               <div className="field-readonly" style={{fontFamily:"var(--mono)",minWidth:160}}>
                 {G("montoViajeOrig") ? `${fmtNum(G("montoViajeOrig"))} ${G("divisaViajeOrig")}` : "—"}
               </div>
             </div>
-            {hayDiferencia && (
-              <div className="alert alert-warning" style={{margin:0,flex:1}}>
-                ⚠️ El monto de la FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado del viaje ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}). Se registrará la diferencia.
+            {hayDifMonto && (
+              <div className="alert alert-warning" style={{margin:0,flex:1,fontSize:12}}>
+                ⚠️ El monto FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}).
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* FC Fletero — card opcional */}
+      {/* Facturas Fletero — dinámicas */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header">
-          <div className="card-title">🚛 Factura Fletero <span style={{fontSize:11,fontWeight:400,color:"var(--text3)"}}>(opcional — solo si terciarizás)</span></div>
-          {!readonly && <EstadoBadge val={estadoFletero}/>}
+          <div className="card-title">🚛 Facturas Fletero <span style={{fontSize:11,fontWeight:400,color:"var(--text3)"}}>(opcional)</span></div>
+          {!readonly && fleteros.length < MAX_FLETEROS && (
+            <button className="btn btn-secondary btn-sm" onClick={addFletero}>+ Agregar</button>
+          )}
         </div>
         <div className="card-body">
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Fletero</label>
-              <SearchableSelect
-                options={dropdowns.FLETEROS||["PEPE","JUAN"]}
-                value={fletero} onChange={setFletero}
-                placeholder="Seleccionar fletero..." disabled={readonly}/>
+          {fleteros.length === 0 && (
+            <div style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>
+              {readonly ? "Sin facturas fletero." : "Este viaje fue realizado con flota propia. Usá '+ Agregar' si terciarizaste."}
             </div>
-            <div className="form-group">
-              <label className="form-label">N° FC Fletero</label>
-              <input className="form-input" value={fcFletero}
-                onChange={e=>setFcFletero(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
+          )}
+          {fleteros.map((fl,i)=>(
+            <div key={i} style={{
+              background:"var(--bg3)",borderRadius:"var(--radius)",
+              padding:"12px 16px",marginBottom:10,border:"1px solid var(--border)"
+            }}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>
+                  Fletero #{i+1}
+                  {fl.fechaFcFletero && (
+                    <DiasCounter fecha={fl.fechaFcFletero} stopped={fl.estadoFletero==="pagado"} label="desde emisión"/>
+                  )}
+                </span>
+                {!readonly && (
+                  <button className="btn btn-danger btn-sm btn-icon" onClick={()=>removeFletero(i)}>✕</button>
+                )}
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Fletero</label>
+                  <SearchableSelect options={dropdowns.FLETEROS||[]} value={fl.fletero}
+                    onChange={v=>updateFletero(i,"fletero",v)} disabled={readonly} placeholder="Seleccionar..."/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">N° FC</label>
+                  <input className="form-input" value={fl.fcFletero}
+                    onChange={e=>updateFletero(i,"fcFletero",e.target.value)} disabled={readonly}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Monto</label>
+                  <MoneyInput value={fl.montoFcFletero}
+                    onChange={v=>updateFletero(i,"montoFcFletero",v)} disabled={readonly}/>
+                </div>
+                <div className="form-group" style={{maxWidth:90}}>
+                  <label className="form-label">Divisa</label>
+                  <select className="form-select" value={fl.divisaFletero}
+                    onChange={e=>updateFletero(i,"divisaFletero",e.target.value)} disabled={readonly}>
+                    {CURRENCIES.map(c=><option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Fecha FC</label>
+                  <DateInput value={fl.fechaFcFletero}
+                    onChange={v=>updateFletero(i,"fechaFcFletero",v)} disabled={readonly}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Estado</label>
+                  <select className="form-select" value={fl.estadoFletero}
+                    onChange={e=>updateFletero(i,"estadoFletero",e.target.value)} disabled={readonly}>
+                    {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">Monto FC Fletero</label>
-              <MoneyInput value={montoFcFletero} onChange={setMontoFcFletero} disabled={readonly}/>
+          ))}
+          {/* R13: Alerta suma costos */}
+          {alertaCostos && (
+            <div className="alert alert-danger" style={{marginTop:8}}>
+              🚫 {errors.alertaCostos}
             </div>
-            <div className="form-group" style={{maxWidth:90}}>
-              <label className="form-label">Divisa</label>
-              <select className="form-select" value={divisaFletero}
-                onChange={e=>setDivisaFletero(e.target.value)} disabled={readonly}>
-                {CURRENCIES.map(c=><option key={c}>{c}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Fecha FC Fletero</label>
-              <input type="date" className="form-input" value={fechaFcFletero}
-                onChange={e=>setFechaFcFletero(e.target.value)} disabled={readonly}/>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Estado</label>
-              <select className="form-select" value={estadoFletero}
-                onChange={e=>setEstadoFletero(e.target.value)} disabled={readonly}>
-                {ESTADO_FLETERO_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -3489,16 +3843,14 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Destinatario <Req show={!readonly}/> {errors.destinatario && <span className="form-error">{errors.destinatario}</span>}</label>
-              <SearchableSelect
-                options={dropdowns.COLABORADORES||[]}
-                value={destinatario} onChange={setDestinatario}
-                placeholder="Seleccionar..." disabled={readonly}/>
+              <label className="form-label">Destinatario <Req show={!readonly}/></label>
+              <SearchableSelect options={dropdowns.DESTINATARIOS||dropdowns.COLABORADORES||[]}
+                value={destinatario} onChange={setDestinatario} disabled={readonly} placeholder="Seleccionar..."/>
             </div>
             <div className="form-group">
               <label className="form-label">N° FC Cliente</label>
               <input className="form-input" value={fcCliente}
-                onChange={e=>setFcCliente(e.target.value)} disabled={readonly} placeholder="Alfanumérico"/>
+                onChange={e=>setFcCliente(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Monto FC Cliente</label>
@@ -3515,8 +3867,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Fecha FC Cliente</label>
-              <input type="date" className="form-input" value={fechaFcCliente}
-                onChange={e=>setFechaFcCliente(e.target.value)} disabled={readonly}/>
+              <DateInput value={fechaFcCliente} onChange={setFechaFcCliente} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
@@ -3526,6 +3877,11 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               </select>
             </div>
           </div>
+          {fechaFcCliente && (
+            <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>
+              <DiasCounter fecha={fechaFcCliente} stopped={estadoCliente==="cobrado"} label="desde emisión"/>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3540,14 +3896,13 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
         <div className="card-body">
           {extraCostos.length === 0 && (
             <div style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>
-              {readonly ? "Sin extra costos registrados." : "Sin extra costos. Usá el botón para agregar."}
+              {readonly ? "Sin extra costos." : "Sin extra costos adicionales."}
             </div>
           )}
-          {extraCostos.map((ec, i) => (
+          {extraCostos.map((ec,i)=>(
             <div key={i} style={{
               background:"var(--bg3)",borderRadius:"var(--radius)",
-              padding:"12px 16px",marginBottom:10,
-              border:"1px solid var(--border)"
+              padding:"12px 16px",marginBottom:10,border:"1px solid var(--border)"
             }}>
               <div className="form-row" style={{alignItems:"flex-end"}}>
                 <div className="form-group" style={{flex:2}}>
@@ -3556,11 +3911,9 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
                     {errors[`ec_cat_${i}`] && <span className="form-error"> {errors[`ec_cat_${i}`]}</span>}
                   </label>
                   <SearchableSelect
-                    options={dropdowns.EXTRA_COSTOS||["COMBUSTIBLE EXTRA","PEAJE","ESTADÍA","REPARACIÓN","ADUANA","OTROS"]}
-                    value={ec.cat}
-                    onChange={v => updateExtraCosto(i,"cat",v)}
-                    placeholder="Seleccionar categoría..."
-                    disabled={readonly}/>
+                    options={dropdowns.EXTRA_COSTOS||[]}
+                    value={ec.cat} onChange={v=>updateExtraCosto(i,"cat",v)}
+                    placeholder="Seleccionar..." disabled={readonly}/>
                 </div>
                 <div className="form-group" style={{flex:1}}>
                   <label className="form-label">
@@ -3581,18 +3934,16 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
                     style={{marginBottom:16}} onClick={()=>removeExtraCosto(i)}>✕</button>
                 )}
               </div>
-              {/* Descripción obligatoria si cat = OTROS */}
-              {(ec.cat === "OTROS" || (readonly && ec.descripcion)) && (
+              {(ec.cat==="OTROS"||(readonly&&ec.descripcion)) && (
                 <div className="form-group" style={{margin:0}}>
                   <label className="form-label">
-                    Descripción <Req show={!readonly && ec.cat==="OTROS"}/>
+                    Descripción <Req show={!readonly&&ec.cat==="OTROS"}/>
                     {errors[`ec_desc_${i}`] && <span className="form-error"> {errors[`ec_desc_${i}`]}</span>}
                   </label>
                   {readonly
                     ? <div className="field-readonly" style={{fontFamily:"var(--font)"}}>{ec.descripcion||"—"}</div>
                     : <input className="form-input" value={ec.descripcion||""}
-                        onChange={e=>updateExtraCosto(i,"descripcion",e.target.value)}
-                        placeholder="Describí el costo adicional..."/>
+                        onChange={e=>updateExtraCosto(i,"descripcion",e.target.value)}/>
                   }
                 </div>
               )}
@@ -3614,11 +3965,9 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               <label className="form-label">Diferencia (FC Cliente − Cancelación)</label>
               <div className="field-readonly" style={{
                 fontFamily:"var(--mono)",
-                color: !montoFcCliente && !cancelacion ? "var(--text3)"
-                     : diferencia < 0 ? "var(--danger)"
-                     : diferencia > 0 ? "var(--success)" : "var(--text2)"
+                color: !montoFcCliente&&!cancelacion?"var(--text3)":diferencia<0?"var(--danger)":diferencia>0?"var(--success)":"var(--text2)"
               }}>
-                {montoFcCliente || cancelacion ? fmtNum(diferencia) : "—"}
+                {montoFcCliente||cancelacion ? fmtNum(diferencia) : "—"}
               </div>
             </div>
           </div>
@@ -3626,28 +3975,31 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
             <div className="form-group" style={{flex:2}}>
               <label className="form-label">Descripción de cancelación</label>
               <input className="form-input" value={descripcionCanc}
-                onChange={e=>setDescripcionCanc(e.target.value)} disabled={readonly} placeholder="Opcional"/>
+                onChange={e=>setDescripcionCanc(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
               <label className="form-label">Tipo de cobro</label>
               <SearchableSelect
-                options={dropdowns.FORMAS_PAGO||["EFECTIVO","TRANSFERENCIA","CHEQUE","OTRO"]}
-                value={tipoCanc} onChange={setTipoCanc}
-                placeholder="Forma de pago..." disabled={readonly}/>
+                options={dropdowns.FORMAS_PAGO||[]}
+                value={tipoCanc} onChange={setTipoCanc} disabled={readonly} placeholder="Forma de pago..."/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha de cobro</label>
-              <input type="date" className="form-input" value={fechaCobro}
-                onChange={e=>setFechaCobro(e.target.value)} disabled={readonly}/>
+              <DateInput value={fechaCobro} onChange={setFechaCobro} disabled={readonly}/>
             </div>
           </div>
+          {tipoCanc && fechaCobro && (
+            <div className="alert alert-success" style={{marginTop:8,fontSize:12}}>
+              ✓ Estado cliente cambiará automáticamente a <strong>COBRADO</strong>
+            </div>
+          )}
         </div>
       </div>
 
       {!readonly && (
         <div className="save-bar">
           <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving||alertaCostos}>
             {saving ? "Guardando..." : "💾 Guardar"}
           </button>
         </div>
@@ -3657,6 +4009,361 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 6 — RRHH
+// ═══════════════════════════════════════════════════════════════════════════════
+function Module6({ session, canEdit, dropdowns, notif }) {
+  const [rendiciones,   setRendiciones]   = useState([]);
+  const [liquidaciones, setLiquidaciones] = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [selChofer,     setSelChofer]     = useState("");
+  const [selPeriodo,    setSelPeriodo]    = useState(""); // "MARZO 2026"
+  const [basicoMensual, setBasicoMensual] = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [view,          setView]          = useState("list"); // "list"|"liq"
+
+  useEffect(() => {
+    Promise.all([
+      cachedGet("getRendiciones","rendiciones"),
+      gasCall("getRRHH")
+    ]).then(([r, l]) => {
+      if (r.ok) setRendiciones(r.data);
+      if (l.ok) setLiquidaciones(l.data);
+      setLoading(false);
+    });
+  }, []);
+
+  // Choferes únicos con rendiciones
+  const choferes = useMemo(() => [...new Set((rendiciones||[]).map(r=>r.driver).filter(Boolean))], [rendiciones]);
+
+  // Meses únicos del selector de período
+  const periodos = useMemo(() => {
+    const set = new Set();
+    (rendiciones||[]).forEach(r => {
+      if (r.createdAt) {
+        const dt = parseDate(r.createdAt);
+        if (dt) {
+          const mes = dt.toLocaleString("es-AR",{month:"long"}).toUpperCase();
+          set.add(`${mes} ${dt.getFullYear()}`);
+        }
+      }
+    });
+    return [...set].sort().reverse();
+  }, [rendiciones]);
+
+  // Rendiciones del chofer en el período
+  const rendFiltradas = useMemo(() => {
+    if (!selChofer || !selPeriodo) return [];
+    return rendiciones.filter(r => {
+      if (r.driver !== selChofer) return false;
+      const dt = parseDate(r.createdAt);
+      if (!dt) return false;
+      const mes = dt.toLocaleString("es-AR",{month:"long"}).toUpperCase();
+      const key = `${mes} ${dt.getFullYear()}`;
+      return key === selPeriodo;
+    });
+  }, [rendiciones, selChofer, selPeriodo]);
+
+  const subtotal = rendFiltradas.reduce((s,r) => s + Number(r.totals?.saldoChofer||0), 0);
+  const total    = subtotal + (parseFloat(String(basicoMensual||"").replace(/\./g,"").replace(",",".")) || 0);
+
+  async function handleGuardarLiquidacion() {
+    if (!selChofer || !selPeriodo) { notif.add("Seleccioná chofer y período","warn"); return; }
+    setSaving(true);
+    const detalle = rendFiltradas.map(r => ({
+      id:         r.id,
+      segmentos:  (r.segments||[]).map(s=>`${s.desde}→${s.hasta}`).join(", "),
+      saldoChofer:r.totals?.saldoChofer||0,
+    }));
+    const r = await gasCall("saveRRHH", {
+      liquidacion: {
+        chofer:               selChofer,
+        periodo:              selPeriodo,
+        basicoMensual:        parseFloat(String(basicoMensual||"").replace(/\./g,"").replace(",",".")) || 0,
+        subtotalRendiciones:  subtotal,
+        total,
+        rendicionIds:         rendFiltradas.map(r=>r.id),
+        detalleRendiciones:   detalle,
+      },
+      user: session.username
+    });
+    setSaving(false);
+    if (r.ok) {
+      notif.add(`Liquidación guardada. PDF: ${r.pdfUrl ? "✓" : "sin PDF"}`);
+      const l = await gasCall("getRRHH");
+      if (l.ok) setLiquidaciones(l.data);
+    } else notif.add(r.error||"Error","error");
+  }
+
+  const liqCols = [
+    { key:"periodo",  label:"Período" },
+    { key:"chofer",   label:"Chofer"  },
+    { key:"subtotalRendiciones", label:"Subtotal rend.", align:"right",
+      render:v=><span style={{fontFamily:"var(--mono)"}}>{fmtNum(v)} ARS</span> },
+    { key:"basicoMensual", label:"Básico", align:"right",
+      render:v=><span style={{fontFamily:"var(--mono)"}}>{fmtNum(v)} ARS</span> },
+    { key:"total", label:"Total", align:"right",
+      render:v=><span style={{fontFamily:"var(--mono)",fontWeight:600,color:"var(--success)"}}>{fmtNum(v)} ARS</span> },
+    { key:"createdAt", label:"Generado", render:v=><span style={{fontSize:11,color:"var(--text3)"}}>{fmtDT(v)}</span> },
+    { key:"pdfUrl", label:"PDF", sortable:false,
+      render:v=> v&&!v.startsWith("Error")
+        ? <a href={v} target="_blank" rel="noreferrer"
+             style={{color:"var(--accent)",fontSize:12}}>📄 Ver PDF</a>
+        : <span style={{color:"var(--text3)",fontSize:11}}>{v||"—"}</span>
+    },
+  ];
+
+  return (
+    <div className="module-container">
+      <div className="module-header">
+        <div>
+          <div className="module-title">👥 RRHH — Liquidaciones</div>
+          <div className="module-subtitle">{liquidaciones.length} liquidación(es) generada(s)</div>
+        </div>
+      </div>
+
+      {/* Generador de liquidación */}
+      {canEdit && (
+        <div className="card" style={{marginBottom:16}}>
+          <div className="card-header"><div className="card-title">➕ Nueva Liquidación</div></div>
+          <div className="card-body">
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Chofer</label>
+                <SearchableSelect options={choferes} value={selChofer}
+                  onChange={v=>{setSelChofer(v);setSelPeriodo("");}} placeholder="Seleccionar chofer..."/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Período</label>
+                <SearchableSelect options={periodos} value={selPeriodo}
+                  onChange={setSelPeriodo} placeholder="Ej: MARZO 2026" disabled={!selChofer}/>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Básico mensual (ARS)</label>
+                <MoneyInput value={basicoMensual} onChange={setBasicoMensual}/>
+              </div>
+            </div>
+
+            {selChofer && selPeriodo && (
+              <div style={{marginTop:12}}>
+                {rendFiltradas.length === 0
+                  ? <div className="alert alert-info">No hay rendiciones para {selChofer} en {selPeriodo}.</div>
+                  : (
+                    <>
+                      <div className="table-wrap" style={{marginBottom:12}}>
+                        <table>
+                          <thead><tr>
+                            <th>ID Rendición</th><th>Segmentos</th>
+                            <th style={{textAlign:"right"}}>Saldo Chofer (ARS)</th>
+                          </tr></thead>
+                          <tbody>
+                            {rendFiltradas.map(r=>(
+                              <tr key={r.id}>
+                                <td style={{fontFamily:"var(--mono)",fontSize:12}}>{r.id}</td>
+                                <td style={{fontSize:12}}>
+                                  {(r.segments||[]).map(s=>`${s.desde}→${s.hasta}`).join(", ")||"—"}
+                                </td>
+                                <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>
+                                  {fmtNum(r.totals?.saldoChofer||0)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{background:"var(--bg4)"}}>
+                              <td colSpan={2} style={{fontWeight:600}}>Subtotal rendiciones</td>
+                              <td style={{fontFamily:"var(--mono)",fontWeight:600,textAlign:"right"}}>{fmtNum(subtotal)}</td>
+                            </tr>
+                            <tr>
+                              <td colSpan={2}>Básico mensual</td>
+                              <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>
+                                {fmtNum(parseFloat(String(basicoMensual||"").replace(/\./g,"").replace(",",".")) || 0)}
+                              </td>
+                            </tr>
+                            <tr style={{background:"rgba(79,127,255,.08)"}}>
+                              <td colSpan={2} style={{fontWeight:600,fontSize:14}}>TOTAL</td>
+                              <td style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:14,
+                                          textAlign:"right",color:"var(--success)"}}>
+                                {fmtNum(total)} ARS
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"flex-end"}}>
+                        <button className="btn btn-primary" onClick={handleGuardarLiquidacion} disabled={saving}>
+                          {saving ? "Generando PDF..." : "🖨 Guardar e Imprimir Liquidación"}
+                        </button>
+                      </div>
+                    </>
+                  )
+                }
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Historial de liquidaciones */}
+      {loading
+        ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
+        : <DataTable columns={liqCols} data={liquidaciones}
+            searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas."/>
+      }
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 7 — GASTOS GENERALES
+// ═══════════════════════════════════════════════════════════════════════════════
+function Module7({ session, canEdit, dropdowns, notif }) {
+  const [gastos,  setGastos]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [view,    setView]    = useState("list");
+
+  // Combinar CAMIONES + SEMIS para el selector de patente
+  const vehiculos = useMemo(() => [
+    ...(dropdowns.CAMIONES||[]),
+    ...(dropdowns.SEMIS||[])
+  ], [dropdowns]);
+
+  useEffect(() => { loadGastos(); }, []);
+  async function loadGastos() {
+    setLoading(true);
+    const r = await gasCall("getGastosGenerales");
+    if (r.ok) setGastos(r.data);
+    setLoading(false);
+  }
+  async function handleSave(data) {
+    const r = await gasCall("saveGastoGeneral", { gasto:data, user:session.username });
+    if (r.ok) { notif.add("Gasto registrado"); loadGastos(); setView("list"); }
+    else notif.add(r.error||"Error","error");
+  }
+
+  const cols = [
+    { key:"fechaGasto",   label:"Fecha",       render:v=>fmtDate(v) },
+    { key:"tipoGasto",    label:"Tipo"         },
+    { key:"monto",        label:"Monto", align:"right",
+      render:(v,row)=><span style={{fontFamily:"var(--mono)"}}>{fmtNum(v)} {row.divisa}</span> },
+    { key:"patente",      label:"Patente",     render:v=><span style={{fontFamily:"var(--mono)",fontSize:12}}>{v||"—"}</span> },
+    { key:"chofer",       label:"Chofer",      render:v=>v||"—" },
+    { key:"observaciones",label:"Obs.",        render:v=><span style={{fontSize:11,color:"var(--text3)"}}>{v||""}</span> },
+    { key:"createdBy",    label:"Usuario",     render:v=><span style={{fontSize:11}}>{v}</span> },
+    { key:"createdAt",    label:"Registrado",  render:v=><span style={{fontSize:11,color:"var(--text3)"}}>{fmtDT(v)}</span> },
+  ];
+
+  if (view === "form") return (
+    <GastoGeneralForm
+      dropdowns={dropdowns}
+      vehiculos={vehiculos}
+      onSave={handleSave}
+      onBack={()=>setView("list")}
+    />
+  );
+
+  return (
+    <div className="module-container">
+      <div className="module-header">
+        <div>
+          <div className="module-title">🏗 Gastos Generales</div>
+          <div className="module-subtitle">{gastos.length} gasto(s) registrado(s)</div>
+        </div>
+        {canEdit && (
+          <button className="btn btn-primary btn-sm" onClick={()=>setView("form")}>+ Nuevo Gasto</button>
+        )}
+      </div>
+      {loading
+        ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
+        : <DataTable columns={cols} data={gastos}
+            searchPlaceholder="Buscar gastos..." emptyText="Sin gastos registrados."/>
+      }
+    </div>
+  );
+}
+
+function GastoGeneralForm({ dropdowns, vehiculos, onSave, onBack }) {
+  const [fechaGasto,    setFechaGasto]    = useState("");
+  const [tipoGasto,     setTipoGasto]     = useState("");
+  const [observaciones, setObservaciones] = useState("");
+  const [monto,         setMonto]         = useState("");
+  const [divisa,        setDivisa]        = useState("USD");
+  const [patente,       setPatente]       = useState("");
+  const [chofer,        setChofer]        = useState("");
+  const [errors,        setErrors]        = useState({});
+  const [saving,        setSaving]        = useState(false);
+
+  function validate() {
+    const e = {};
+    if (!fechaGasto) e.fechaGasto = "Requerido";
+    if (!monto)      e.monto      = "Requerido";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
+  async function handleSave() {
+    if (!validate()) return;
+    setSaving(true);
+    await onSave({ fechaGasto, tipoGasto, observaciones, monto: String(monto), divisa, patente, chofer });
+    setSaving(false);
+  }
+
+  return (
+    <div className="module-container">
+      <div className="module-header">
+        <div><div className="module-title">Nuevo Gasto General</div></div>
+        <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
+      </div>
+      <div className="card" style={{maxWidth:640}}>
+        <div className="card-body">
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Fecha del gasto <Req/> {errors.fechaGasto&&<span className="form-error">{errors.fechaGasto}</span>}</label>
+              <DateInput value={fechaGasto} onChange={setFechaGasto} required/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tipo de gasto</label>
+              <input className="form-input" value={tipoGasto} onChange={e=>setTipoGasto(e.target.value)} placeholder="Texto libre (ej: Seguro, Impuesto)"/>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Monto <Req/> {errors.monto&&<span className="form-error">{errors.monto}</span>}</label>
+              <MoneyInput value={monto} onChange={setMonto}/>
+            </div>
+            <div className="form-group" style={{maxWidth:100}}>
+              <label className="form-label">Divisa</label>
+              <select className="form-select" value={divisa} onChange={e=>setDivisa(e.target.value)}>
+                {CURRENCIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Patente / Vehículo <span style={{color:"var(--text3)",fontWeight:400}}>(opcional)</span></label>
+              <SearchableSelect options={vehiculos} value={patente} onChange={setPatente} placeholder="Seleccionar vehículo..."/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Chofer <span style={{color:"var(--text3)",fontWeight:400}}>(opcional)</span></label>
+              <SearchableSelect options={dropdowns.CHOFERES||[]} value={chofer} onChange={setChofer} placeholder="Seleccionar chofer..."/>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Observaciones</label>
+            <input className="form-input" value={observaciones} onChange={e=>setObservaciones(e.target.value)} placeholder="Opcional"/>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+            <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving?"Guardando...":"💾 Guardar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GASTOS TABLA
