@@ -2262,7 +2262,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">N° MIC <Req show={!readonly}/> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
-              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
+              <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Indique el número de MIC"/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha MIC <Req show={!readonly}/> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
@@ -2270,7 +2270,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
             </div>
             <div className="form-group">
               <label className="form-label">N° CRT <Req show={!readonly}/> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
-              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
+              <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Indique el número de CRT"/>
             </div>
             <div className="form-group">
               <label className="form-label">Fecha CRT <Req show={!readonly}/> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
@@ -3766,7 +3766,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
         <div className="card-body">
           {fleteros.length === 0 && (
             <div style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>
-              {readonly ? "Sin facturas fletero." : "Este viaje fue realizado con flota propia. Usá '+ Agregar' si terciarizaste."}
+              {readonly ? "Sin facturas fletero." : "Si terciarizaste algún tramo, agregá la factura del fletero desde el botón '+ Agregar'."}
             </div>
           )}
           {fleteros.map((fl,i)=>(
