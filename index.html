@@ -3461,7 +3461,8 @@ function Module5({ session, canEdit, dropdowns, notif }) {
       _cliente:   t.cliente || "",
       _carga:     t.carga   || "",
       _reserva:   t.reserva || "",
-      _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
+      _monto:        t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
+      _montoCliente: fac?.montoFcCliente ? `${fmtNum(fac.montoFcCliente)} ${fac.divisaCliente||""}` : "—",
       _estado:    fac ? "Facturado" : "Sin facturar",
       // Todos los números de FC fletero concatenados — la búsqueda global los encuentra
       _fcFletero: fls.length ? fls.map(fl => fl.fcFletero || "s/n").join(" ") : "—",
@@ -3517,7 +3518,39 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     { key:"_cliente",   label:"Cliente",     sortable:true  },
     { key:"_carga",     label:"Carga",       sortable:true  },
     { key:"_reserva",   label:"Reserva",     sortable:true  },
-    { key:"_monto",     label:"Monto viaje", sortable:false },
+    { key:"_monto",       label:"Cotización inicial", sortable:false },
+    { key:"_montoCliente",label:"Monto cliente",     sortable:false },
+    {
+      key:"_fcCliente", sortKey:"_diasCli", label:"FC Cliente", sortable:true, filterable:false,
+      render:(v,row) => {
+        if (!row.factura) return <span style={{color:"var(--text3)"}}>—</span>;
+        const f = row.factura;
+        const closed = isClosed(f);
+        return (
+          <div>
+            <span style={{fontFamily:"var(--mono)",fontSize:12}}>{v}</span>
+            {f.fechaFcCliente && (
+              <DiasCounter fecha={f.fechaFcCliente} stopped={f.estadoCliente==="cobrado"}/>
+            )}
+            {canEdit && !closed && (
+              <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                <select
+                  className="form-select"
+                  style={{padding:"2px 20px 2px 6px",fontSize:11,width:"auto",minWidth:100}}
+                  value={f.estadoCliente||"pendiente"}
+                  disabled={updatingField===`${f.id}:estadoCliente`}
+                  onChange={e=>handleEstadoChange(f.id,"estadoCliente",e.target.value)}>
+                  {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+                {updatingField===`${f.id}:estadoCliente` &&
+                  <div className="spinner" style={{width:12,height:12,borderWidth:2}}/>}
+              </div>
+            )}
+            {(!canEdit || closed) && <EstadoBadge val={f.estadoCliente||"pendiente"}/>}
+          </div>
+        );
+      }
+    },
     {
       key:"_estado", label:"Estado", sortable:true,
       render:(v,row) => row.tieneFactura
@@ -3556,37 +3589,6 @@ function Module5({ session, canEdit, dropdowns, notif }) {
                 </div>
               );
             })}
-          </div>
-        );
-      }
-    },
-    {
-      key:"_fcCliente", sortKey:"_diasCli", label:"FC Cliente", sortable:true, filterable:false,
-      render:(v,row) => {
-        if (!row.factura) return <span style={{color:"var(--text3)"}}>—</span>;
-        const f = row.factura;
-        const closed = isClosed(f);
-        return (
-          <div>
-            <span style={{fontFamily:"var(--mono)",fontSize:12}}>{v}</span>
-            {f.fechaFcCliente && (
-              <DiasCounter fecha={f.fechaFcCliente} stopped={f.estadoCliente==="cobrado"}/>
-            )}
-            {canEdit && !closed && (
-              <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
-                <select
-                  className="form-select"
-                  style={{padding:"2px 20px 2px 6px",fontSize:11,width:"auto",minWidth:100}}
-                  value={f.estadoCliente||"pendiente"}
-                  disabled={updatingField===`${f.id}:estadoCliente`}
-                  onChange={e=>handleEstadoChange(f.id,"estadoCliente",e.target.value)}>
-                  {ESTADO_CLIENTE_OPTS.map(v=><option key={v} value={v}>{v}</option>)}
-                </select>
-                {updatingField===`${f.id}:estadoCliente` &&
-                  <div className="spinner" style={{width:12,height:12,borderWidth:2}}/>}
-              </div>
-            )}
-            {(!canEdit || closed) && <EstadoBadge val={f.estadoCliente||"pendiente"}/>}
           </div>
         );
       }
@@ -3742,6 +3744,11 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
 
   const G = k => factura?.[k] ?? pre[k] ?? "";
 
+  // Cotización inicial: siempre del viaje (módulo 1). Si la factura guardó el dato úsalo,
+  // pero si está vacío (facturas viejas) caer SIEMPRE al monto del trip.
+  const cotizacionInicial = (factura?.montoViajeOrig || pre.montoViajeOrig || "");
+  const cotizacionDivisa  = (factura?.divisaViajeOrig || pre.divisaViajeOrig || "USD");
+
   // Facturas fletero — array dinámico
   const [fleteros, setFleteros] = useState(() => {
     if (factura?.fleteros?.length) return factura.fleteros;
@@ -3812,10 +3819,10 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   }, [montoFcCliente, cancelacion]);
 
   // Alerta diferencia monto viaje vs factura
-  const montoViajeNum = parseFloat(String(G("montoViajeOrig")||"").replace(/\./g,"").replace(",",".")) || 0;
+  const montoViajeNum = parseFloat(String(cotizacionInicial||"").replace(/\./g,"").replace(",",".")) || 0;
   const montoFcNum    = parseFloat(String(montoFcCliente||"").replace(/\./g,"").replace(",","."))      || 0;
   const hayDifMonto   = montoViajeNum > 0 && montoFcNum > 0 &&
-    (montoFcNum !== montoViajeNum || divisaCliente !== G("divisaViajeOrig"));
+    (montoFcNum !== montoViajeNum || divisaCliente !== cotizacionDivisa);
 
   function addExtraCosto() {
     setExtraCostos(p => [...p, { cat:"", descripcion:"", monto:"", divisa:"USD" }]);
@@ -3870,8 +3877,8 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       reserva:       G("reserva"),  numContenedor: G("numContenedor"),
       chofer:        G("chofer"),   carga:     G("carga"),
       cliente:       G("cliente"),  tramo:     G("tramo"),
-      montoViajeOrig:  G("montoViajeOrig"),
-      divisaViajeOrig: G("divisaViajeOrig"),
+      montoViajeOrig:  cotizacionInicial,
+      divisaViajeOrig: cotizacionDivisa,
       fleteros,
       destinatario, fcCliente, montoFcCliente, divisaCliente, fechaFcCliente, estadoCliente,
       cancelacion, descripcionCancelacion:descripcionCanc,
@@ -3916,9 +3923,9 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
           </div>
           <div style={{display:"flex",gap:12,alignItems:"center",paddingTop:8,borderTop:"1px solid var(--border)"}}>
             <div>
-              <div className="form-label">Monto cotizado</div>
+              <div className="form-label">Cotización inicial</div>
               <div className="field-readonly" style={{fontFamily:"var(--mono)",minWidth:160}}>
-                {G("montoViajeOrig") ? `${fmtNum(G("montoViajeOrig"))} ${G("divisaViajeOrig")}` : "—"}
+                {cotizacionInicial ? `${fmtNum(cotizacionInicial)} ${cotizacionDivisa}` : "—"}
               </div>
             </div>
           </div>
@@ -4051,7 +4058,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
           {/* Alerta: monto FC Cliente difiere del monto cotizado */}
           {hayDifMonto && (
             <div className="alert alert-warning" style={{marginBottom:8,fontSize:12}}>
-              ⚠️ El monto de la FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado del viaje ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}).
+              ⚠️ El monto de la FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere de la cotización inicial ({fmtNum(montoViajeNum)} {cotizacionDivisa}).
             </div>
           )}
           <div className="form-row">
