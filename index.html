@@ -719,6 +719,35 @@ function StatusBadge({ status }) {
   return <span className={map[status]||"badge badge-gray"}>{status}</span>;
 }
 
+// ─── UTILIDADES: días transcurridos + exportación CSV ──────────────────────────
+// Días desde una fecha ISO hasta hoy. null si la fecha es inválida o vacía.
+function diasDesde(fechaISO) {
+  if (!fechaISO) return null;
+  const d = new Date(fechaISO + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return Math.round((hoy - d) / 86400000);
+}
+
+// Exporta a CSV compatible con Excel (separador ";", BOM UTF-8 para acentos).
+// headers: array de strings. rows: array de arrays (mismos largos que headers).
+function exportToCSV(filename, headers, rows) {
+  const esc = v => {
+    const s = String(v ?? "");
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers.map(esc).join(";"), ...rows.map(r => r.map(esc).join(";"))];
+  const blob  = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".csv") ? filename : filename + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DATE INPUT — Campo de fecha con date picker nativo + ingreso manual DD/MM/AAAA
 //
@@ -880,7 +909,7 @@ function DateInput({ value="", onChange, disabled=false, required=false, placeho
 //   emptyText?: string
 //   stickyHeader?: bool
 // ═══════════════════════════════════════════════════════════════════════════════
-function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText="Sin registros.", stickyHeader=false }) {
+function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText="Sin registros.", stickyHeader=false, exportFilename=null }) {
   const [sortKey,    setSortKey]    = useState(null);
   const [sortDir,    setSortDir]    = useState("asc");  // "asc" | "desc"
   const [globalSearch, setGlobalSearch] = useState("");
@@ -939,11 +968,13 @@ function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText=
       if (val) rows = rows.filter(row => String(row[key]||"") === val);
     });
 
-    // 3. Sort
+    // 3. Sort — si la columna define sortKey, ordenar por ese campo en lugar del key visible
     if (sortKey) {
+      const activeCol = columns.find(cl => cl.key === sortKey);
+      const sk = activeCol?.sortKey || sortKey;
       rows.sort((a, b) => {
-        const av = a[sortKey] ?? "";
-        const bv = b[sortKey] ?? "";
+        const av = a[sk] ?? "";
+        const bv = b[sk] ?? "";
         // Intentar comparación numérica si ambos son números
         const an = parseFloat(String(av).replace(/\./g,"").replace(",","."));
         const bn = parseFloat(String(bv).replace(/\./g,"").replace(",","."));
@@ -1011,6 +1042,26 @@ function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText=
         <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
           {processed.length} de {data.length}
         </span>
+        {exportFilename && (
+          <button
+            title="Exportar a Excel"
+            onClick={() => {
+              const headers = columns.map(cl => cl.label);
+              const rows = processed.map(row => columns.map(cl => {
+                const raw = cl.exportValue ? cl.exportValue(row[cl.key], row) : row[cl.exportKey || cl.key];
+                return raw ?? "";
+              }));
+              exportToCSV(exportFilename, headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1,
+              transition:"color .15s, border-color .15s"
+            }}
+            onMouseEnter={e=>{e.currentTarget.style.color="var(--accent)";e.currentTarget.style.borderColor="var(--accent)";}}
+            onMouseLeave={e=>{e.currentTarget.style.color="var(--text3)";e.currentTarget.style.borderColor="var(--border2)";}}
+          >📥</button>
+        )}
       </div>
 
       <div className="table-wrap">
@@ -1743,6 +1794,24 @@ function Module1({ session, canEdit, dropdowns, notif }) {
           <div className="module-subtitle">{histView ? "Historial de viajes finalizados" : `${active.length} viaje(s) activo(s)`}</div>
         </div>
         <div className="module-actions">
+          <button
+            title="Exportar a Excel"
+            onClick={() => {
+              const headers = ["ID Viaje","Carga","Tipo","Cliente","Monto","Moneda","Tramos","KM total","Estado doc","Estado viaje","Finalizado"];
+              const rows = shown.map(t => [
+                t.id, t.carga||"", t.tipoCarga||"", t.cliente||"",
+                t.montoFactura||"", t.moneda||"",
+                (t.segments||[]).length,
+                (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0),
+                t.statusDoc||"", t.status||"", t.finalizedAt||""
+              ]);
+              exportToCSV(histView ? "viajes_historial" : "viajes_activos", headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1
+            }}
+          >📥</button>
           <button className="btn btn-secondary btn-sm" onClick={() => setHistView(!histView)}>
             {histView ? "← Activos" : "Ver Historial"}
           </button>
@@ -2498,6 +2567,7 @@ function Module2({ session, canEdit, dropdowns, notif }) {
                 data={grouped}
                 searchPlaceholder="Buscar entregas..."
                 emptyText="No hay entregas."
+                exportFilename="entregas"
               />
             );
           })()
@@ -2741,6 +2811,23 @@ function Module3({ session, canEdit, dropdowns, notif }) {
           <div className="module-title">📊 Rendición de Gastos</div>
           <div className="module-subtitle">Seleccioná tramos para liquidar</div>
         </div>
+        {selDriver && filtered.length > 0 && (
+          <button
+            title="Exportar tramos a Excel"
+            onClick={() => {
+              const headers = ["Tramo","Viaje","Chofer","Desde","Hasta","Fecha inicio","Estado"];
+              const rows = filtered.map(s => [
+                s.segId, s.tripId, s.chofer||"", s.desde||"", s.hasta||"",
+                fmtDate(s.fechaInicio), s.status||""
+              ]);
+              exportToCSV(`tramos_${selDriver}`, headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1
+            }}
+          >📥</button>
+        )}
       </div>
       <div style={{ marginBottom:16, maxWidth:360 }}>
         <div className="form-group" style={{ margin:0 }}>
@@ -3321,14 +3408,24 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     } else notif.add(r.error||"Error al guardar","error");
   }
 
-  async function handleEstadoChange(facId, field, newVal) {
+  async function handleEstadoChange(facId, field, newVal, flIdx) {
     const key = `${facId}:${field}`;
     setUpdatingField(key);
     const r = await gasCall("updateEstadoFac", { id:facId, updates:{ [field]:newVal }, user:session.username });
     setUpdatingField(null);
     if (r.ok) {
       invalidateCache("facturacion");
-      setFacturas(prev => prev.map(f => f.id === facId ? { ...f, [field]:newVal } : f));
+      setFacturas(prev => prev.map(f => {
+        if (f.id !== facId) return f;
+        const upd = { ...f, [field]: newVal };
+        // Si es un estado de fletero, sincronizar también el array fleteros[]
+        if (flIdx) {
+          upd.fleteros = (f.fleteros || []).map(fl =>
+            fl._idx === flIdx ? { ...fl, estadoFletero: newVal } : fl
+          );
+        }
+        return upd;
+      }));
     } else notif.add(r.error||"Error","error");
   }
 
@@ -3342,22 +3439,44 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     (trips||[]).filter(t => t.status === "finalizado")
   , [trips]);
 
-  const rows = useMemo(() => finalizados.map(t => ({
-    trip: t,
-    factura: facByTripId[t.id] || null,
-    tieneFactura: !!facByTripId[t.id],
-    // campos planos para DataTable
-    _tripId:    t.id,
-    _cliente:   t.cliente || "",
-    _carga:     t.carga   || "",
-    _reserva:   t.reserva || "",
-    _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
-    _estado:    facByTripId[t.id] ? "Facturado" : "Sin facturar",
-    _fcFletero: (facByTripId[t.id]?.fleteros||[])[0]?.fcFletero || "—",
-    _fcCliente: facByTripId[t.id]?.fcCliente || "—",
-  })), [finalizados, facByTripId]);
+  const rows = useMemo(() => finalizados.map(t => {
+    const fac = facByTripId[t.id] || null;
+    const fls = fac?.fleteros || [];
+    // Máximo de días entre facturas fletero NO pagadas (para ordenar por retraso).
+    // -1 si no hay pendientes → quedan al fondo al ordenar descendente.
+    const diasPendientes = fls
+      .filter(fl => fl.estadoFletero !== "pagado")
+      .map(fl => diasDesde(fl.fechaFcFletero))
+      .filter(d => d !== null);
+    const maxDiasFl = diasPendientes.length ? Math.max(...diasPendientes) : -1;
+    // Días de FC cliente si no está cobrada
+    const diasCli = (fac && fac.estadoCliente !== "cobrado")
+      ? (diasDesde(fac.fechaFcCliente) ?? -1)
+      : -1;
+    return {
+      trip: t,
+      factura: fac,
+      tieneFactura: !!fac,
+      _tripId:    t.id,
+      _cliente:   t.cliente || "",
+      _carga:     t.carga   || "",
+      _reserva:   t.reserva || "",
+      _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
+      _estado:    fac ? "Facturado" : "Sin facturar",
+      // Todos los números de FC fletero concatenados — la búsqueda global los encuentra
+      _fcFletero: fls.length ? fls.map(fl => fl.fcFletero || "s/n").join(" ") : "—",
+      _fcCliente: fac?.fcCliente || "—",
+      _maxDiasFl: maxDiasFl,
+      _diasCli:   diasCli,
+    };
+  }), [finalizados, facByTripId]);
 
-  const isClosed = f => f && f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+  // Cerrada = TODAS las facturas fletero pagadas (o sin fleteros) Y cliente cobrado
+  const isClosed = f => {
+    if (!f) return false;
+    const fleterosPagados = (f.fleteros || []).every(fl => fl.estadoFletero === "pagado");
+    return fleterosPagados && f.estadoCliente === "cobrado";
+  };
   const historialRows = rows.filter(r => isClosed(r.factura));
 
   // R10: Filtro fecha relativa
@@ -3405,9 +3524,44 @@ function Module5({ session, canEdit, dropdowns, notif }) {
         ? <span className="badge badge-blue">Facturado</span>
         : <span className="badge badge-gray">Sin facturar</span>
     },
-    { key:"_fcFletero", label:"FC Fletero",  sortable:true  },
     {
-      key:"_fcCliente", label:"FC Cliente", sortable:true,
+      key:"_fcFletero", sortKey:"_maxDiasFl", label:"FC Fletero", filterable:false,
+      render:(v,row) => {
+        const f = row.factura;
+        const fls = f?.fleteros || [];
+        if (!f || !fls.length) return <span style={{color:"var(--text3)"}}>—</span>;
+        const closed = isClosed(f);
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {fls.map(fl => {
+              const field = `estadoFletero${fl._idx}`;
+              const busy  = updatingField === `${f.id}:${field}`;
+              return (
+                <div key={fl._idx} style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"var(--mono)",fontSize:12,minWidth:34}}>{fl.fcFletero||"s/n"}</span>
+                  <DiasCounter fecha={fl.fechaFcFletero} stopped={fl.estadoFletero==="pagado"}/>
+                  {canEdit && !closed ? (
+                    <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                      <select
+                        className="form-select"
+                        style={{padding:"2px 20px 2px 6px",fontSize:11,width:"auto",minWidth:96}}
+                        value={fl.estadoFletero||"pendiente"}
+                        disabled={busy}
+                        onChange={e=>handleEstadoChange(f.id, field, e.target.value, fl._idx)}>
+                        {ESTADO_FLETERO_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+                      </select>
+                      {busy && <div className="spinner" style={{width:12,height:12,borderWidth:2,flexShrink:0}}/>}
+                    </span>
+                  ) : <EstadoBadge val={fl.estadoFletero||"pendiente"}/>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+    },
+    {
+      key:"_fcCliente", sortKey:"_diasCli", label:"FC Cliente", sortable:true, filterable:false,
       render:(v,row) => {
         if (!row.factura) return <span style={{color:"var(--text3)"}}>—</span>;
         const f = row.factura;
@@ -3510,6 +3664,7 @@ function Module5({ session, canEdit, dropdowns, notif }) {
             data={shownRows}
             searchPlaceholder="Buscar por viaje, cliente, carga..."
             emptyText="No hay viajes finalizados."
+            exportFilename="facturacion"
           />
       }
     </div>
@@ -3551,7 +3706,7 @@ function FacturacionHistorial({ historialRows, onBack, onView }) {
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      <DataTable columns={cols} data={data} searchPlaceholder="Buscar historial..." emptyText="Sin historial."/>
+      <DataTable columns={cols} data={data} searchPlaceholder="Buscar historial..." emptyText="Sin historial." exportFilename="historial_facturacion"/>
     </div>
   );
 }
@@ -4256,7 +4411,7 @@ function Module6({ session, canEdit, dropdowns, notif }) {
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
         : <DataTable columns={liqCols} data={liquidaciones}
-            searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas."/>
+            searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas." exportFilename="liquidaciones_rrhh"/>
       }
     </div>
   );
@@ -4324,7 +4479,7 @@ function Module7({ session, canEdit, dropdowns, notif }) {
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
         : <DataTable columns={cols} data={gastos}
-            searchPlaceholder="Buscar gastos..." emptyText="Sin gastos registrados."/>
+            searchPlaceholder="Buscar gastos..." emptyText="Sin gastos registrados." exportFilename="gastos_generales"/>
       }
     </div>
   );
