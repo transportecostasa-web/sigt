@@ -188,10 +188,10 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wO
 const MODULES = [
   { id:1, icon:"🚚", label:"Inicio de Viaje",      short:"Viajes" },
   { id:2, icon:"💵", label:"Entrega de Plata",     short:"Entregas" },
-  { id:3, icon:"📊", label:"Rendición de Gastos",  short:"Rendición Viajes" },
+  { id:3, icon:"📊", label:"Rendición de Gastos",  short:"Rendición" },
   { id:5, icon:"🧾", label:"Facturación",           short:"Facturación" },
   { id:6, icon:"👥", label:"RRHH",                  short:"RRHH" },
-  { id:7, icon:"🏗",  label:"Gastos Generales",     short:"Gastos Generales" },
+  { id:7, icon:"🏗",  label:"Gastos Generales",     short:"Gs. Generales" },
 ];
 
 // Permisos por usuario.
@@ -204,7 +204,7 @@ const PERMISSIONS = {
   JAVIER:   { role:"Solo lectura",   mods:[1,2,3,5,6,7], edit:[] },
   SEBASTIAN:{ role:"Editor parcial", mods:[1,2,5],        edit:[1,2,5] },
   ROLANDO:  { role:"Editor parcial", mods:[2,3],          edit:[2,3] },
-  AUGUSTO:  { role:"Editor parcial", mods:[5,6],          edit:[5,6] },
+  LUCIANA:  { role:"Editor parcial", mods:[5,6],          edit:[5,6] },
 };
 
 // Divisas disponibles en todos los campos de dinero del sistema.
@@ -719,6 +719,35 @@ function StatusBadge({ status }) {
   return <span className={map[status]||"badge badge-gray"}>{status}</span>;
 }
 
+// ─── UTILIDADES: días transcurridos + exportación CSV ──────────────────────────
+// Días desde una fecha ISO hasta hoy. null si la fecha es inválida o vacía.
+function diasDesde(fechaISO) {
+  if (!fechaISO) return null;
+  const d = new Date(fechaISO + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return Math.round((hoy - d) / 86400000);
+}
+
+// Exporta a CSV compatible con Excel (separador ";", BOM UTF-8 para acentos).
+// headers: array de strings. rows: array de arrays (mismos largos que headers).
+function exportToCSV(filename, headers, rows) {
+  const esc = v => {
+    const s = String(v ?? "");
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers.map(esc).join(";"), ...rows.map(r => r.map(esc).join(";"))];
+  const blob  = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".csv") ? filename : filename + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DATE INPUT — Campo de fecha con date picker nativo + ingreso manual DD/MM/AAAA
 //
@@ -880,7 +909,7 @@ function DateInput({ value="", onChange, disabled=false, required=false, placeho
 //   emptyText?: string
 //   stickyHeader?: bool
 // ═══════════════════════════════════════════════════════════════════════════════
-function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText="Sin registros.", stickyHeader=false }) {
+function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText="Sin registros.", stickyHeader=false, exportFilename=null }) {
   const [sortKey,    setSortKey]    = useState(null);
   const [sortDir,    setSortDir]    = useState("asc");  // "asc" | "desc"
   const [globalSearch, setGlobalSearch] = useState("");
@@ -939,11 +968,13 @@ function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText=
       if (val) rows = rows.filter(row => String(row[key]||"") === val);
     });
 
-    // 3. Sort
+    // 3. Sort — si la columna define sortKey, ordenar por ese campo en lugar del key visible
     if (sortKey) {
+      const activeCol = columns.find(cl => cl.key === sortKey);
+      const sk = activeCol?.sortKey || sortKey;
       rows.sort((a, b) => {
-        const av = a[sortKey] ?? "";
-        const bv = b[sortKey] ?? "";
+        const av = a[sk] ?? "";
+        const bv = b[sk] ?? "";
         // Intentar comparación numérica si ambos son números
         const an = parseFloat(String(av).replace(/\./g,"").replace(",","."));
         const bn = parseFloat(String(bv).replace(/\./g,"").replace(",","."));
@@ -1011,6 +1042,26 @@ function DataTable({ columns, data=[], searchPlaceholder="Buscar...", emptyText=
         <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
           {processed.length} de {data.length}
         </span>
+        {exportFilename && (
+          <button
+            title="Exportar a Excel"
+            onClick={() => {
+              const headers = columns.map(cl => cl.label);
+              const rows = processed.map(row => columns.map(cl => {
+                const raw = cl.exportValue ? cl.exportValue(row[cl.key], row) : row[cl.exportKey || cl.key];
+                return raw ?? "";
+              }));
+              exportToCSV(exportFilename, headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1,
+              transition:"color .15s, border-color .15s"
+            }}
+            onMouseEnter={e=>{e.currentTarget.style.color="var(--accent)";e.currentTarget.style.borderColor="var(--accent)";}}
+            onMouseLeave={e=>{e.currentTarget.style.color="var(--text3)";e.currentTarget.style.borderColor="var(--border2)";}}
+          >📥</button>
+        )}
       </div>
 
       <div className="table-wrap">
@@ -1743,6 +1794,24 @@ function Module1({ session, canEdit, dropdowns, notif }) {
           <div className="module-subtitle">{histView ? "Historial de viajes finalizados" : `${active.length} viaje(s) activo(s)`}</div>
         </div>
         <div className="module-actions">
+          <button
+            title="Exportar a Excel"
+            onClick={() => {
+              const headers = ["ID Viaje","Carga","Tipo","Cliente","Monto","Moneda","Tramos","KM total","Estado doc","Estado viaje","Finalizado"];
+              const rows = shown.map(t => [
+                t.id, t.carga||"", t.tipoCarga||"", t.cliente||"",
+                t.montoFactura||"", t.moneda||"",
+                (t.segments||[]).length,
+                (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0),
+                t.statusDoc||"", t.status||"", t.finalizedAt||""
+              ]);
+              exportToCSV(histView ? "viajes_historial" : "viajes_activos", headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1
+            }}
+          >📥</button>
           <button className="btn btn-secondary btn-sm" onClick={() => setHistView(!histView)}>
             {histView ? "← Activos" : "Ver Historial"}
           </button>
@@ -2498,6 +2567,7 @@ function Module2({ session, canEdit, dropdowns, notif }) {
                 data={grouped}
                 searchPlaceholder="Buscar entregas..."
                 emptyText="No hay entregas."
+                exportFilename="entregas"
               />
             );
           })()
@@ -2741,6 +2811,23 @@ function Module3({ session, canEdit, dropdowns, notif }) {
           <div className="module-title">📊 Rendición de Gastos</div>
           <div className="module-subtitle">Seleccioná tramos para liquidar</div>
         </div>
+        {selDriver && filtered.length > 0 && (
+          <button
+            title="Exportar tramos a Excel"
+            onClick={() => {
+              const headers = ["Tramo","Viaje","Chofer","Desde","Hasta","Fecha inicio","Estado"];
+              const rows = filtered.map(s => [
+                s.segId, s.tripId, s.chofer||"", s.desde||"", s.hasta||"",
+                fmtDate(s.fechaInicio), s.status||""
+              ]);
+              exportToCSV(`tramos_${selDriver}`, headers, rows);
+            }}
+            style={{
+              background:"none",border:"1px solid var(--border2)",borderRadius:"var(--radius)",
+              cursor:"pointer",color:"var(--text3)",fontSize:13,padding:"4px 9px",lineHeight:1
+            }}
+          >📥</button>
+        )}
       </div>
       <div style={{ marginBottom:16, maxWidth:360 }}>
         <div className="form-group" style={{ margin:0 }}>
@@ -3321,14 +3408,24 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     } else notif.add(r.error||"Error al guardar","error");
   }
 
-  async function handleEstadoChange(facId, field, newVal) {
+  async function handleEstadoChange(facId, field, newVal, flIdx) {
     const key = `${facId}:${field}`;
     setUpdatingField(key);
     const r = await gasCall("updateEstadoFac", { id:facId, updates:{ [field]:newVal }, user:session.username });
     setUpdatingField(null);
     if (r.ok) {
       invalidateCache("facturacion");
-      setFacturas(prev => prev.map(f => f.id === facId ? { ...f, [field]:newVal } : f));
+      setFacturas(prev => prev.map(f => {
+        if (f.id !== facId) return f;
+        const upd = { ...f, [field]: newVal };
+        // Si es un estado de fletero, sincronizar también el array fleteros[]
+        if (flIdx) {
+          upd.fleteros = (f.fleteros || []).map(fl =>
+            fl._idx === flIdx ? { ...fl, estadoFletero: newVal } : fl
+          );
+        }
+        return upd;
+      }));
     } else notif.add(r.error||"Error","error");
   }
 
@@ -3342,22 +3439,44 @@ function Module5({ session, canEdit, dropdowns, notif }) {
     (trips||[]).filter(t => t.status === "finalizado")
   , [trips]);
 
-  const rows = useMemo(() => finalizados.map(t => ({
-    trip: t,
-    factura: facByTripId[t.id] || null,
-    tieneFactura: !!facByTripId[t.id],
-    // campos planos para DataTable
-    _tripId:    t.id,
-    _cliente:   t.cliente || "",
-    _carga:     t.carga   || "",
-    _reserva:   t.reserva || "",
-    _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
-    _estado:    facByTripId[t.id] ? "Facturado" : "Sin facturar",
-    _fcFletero: (facByTripId[t.id]?.fleteros||[])[0]?.fcFletero || "—",
-    _fcCliente: facByTripId[t.id]?.fcCliente || "—",
-  })), [finalizados, facByTripId]);
+  const rows = useMemo(() => finalizados.map(t => {
+    const fac = facByTripId[t.id] || null;
+    const fls = fac?.fleteros || [];
+    // Máximo de días entre facturas fletero NO pagadas (para ordenar por retraso).
+    // -1 si no hay pendientes → quedan al fondo al ordenar descendente.
+    const diasPendientes = fls
+      .filter(fl => fl.estadoFletero !== "pagado")
+      .map(fl => diasDesde(fl.fechaFcFletero))
+      .filter(d => d !== null);
+    const maxDiasFl = diasPendientes.length ? Math.max(...diasPendientes) : -1;
+    // Días de FC cliente si no está cobrada
+    const diasCli = (fac && fac.estadoCliente !== "cobrado")
+      ? (diasDesde(fac.fechaFcCliente) ?? -1)
+      : -1;
+    return {
+      trip: t,
+      factura: fac,
+      tieneFactura: !!fac,
+      _tripId:    t.id,
+      _cliente:   t.cliente || "",
+      _carga:     t.carga   || "",
+      _reserva:   t.reserva || "",
+      _monto:     t.montoFactura ? `${fmtNum(t.montoFactura)} ${t.moneda||""}` : "—",
+      _estado:    fac ? "Facturado" : "Sin facturar",
+      // Todos los números de FC fletero concatenados — la búsqueda global los encuentra
+      _fcFletero: fls.length ? fls.map(fl => fl.fcFletero || "s/n").join(" ") : "—",
+      _fcCliente: fac?.fcCliente || "—",
+      _maxDiasFl: maxDiasFl,
+      _diasCli:   diasCli,
+    };
+  }), [finalizados, facByTripId]);
 
-  const isClosed = f => f && f.estadoFletero === "pagado" && f.estadoCliente === "cobrado";
+  // Cerrada = TODAS las facturas fletero pagadas (o sin fleteros) Y cliente cobrado
+  const isClosed = f => {
+    if (!f) return false;
+    const fleterosPagados = (f.fleteros || []).every(fl => fl.estadoFletero === "pagado");
+    return fleterosPagados && f.estadoCliente === "cobrado";
+  };
   const historialRows = rows.filter(r => isClosed(r.factura));
 
   // R10: Filtro fecha relativa
@@ -3405,9 +3524,44 @@ function Module5({ session, canEdit, dropdowns, notif }) {
         ? <span className="badge badge-blue">Facturado</span>
         : <span className="badge badge-gray">Sin facturar</span>
     },
-    { key:"_fcFletero", label:"FC Fletero",  sortable:true  },
     {
-      key:"_fcCliente", label:"FC Cliente", sortable:true,
+      key:"_fcFletero", sortKey:"_maxDiasFl", label:"FC Fletero", filterable:false,
+      render:(v,row) => {
+        const f = row.factura;
+        const fls = f?.fleteros || [];
+        if (!f || !fls.length) return <span style={{color:"var(--text3)"}}>—</span>;
+        const closed = isClosed(f);
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {fls.map(fl => {
+              const field = `estadoFletero${fl._idx}`;
+              const busy  = updatingField === `${f.id}:${field}`;
+              return (
+                <div key={fl._idx} style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"var(--mono)",fontSize:12,minWidth:34}}>{fl.fcFletero||"s/n"}</span>
+                  <DiasCounter fecha={fl.fechaFcFletero} stopped={fl.estadoFletero==="pagado"}/>
+                  {canEdit && !closed ? (
+                    <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                      <select
+                        className="form-select"
+                        style={{padding:"2px 20px 2px 6px",fontSize:11,width:"auto",minWidth:96}}
+                        value={fl.estadoFletero||"pendiente"}
+                        disabled={busy}
+                        onChange={e=>handleEstadoChange(f.id, field, e.target.value, fl._idx)}>
+                        {ESTADO_FLETERO_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
+                      </select>
+                      {busy && <div className="spinner" style={{width:12,height:12,borderWidth:2,flexShrink:0}}/>}
+                    </span>
+                  ) : <EstadoBadge val={fl.estadoFletero||"pendiente"}/>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+    },
+    {
+      key:"_fcCliente", sortKey:"_diasCli", label:"FC Cliente", sortable:true, filterable:false,
       render:(v,row) => {
         if (!row.factura) return <span style={{color:"var(--text3)"}}>—</span>;
         const f = row.factura;
@@ -3510,6 +3664,7 @@ function Module5({ session, canEdit, dropdowns, notif }) {
             data={shownRows}
             searchPlaceholder="Buscar por viaje, cliente, carga..."
             emptyText="No hay viajes finalizados."
+            exportFilename="facturacion"
           />
       }
     </div>
@@ -3551,7 +3706,7 @@ function FacturacionHistorial({ historialRows, onBack, onView }) {
         </div>
         <button className="btn btn-secondary btn-sm" onClick={onBack}>← Volver</button>
       </div>
-      <DataTable columns={cols} data={data} searchPlaceholder="Buscar historial..." emptyText="Sin historial."/>
+      <DataTable columns={cols} data={data} searchPlaceholder="Buscar historial..." emptyText="Sin historial." exportFilename="historial_facturacion"/>
     </div>
   );
 }
@@ -3673,13 +3828,33 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   function validate() {
     const e = {};
     if (!G("tripId")) e.tripId = "Falta viaje";
-    // R13: bloquear si costos >= FC cliente
-    if (alertaCostos) e.alertaCostos = `La suma de facturas fletero + extra costos (${toUSD(totalCostos,"USD").toFixed(0)} USD) supera el monto FC Cliente (${montoClienteUSD.toFixed(0)} USD). Revisá los montos antes de guardar.`;
+
+    // FC Cliente — todos los campos obligatorios
+    if (!destinatario)   e.destinatario   = "Requerido";
+    if (!fcCliente)      e.fcCliente      = "Requerido";
+    if (!montoFcCliente) e.montoFcCliente = "Requerido";
+    if (!fechaFcCliente) e.fechaFcCliente = "Requerido";
+
+    // Fleteros — si existe una card, todos sus campos son obligatorios
+    fleteros.forEach((fl, i) => {
+      if (!fl.fletero)        e[`fl_fletero_${i}`]  = "Requerido";
+      if (!fl.fcFletero)      e[`fl_fc_${i}`]       = "Requerido";
+      if (!fl.montoFcFletero) e[`fl_monto_${i}`]    = "Requerido";
+      if (!fl.fechaFcFletero) e[`fl_fecha_${i}`]    = "Requerido";
+    });
+
+    // Extra costos
     extraCostos.forEach((ec,i) => {
       if (!ec.cat)   e[`ec_cat_${i}`]  = "Requerido";
       if (!ec.monto) e[`ec_monto_${i}`]= "Requerido";
       if (ec.cat==="OTROS"&&!ec.descripcion) e[`ec_desc_${i}`]="Requerido";
     });
+
+    // R13: bloquear si EGRESOS >= FC cliente (solo si hay monto cliente cargado)
+    if (montoClienteUSD > 0 && totalCostos > montoClienteUSD) {
+      e.alertaCostos = "egresos_superan";
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -3746,11 +3921,6 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
                 {G("montoViajeOrig") ? `${fmtNum(G("montoViajeOrig"))} ${G("divisaViajeOrig")}` : "—"}
               </div>
             </div>
-            {hayDifMonto && (
-              <div className="alert alert-warning" style={{margin:0,flex:1,fontSize:12}}>
-                ⚠️ El monto FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}).
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -3787,17 +3957,23 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Fletero</label>
+                  <label className="form-label">Fletero <Req show={!readonly}/>
+                  {errors[`fl_fletero_${i}`] && <span className="form-error"> {errors[`fl_fletero_${i}`]}</span>}
+                </label>
                   <SearchableSelect options={dropdowns.FLETEROS||[]} value={fl.fletero}
                     onChange={v=>updateFletero(i,"fletero",v)} disabled={readonly} placeholder="Seleccionar..."/>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">N° FC</label>
+                  <label className="form-label">N° FC <Req show={!readonly}/>
+                  {errors[`fl_fc_${i}`] && <span className="form-error"> {errors[`fl_fc_${i}`]}</span>}
+                </label>
                   <input className="form-input" value={fl.fcFletero}
                     onChange={e=>updateFletero(i,"fcFletero",e.target.value)} disabled={readonly}/>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Monto</label>
+                  <label className="form-label">Monto <Req show={!readonly}/>
+                  {errors[`fl_monto_${i}`] && <span className="form-error"> {errors[`fl_monto_${i}`]}</span>}
+                </label>
                   <MoneyInput value={fl.montoFcFletero}
                     onChange={v=>updateFletero(i,"montoFcFletero",v)} disabled={readonly}/>
                 </div>
@@ -3811,7 +3987,9 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Fecha FC</label>
+                  <label className="form-label">Fecha FC <Req show={!readonly}/>
+                  {errors[`fl_fecha_${i}`] && <span className="form-error"> {errors[`fl_fecha_${i}`]}</span>}
+                </label>
                   <DateInput value={fl.fechaFcFletero}
                     onChange={v=>updateFletero(i,"fechaFcFletero",v)} disabled={readonly}/>
                 </div>
@@ -3825,10 +4003,10 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               </div>
             </div>
           ))}
-          {/* R13: Alerta suma costos */}
-          {alertaCostos && (
-            <div className="alert alert-danger" style={{marginTop:8}}>
-              🚫 {errors.alertaCostos}
+          {/* Suma de EGRESOS mostrada como referencia en card Fleteros */}
+          {(fleteros.length > 0 || extraCostos.length > 0) && (
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:8,textAlign:"right"}}>
+              Total EGRESOS: {fmtNum(sumFleteros)} + {fmtNum(sumExtra)} = <strong>{fmtNum(totalCostos)} USD equiv.</strong>
             </div>
           )}
         </div>
@@ -3843,17 +4021,23 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Destinatario <Req show={!readonly}/></label>
+              <label className="form-label">Destinatario <Req show={!readonly}/>
+                {errors.destinatario && <span className="form-error"> {errors.destinatario}</span>}
+              </label>
               <SearchableSelect options={dropdowns.DESTINATARIOS||dropdowns.COLABORADORES||[]}
                 value={destinatario} onChange={setDestinatario} disabled={readonly} placeholder="Seleccionar..."/>
             </div>
             <div className="form-group">
-              <label className="form-label">N° FC Cliente</label>
+              <label className="form-label">N° FC Cliente <Req show={!readonly}/>
+                {errors.fcCliente && <span className="form-error"> {errors.fcCliente}</span>}
+              </label>
               <input className="form-input" value={fcCliente}
                 onChange={e=>setFcCliente(e.target.value)} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Monto FC Cliente</label>
+              <label className="form-label">Monto FC Cliente <Req show={!readonly}/>
+                {errors.montoFcCliente && <span className="form-error"> {errors.montoFcCliente}</span>}
+              </label>
               <MoneyInput value={montoFcCliente} onChange={setMontoFcCliente} disabled={readonly}/>
             </div>
             <div className="form-group" style={{maxWidth:90}}>
@@ -3864,9 +4048,17 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               </select>
             </div>
           </div>
+          {/* Alerta: monto FC Cliente difiere del monto cotizado */}
+          {hayDifMonto && (
+            <div className="alert alert-warning" style={{marginBottom:8,fontSize:12}}>
+              ⚠️ El monto de la FC Cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere del monto cotizado del viaje ({fmtNum(montoViajeNum)} {G("divisaViajeOrig")}).
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Fecha FC Cliente</label>
+              <label className="form-label">Fecha FC Cliente <Req show={!readonly}/>
+                {errors.fechaFcCliente && <span className="form-error"> {errors.fechaFcCliente}</span>}
+              </label>
               <DateInput value={fechaFcCliente} onChange={setFechaFcCliente} disabled={readonly}/>
             </div>
             <div className="form-group">
@@ -3956,6 +4148,16 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       <div className="card" style={{marginBottom:80}}>
         <div className="card-header"><div className="card-title">💸 Cancelación</div></div>
         <div className="card-body">
+          {/* Alerta EGRESOS vs FC Cliente */}
+          {montoClienteUSD > 0 && totalCostos > 0 && (totalCostos >= montoClienteUSD) && (
+            <div className={totalCostos > montoClienteUSD ? "alert alert-danger" : "alert alert-info"}
+              style={{marginBottom:12,fontSize:12}}>
+              {totalCostos > montoClienteUSD
+                ? "La suma de las facturas de fleteros y extra costos supera a la factura al cliente."
+                : "La suma de las facturas de fleteros y extra costos es igual a la factura al cliente."
+              }
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Cancelación</label>
@@ -3999,7 +4201,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       {!readonly && (
         <div className="save-bar">
           <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving||alertaCostos}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving||(montoClienteUSD > 0 && totalCostos > montoClienteUSD)}>
             {saving ? "Guardando..." : "💾 Guardar"}
           </button>
         </div>
@@ -4209,7 +4411,7 @@ function Module6({ session, canEdit, dropdowns, notif }) {
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
         : <DataTable columns={liqCols} data={liquidaciones}
-            searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas."/>
+            searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas." exportFilename="liquidaciones_rrhh"/>
       }
     </div>
   );
@@ -4277,7 +4479,7 @@ function Module7({ session, canEdit, dropdowns, notif }) {
       {loading
         ? <div style={{textAlign:"center",padding:32}}><div className="spinner" style={{margin:"0 auto"}}/></div>
         : <DataTable columns={cols} data={gastos}
-            searchPlaceholder="Buscar gastos..." emptyText="Sin gastos registrados."/>
+            searchPlaceholder="Buscar gastos..." emptyText="Sin gastos registrados." exportFilename="gastos_generales"/>
       }
     </div>
   );
