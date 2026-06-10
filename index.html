@@ -2042,7 +2042,9 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     return {
       segId, desde, fechaInicio:"", hasta, fechaLlegadaPrevista:"",
       chofer:"", tractor:"", semi:"", fechaLlegadaReal:"",
-      kmPrevistos: kmAuto !== null ? kmAuto : 0,
+      kmBase: kmAuto !== null ? kmAuto : 0,   // km de un solo sentido (ida)
+      kmPrevistos: kmAuto !== null ? kmAuto : 0, // km final = kmBase, o kmBase*2 si idaVuelta
+      idaVuelta: false,                        // flag: tramo ida y vuelta (km duplicados)
       kmManual: kmAuto === null, // true = el usuario debe ingresar manualmente
       status:"stand by", observaciones:""
     };
@@ -2058,14 +2060,38 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
     setSegments(p => {
       const n = [...p];
       n[i] = { ...n[i], [key]:val };
+
+      // El usuario editó el km en el input: ese valor es el km BASE (un sentido).
+      // El km final (kmPrevistos) se duplica si el tramo es ida y vuelta.
+      if (key==="kmPrevistos") {
+        const base = Number(val) || 0;
+        n[i].kmBase = base;
+        n[i].kmPrevistos = n[i].idaVuelta ? base * 2 : base;
+        return n;
+      }
+
+      // Toggle ida y vuelta: recalcula kmPrevistos a partir del kmBase guardado.
+      if (key==="idaVuelta") {
+        const base = Number(n[i].kmBase ?? n[i].kmPrevistos) || 0;
+        n[i].kmBase = base;
+        n[i].idaVuelta = val;
+        n[i].kmPrevistos = val ? base * 2 : base;
+        return n;
+      }
+
       if (key==="desde" || key==="hasta") {
         const d = key==="desde" ? val : n[i].desde;
         const h = key==="hasta" ? val : n[i].hasta;
         n[i].segId = makeSegmentId(id, d, h, i+1);
         // KM_TABLE síncrono — siempre disponible, sin CORS ni red
         const kmLocal = getKmPrevistos(d, h, dropdowns.KM_PREVISTOS||[]);
-        if (kmLocal !== null) { n[i].kmPrevistos = kmLocal; n[i].kmManual = false; }
-        else { n[i].kmManual = true; }
+        if (kmLocal !== null) {
+          n[i].kmBase = kmLocal;
+          n[i].kmPrevistos = n[i].idaVuelta ? kmLocal * 2 : kmLocal; // respeta ida/vuelta activo
+          n[i].kmManual = false;
+        } else {
+          n[i].kmManual = true;
+        }
       }
       return n;
     });
@@ -2423,6 +2449,19 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
           {!readonly && total>1 && (
             <button className="btn btn-danger btn-sm btn-icon" onClick={e=>{e.stopPropagation();onRemove();}} title="Eliminar tramo">✕</button>
           )}
+          {/* Botón Ida y Vuelta — duplica los km previstos. Activado: verde con flechas negras.
+              Desactivado: mismo fondo que "+ Tramo" (btn-secondary) con flechas blancas. */}
+          {!readonly && (
+            <button
+              className="btn btn-sm btn-icon"
+              title="Ida y Vuelta"
+              onClick={e=>{ e.stopPropagation(); onChange("idaVuelta", !seg.idaVuelta); }}
+              style={{
+                background: seg.idaVuelta ? "var(--success)" : "var(--bg4)",
+                color:      seg.idaVuelta ? "#000"            : "#fff",
+                border:     seg.idaVuelta ? "1px solid var(--success)" : "1px solid var(--border2)",
+              }}>🔁</button>
+          )}
           {!readonly && isLast && (
             <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation();onAdd();}} title="Agregar tramo">+ Tramo</button>
           )}
@@ -2483,13 +2522,20 @@ function SegmentCard({ seg, idx, total, dropdowns, readonly, onChange, onRemove,
                 {/* FIX #8 — automático si está en tabla, manual si no */}
                 {!readonly && seg.kmManual && <span className="form-hint" style={{ marginLeft:4 }}>(manual)</span>}
                 {!readonly && !seg.kmManual && <span className="form-hint" style={{ marginLeft:4 }}>(auto)</span>}
+                {seg.idaVuelta && <span className="form-hint" style={{ marginLeft:4, color:"var(--success)" }}>↔ ida y vuelta ×2</span>}
               </label>
               {readonly || !seg.kmManual
                 ? <div className="field-readonly">{seg.kmPrevistos>0?fmtKm(seg.kmPrevistos):"—"}</div>
                 : <input className="form-input" type="number" min="0"
-                    value={seg.kmPrevistos||""} placeholder="km"
+                    value={(seg.kmBase ?? seg.kmPrevistos)||""} placeholder="km"
                     onChange={e=>onChange("kmPrevistos",Number(e.target.value)||0)}/>
               }
+              {/* Cuando es ida y vuelta, mostrar el total que se guardará (km base ×2) */}
+              {seg.idaVuelta && (seg.kmBase>0 || seg.kmPrevistos>0) && (
+                <div className="form-hint" style={{ marginTop:4 }}>
+                  Total ida y vuelta: <strong style={{ color:"var(--success)" }}>{fmtKm(seg.kmPrevistos)}</strong>
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Estado</label>
