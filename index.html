@@ -696,6 +696,11 @@ function Notifications({ items }) {
 const Req = ({ show=true }) => show
   ? <span style={{color:"var(--danger)",fontWeight:700,marginLeft:3}}>*</span>
   : null;
+// DocHint: indica que un campo es obligatorio solo al finalizar el viaje,
+// no para guardar el viaje en curso.
+const DocHint = ({ show=true }) => show
+  ? <span style={{color:"var(--text3)",fontWeight:400,fontSize:10,marginLeft:4,fontStyle:"italic"}}>(para finalizar)</span>
+  : null;
 const Fin = ({ show=true }) => show
   ? <span style={{color:"var(--success)",fontSize:10,marginLeft:3}} title="Requerido para finalizar">✦</span>
   : null;
@@ -2072,7 +2077,10 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   }
 
   // FIX #5 — Validación completa de tramos
-  function validate() {
+  // validate(requireDocs): la documentación (MIC/CRT) solo es obligatoria
+  // cuando requireDocs=true (al finalizar). Para guardados intermedios del
+  // viaje en curso, requireDocs=false y la documentación queda opcional.
+  function validate(requireDocs=false) {
     const e = {};
     if (!carga)         e.carga = "Requerido";
     if (!tipoCarga)     e.tipoCarga = "Requerido";
@@ -2089,10 +2097,13 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
       }
     }
     if (!cliente)  e.cliente  = "Requerido";
-    if (!numMIC)   e.numMIC   = "Requerido";
-    if (!fechaMIC) e.fechaMIC = "Requerido";
-    if (!numCRT)   e.numCRT   = "Requerido";
-    if (!fechaCRT) e.fechaCRT = "Requerido";
+    // Documentación: obligatoria SOLO al finalizar el viaje
+    if (requireDocs) {
+      if (!numMIC)   e.numMIC   = "Requerido";
+      if (!fechaMIC) e.fechaMIC = "Requerido";
+      if (!numCRT)   e.numCRT   = "Requerido";
+      if (!fechaCRT) e.fechaCRT = "Requerido";
+    }
     setErrors(e);
     return Object.keys(e).length===0;
   }
@@ -2149,7 +2160,7 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
   }
 
   async function handleFinalize() {
-    if (!validate()) return;
+    if (!validate(true)) return;  // true → documentación obligatoria al finalizar
     if (!validateSegments()) return;
     setSaving(true);
     await onSave(buildData("finalizado"));
@@ -2330,20 +2341,20 @@ function TripForm({ trip, trips, dropdowns, canEdit, session, onSave, onFinalize
         <div className="card-body">
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">N° MIC <Req show={!readonly}/> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
+              <label className="form-label">N° MIC <DocHint show={!readonly}/> {errors.numMIC && <span className="form-error">{errors.numMIC}</span>}</label>
               <input className="form-input" value={numMIC} onChange={e=>setNumMIC(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha MIC <Req show={!readonly}/> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
-              <DateInput value={fechaMIC} onChange={setFechaMIC} disabled={readonly} required={!readonly}/>
+              <label className="form-label">Fecha MIC <DocHint show={!readonly}/> {errors.fechaMIC && <span className="form-error">{errors.fechaMIC}</span>}</label>
+              <DateInput value={fechaMIC} onChange={setFechaMIC} disabled={readonly}/>
             </div>
             <div className="form-group">
-              <label className="form-label">N° CRT <Req show={!readonly}/> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
+              <label className="form-label">N° CRT <DocHint show={!readonly}/> {errors.numCRT && <span className="form-error">{errors.numCRT}</span>}</label>
               <input className="form-input" value={numCRT} onChange={e=>setNumCRT(e.target.value.toUpperCase().replace(/\s/g,""))} disabled={readonly} placeholder="Sin espacios, mayúsculas"/>
             </div>
             <div className="form-group">
-              <label className="form-label">Fecha CRT <Req show={!readonly}/> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
-              <DateInput value={fechaCRT} onChange={setFechaCRT} disabled={readonly} required={!readonly}/>
+              <label className="form-label">Fecha CRT <DocHint show={!readonly}/> {errors.fechaCRT && <span className="form-error">{errors.fechaCRT}</span>}</label>
+              <DateInput value={fechaCRT} onChange={setFechaCRT} disabled={readonly}/>
             </div>
           </div>
           <div className="form-row">
