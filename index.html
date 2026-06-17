@@ -3995,12 +3995,16 @@ function Module3({
         return full;
       });
     }
+    // tripId del primer seg (todos los del mismo viaje comparten tripId)
+    const formTripId = formSegs[0]?.tripId || null;
     return /*#__PURE__*/React.createElement(RendicionForm, {
       segs: formSegs,
       driver: selDriver,
       entregas: entregas,
       dropdowns: dropdowns,
       rendicion: editRend,
+      todasRendiciones: rendiciones,
+      tripId: formTripId,
       onSave: handleSave,
       onBack: () => {
         setView("list");
@@ -4178,7 +4182,9 @@ function RendicionForm({
   onSave,
   onBack,
   session,
-  rendicion
+  rendicion,
+  todasRendiciones,
+  tripId
 }) {
   // Si rendicion viene cargada, estamos editando una rendición existente (stand by).
   const isEdit = !!(rendicion && rendicion.id);
@@ -4324,7 +4330,42 @@ function RendicionForm({
     if (!m?.monto) return s;
     return s + toARS(m.monto, m.moneda);
   }, 0);
-  const tripTotal = segs[0]?.tripMonto ? toARS(segs[0].tripMonto, segs[0].tripMoneda || "USD") : Infinity;
+  // Divisa del viaje (la que usamos como referencia para todas las comparaciones)
+  const tripDivisa = segs[0]?.tripMoneda || "USD";
+  const tripTotal  = segs[0]?.tripMonto  ? Number(segs[0].tripMonto) : Infinity;
+
+  // Convertir cualquier monto a la divisa del viaje (pasando por ARS como pivote)
+  function toTripDivisa(monto, divisa) {
+    if (!monto) return 0;
+    const n = Number(monto) || 0;
+    if (divisa === tripDivisa) return n;
+    // pivote ARS
+    const enARS = toARS(n, divisa);
+    if (tripDivisa === "USD") return enARS / TC.USD;
+    if (tripDivisa === "CLP") return enARS / (TC.CLP / 100);
+    return enARS; // fallback: ARS
+  }
+
+  // Sumatoria de montos ya asignados en OTRAS rendiciones del mismo viaje (en divisa del viaje).
+  const montoYaAsignado = (todasRendiciones || []).reduce((total, r) => {
+    if (rendicion && r.id === rendicion.id) return total;
+    const mismoViaje = (r.segments || []).some(sg => sg.tripId === tripId);
+    if (!mismoViaje) return total;
+    const segM = r.segMonto || {};
+    return total + Object.values(segM).reduce((s, m) => {
+      return s + (m && m.monto ? toTripDivisa(m.monto, m.moneda || "USD") : 0);
+    }, 0);
+  }, 0);
+
+  // Monto de esta rendición en divisa del viaje
+  const totalSegViaje = Object.values(segMonto).reduce((s, m) => {
+    return s + (m && m.monto ? toTripDivisa(m.monto, m.moneda || "USD") : 0);
+  }, 0);
+
+  // Comparaciones en divisa del viaje
+  const montoDisponible = tripTotal - montoYaAsignado;
+  const superaDisponible  = tripTotal < Infinity && totalSegViaje > montoDisponible;
+  const superaTotalViaje  = tripTotal < Infinity && (totalSegViaje + montoYaAsignado) > tripTotal;
 
   // Gastos — sumar por divisa a través de todas las categorías
   const expTotal = {
@@ -4525,12 +4566,18 @@ function RendicionForm({
       ...p,
       [s.segId]: e.target.value
     }))
-  }))), totalSegARS > tripTotal && /*#__PURE__*/React.createElement("div", {
+  }))), (superaTotalViaje || superaDisponible) && /*#__PURE__*/React.createElement("div", {
     className: "alert alert-danger",
     style: {
       marginTop: 8
     }
-  }, "⚠️ El total de tramos supera el monto del viaje. Monto cotizado: ", fmtNum(segs[0]?.tripMonto || 0), " ", segs[0]?.tripMoneda || "USD", " — Total tramos: ", fmtNum(toARS(segs[0]?.tripMonto || 0, segs[0]?.tripMoneda || "USD") > 0 ? totalSegARS : 0), " ARS equiv."))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontWeight: 600, marginBottom: 4 }
+  }, "⚠️ El monto asignado supera el monto cotizado del viaje"), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, lineHeight: 1.6 }
+  }, /*#__PURE__*/React.createElement("div", null, "Cotizado total del viaje: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(tripTotal), " ", tripDivisa)), montoYaAsignado > 0 && /*#__PURE__*/React.createElement("div", null, "Ya asignado en otros tramos: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(montoYaAsignado), " ", tripDivisa)), /*#__PURE__*/React.createElement("div", null, "Este tramo: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje), " ", tripDivisa)), /*#__PURE__*/React.createElement("div", {
+    style: { color: "var(--danger)", marginTop: 4 }
+  }, "Total acumulado: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje + montoYaAsignado), " ", tripDivisa), " — excede el cotizado en ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje + montoYaAsignado - tripTotal), " ", tripDivisa)))))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 20,
@@ -5011,7 +5058,8 @@ function RendicionForm({
   }, saving ? "Guardando..." : "⏸ Guardar en stand by"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: () => handleSave("cerrada"),
-    disabled: saving
+    disabled: saving || superaTotalViaje || superaDisponible,
+    title: (superaTotalViaje || superaDisponible) ? "El monto asignado supera el cotizado del viaje" : undefined
   }, saving ? "Guardando..." : "💾 Cerrar rendición")));
 }
 
