@@ -168,6 +168,13 @@ tr:hover td{background:var(--bg3);}
 .ss-option.selected{color:var(--accent);}
 .ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
 .form-input-error{border-color:var(--danger) !important;box-shadow:0 0 0 3px rgba(229,72,77,.15);}
+/* Modal overlay — bloquea el fondo */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s ease;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-lg);width:480px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;animation:slideIn .2s ease;}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.modal-body{padding:20px;}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
 </style>
 </head>
 <body>
@@ -1798,14 +1805,18 @@ function Module1({ session, canEdit, dropdowns, notif }) {
           <button
             title="Exportar a Excel"
             onClick={() => {
-              const headers = ["ID Viaje","Carga","Tipo","Cliente","Monto","Moneda","Tramos","KM total","Estado doc","Estado viaje","Finalizado"];
-              const rows = shown.map(t => [
-                t.id, t.carga||"", t.tipoCarga||"", t.cliente||"",
-                t.montoFactura||"", t.moneda||"",
-                (t.segments||[]).length,
-                (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0),
-                t.statusDoc||"", t.status||"", t.finalizedAt||""
-              ]);
+              const headers = ["ID Viaje","Carga","Tipo","Cliente","Monto cotizado","Moneda","Tramos","KM total","Estado doc","Días abierto","Estado viaje","Finalizado"];
+              const rows = shown.map(t => {
+                const fIni = (t.segments||[]).map(sg=>toInputDate(sg.fechaInicio)).filter(Boolean).sort();
+                const dAb = fIni.length ? diasDesde(fIni[0]) : "";
+                return [
+                  t.id, t.carga||"", t.tipoCarga||"", t.cliente||"",
+                  t.montoFactura||"", t.moneda||"",
+                  (t.segments||[]).length,
+                  (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0),
+                  t.statusDoc||"", dAb, t.status||"", t.finalizedAt||""
+                ];
+              });
               exportToCSV(histView ? "viajes_historial" : "viajes_activos", headers, rows);
             }}
             style={{
@@ -1832,12 +1843,19 @@ function Module1({ session, canEdit, dropdowns, notif }) {
               <table>
                 <thead><tr>
                   <th></th><th>ID Viaje</th><th>Carga</th><th>Tipo</th><th>Cliente</th>
-                  <th>Monto Factura</th><th>Tramos</th><th>KM total</th><th>Estado doc.</th>
+                  <th>Monto Cotizado</th><th>Tramos</th><th>KM total</th><th>Estado doc.</th>
+                  <th>Días abierto</th>
                   {histView && <th>Finalizado</th>}
                 </tr></thead>
                 <tbody>
                   {shown.map(t => {
                     const totalKm = (t.segments||[]).reduce((s,sg)=>s+Number(sg.kmPrevistos||0),0);
+                    // Días abierto: desde la fecha de tramo más antigua (inicio) hasta hoy.
+                    const fechasIni = (t.segments||[])
+                      .map(sg => toInputDate(sg.fechaInicio))
+                      .filter(Boolean)
+                      .sort();
+                    const diasAbierto = fechasIni.length ? diasDesde(fechasIni[0]) : null;
                     return (
                       <tr key={t.id}>
                         <td>
@@ -1852,6 +1870,13 @@ function Module1({ session, canEdit, dropdowns, notif }) {
                         <td><span className="badge badge-gray">{(t.segments||[]).length}</span></td>
                         <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>{totalKm>0?totalKm.toLocaleString("es-AR"):"—"}</td>
                         <td><StatusBadge status={t.statusDoc||"incompleto"}/></td>
+                        <td style={{ fontFamily:"var(--mono)",fontSize:12 }}>
+                          {diasAbierto===null ? "—" : (
+                            <span style={{color: diasAbierto>30?"var(--danger)":diasAbierto>15?"var(--warning)":"var(--text2)"}}>
+                              {diasAbierto===0 ? "hoy" : `${diasAbierto}d`}
+                            </span>
+                          )}
+                        </td>
                         {histView && <td style={{ fontSize:11,color:"var(--text3)" }}>{fmtDate(t.finalizedAt)}</td>}
                       </tr>
                     );
@@ -2802,6 +2827,8 @@ function Module3({ session, canEdit, dropdowns, notif }) {
   const [selSegIds,   setSelSegIds]  = useState([]);
   const [view,        setView]       = useState("list");
   const [loading,     setLoading]    = useState(true);
+  const [editRend,    setEditRend]   = useState(null);   // rendición abierta que se está editando
+  const [histView,    setHistView]   = useState(false);  // ver historial de cerradas
 
   useEffect(() => {
     // Usa caché para las tres colecciones — sin llamadas duplicadas al servidor
@@ -2817,11 +2844,20 @@ function Module3({ session, canEdit, dropdowns, notif }) {
     });
   }, []);
 
+  // Solo los tramos en rendiciones CERRADAS quedan liquidados (fuera de la lista de pendientes).
+  // Los tramos en rendiciones ABIERTAS se editan desde esa rendición, no se vuelven a listar sueltos.
   const settledIds = useMemo(() => {
     const s=new Set();
-    rendiciones.forEach(r=>(r.segments||[]).forEach(sg=>s.add(sg.segId)));
+    rendiciones.forEach(r=>{
+      if (r.estado === "cerrada" || r.estado === "abierta")
+        (r.segments||[]).forEach(sg=>s.add(sg.segId));
+    });
     return s;
   }, [rendiciones]);
+
+  // Rendiciones abiertas (stand by) y cerradas (historial)
+  const abiertas = useMemo(()=> rendiciones.filter(r=>r.estado==="abierta"), [rendiciones]);
+  const cerradas = useMemo(()=> rendiciones.filter(r=>r.estado==="cerrada"), [rendiciones]);
 
   const unsettled = useMemo(() => {
     const segs=[];
@@ -2848,7 +2884,8 @@ function Module3({ session, canEdit, dropdowns, notif }) {
     const r = await gasCall("saveRendicion", { rendicion:data, user:session.username });
     if (r.ok) {
       invalidateCache("trips","rendiciones"); // fuerza recarga después de guardar
-      notif.add("Rendición guardada"); setView("list"); setSelSegIds([]);
+      notif.add(data.estado==="cerrada" ? "Rendición cerrada" : "Rendición guardada en stand by");
+      setView("list"); setSelSegIds([]); setEditRend(null);
       Promise.all([
         cachedGet("getTrips","trips"),
         cachedGet("getRendiciones","rendiciones")
@@ -2858,11 +2895,34 @@ function Module3({ session, canEdit, dropdowns, notif }) {
     } else notif.add(r.error||"Error","error");
   }
 
-  if (view==="form") return (
-    <RendicionForm segs={selSegs} driver={selDriver} entregas={entregas}
-      dropdowns={dropdowns}
-      onSave={handleSave} onBack={()=>setView("list")} session={session}/>
-  );
+  // Abrir una rendición existente (stand by) para seguir cargándola
+  function openRendicion(rend) {
+    setSelDriver(rend.driver);
+    setEditRend(rend);
+    setView("form");
+  }
+
+  if (view==="form") {
+    // Si editamos una rendición abierta, sus tramos vienen de la propia rendición
+    // (con los datos del trip cuando estén disponibles). Si es nueva, de la selección.
+    let formSegs = selSegs;
+    if (editRend) {
+      formSegs = (editRend.segments||[]).map(sg => {
+        // enriquecer con datos del trip/segmento actual si existe
+        let full = sg;
+        for (const t of trips) {
+          const found = (t.segments||[]).find(x=>x.segId===sg.segId);
+          if (found) { full = { ...found, tripId:t.id, tripMonto:t.montoFactura, tripMoneda:t.moneda }; break; }
+        }
+        return full;
+      });
+    }
+    return (
+      <RendicionForm segs={formSegs} driver={selDriver} entregas={entregas}
+        dropdowns={dropdowns} rendicion={editRend}
+        onSave={handleSave} onBack={()=>{setView("list"); setEditRend(null);}} session={session}/>
+    );
+  }
 
   return (
     <div className="module-container" style={{ paddingBottom:0 }}>
@@ -2889,9 +2949,60 @@ function Module3({ session, canEdit, dropdowns, notif }) {
           >📥</button>
         )}
       </div>
+      {/* FIX 4a — Tabla de rendiciones (abiertas / historial cerradas) */}
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        <button className={`btn btn-sm ${!histView?"btn-primary":"btn-secondary"}`} onClick={()=>setHistView(false)}>
+          En curso ({abiertas.length})
+        </button>
+        <button className={`btn btn-sm ${histView?"btn-primary":"btn-secondary"}`} onClick={()=>setHistView(true)}>
+          📁 Historial ({cerradas.length})
+        </button>
+      </div>
+      {(() => {
+        const lista = histView ? cerradas : abiertas;
+        if (loading) return null;
+        if (lista.length === 0) return (
+          <div className="alert alert-info" style={{marginBottom:16}}>
+            {histView ? "No hay rendiciones cerradas todavía." : "No hay rendiciones en curso. Seleccioná un chofer y tramos para crear una."}
+          </div>
+        );
+        return (
+          <div className="table-wrap" style={{marginBottom:20}}>
+            <table>
+              <thead><tr>
+                <th></th><th>ID Rendición</th><th>Chofer</th><th>Tramos</th>
+                <th>Consumo</th><th>Total Gastos</th>
+                {histView && <th>Cerrada</th>}
+              </tr></thead>
+              <tbody>
+                {lista.map(r=>(
+                  <tr key={r.id}>
+                    <td>
+                      <button className="btn btn-secondary btn-icon btn-sm"
+                        onClick={()=>openRendicion(r)} title={histView?"Ver":"Continuar carga"}>
+                        {histView ? "🔍" : "✏️"}
+                      </button>
+                    </td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:11}}>{r.id}</td>
+                    <td>{r.driver}</td>
+                    <td><span className="badge badge-gray">{(r.segments||[]).length}</span></td>
+                    <td style={{fontFamily:"var(--mono)"}}>{(r.totals&&r.totals.consumo)||"—"}</td>
+                    <td style={{fontFamily:"var(--mono)"}}>
+                      {r.totals&&r.totals.expTotalARS ? fmtNum(r.totals.expTotalARS)+" ARS" : "—"}
+                    </td>
+                    {histView && <td style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(r.updatedAt||r.createdAt)}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* Crear nueva rendición: seleccionar chofer */}
       <div style={{ marginBottom:16, maxWidth:360 }}>
         <div className="form-group" style={{ margin:0 }}>
-          <label className="form-label">Seleccioná un chofer para ver sus tramos</label>
+          <label className="form-label">Nueva rendición: seleccioná un chofer para ver sus tramos</label>
           <SearchableSelect
             options={allDrivers.map(d=>({ value:d, label:d }))}
             value={selDriver}
@@ -2945,13 +3056,19 @@ function Module3({ session, canEdit, dropdowns, notif }) {
 }
 
 // ─── RENDICION FORM ───────────────────────────────────────────────────────────
-function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, session }) {
-  const rendId = "RND-" + Date.now();
+function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, session, rendicion }) {
+  // Si rendicion viene cargada, estamos editando una rendición existente (stand by).
+  const isEdit = !!(rendicion && rendicion.id);
+  const [rendId] = useState(() => (rendicion && rendicion.id) || ("RND-" + Date.now()));
 
-  const [segMonto, setSegMonto]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"USD"}}),{}));
+  const [segMonto, setSegMonto]   = useState(() =>
+    (rendicion && rendicion.segMonto && Object.keys(rendicion.segMonto).length)
+      ? segs.reduce((a,s)=>({...a,[s.segId]: rendicion.segMonto[s.segId] || {monto:"",moneda:"USD"}}),{})
+      : segs.reduce((a,s)=>({...a,[s.segId]:{monto:"",moneda:"USD"}}),{}));
   // expenses: { cat, ARS, CLP, USD } — una fila por categoría, monto por divisa
   // Se inicializa con las categorías del dropdown (o fallback) en cero.
   const [expenses, setExpenses]   = useState(() => {
+    if (isEdit && Array.isArray(rendicion.expenses) && rendicion.expenses.length) return rendicion.expenses;
     const cats = (dropdowns?.CATEGORIA_GASTOS) || [
       "GAS-OIL","PEAJES Y DESINFECCIÓN","ADUANA","LASTRE",
       "GOMERÍA","TELÉFONO","LAVADERO","COIMAS",
@@ -2959,10 +3076,17 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
     ];
     return cats.map(cat => ({ cat, ARS:"", CLP:"", USD:"" }));
   });
-  const [fuelRows, setFuelRows]   = useState([{ fecha:"", proveedor:"", litros:"", total:"" }]);
-  const [kmReales, setKmReales]   = useState(() => segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
+  const [fuelRows, setFuelRows]   = useState(() =>
+    (isEdit && Array.isArray(rendicion.fuelRows) && rendicion.fuelRows.length)
+      ? rendicion.fuelRows
+      : [{ fecha:"", proveedor:"", litros:"", total:"" }]);
+  const [kmReales, setKmReales]   = useState(() =>
+    (isEdit && rendicion.kmReales)
+      ? segs.reduce((a,s)=>({...a,[s.segId]: rendicion.kmReales[s.segId] || ""}),{})
+      : segs.reduce((a,s)=>({...a,[s.segId]:""}),{}));
   // FIX #4 — devoluciones por moneda
-  const [devolucion, setDevolucion] = useState({ ARS:"", CLP:"", USD:"" });
+  const [devolucion, setDevolucion] = useState(
+    (isEdit && rendicion.devolucion) ? rendicion.devolucion : { ARS:"", CLP:"", USD:"" });
   const [saving, setSaving]       = useState(false);
 
   // FIX: normalizar fechas de tramos a ISO antes de ordenar,
@@ -3082,19 +3206,25 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
   const anticipoSueldo = entTotalARS - expTotalARS; // entregado neto − gastos
   const saldoChofer   = porcChofer - anticipoSueldo;
 
-  async function handleSave() {
-    // Validar que cada fila de combustible tenga todos los campos obligatorios
-    for (var fi = 0; fi < fuelRows.length; fi++) {
-      const f = fuelRows[fi];
-      if (!f.fecha)    { alert(`Combustible ${fi+1}: falta FECHA.`);           setSaving(false); return; }
-      if (!f.proveedor){ alert(`Combustible ${fi+1}: falta PROVEEDOR.`);        setSaving(false); return; }
-      if (!f.litros)   { alert(`Combustible ${fi+1}: falta LITROS.`);           setSaving(false); return; }
-      if (!f.total)    { alert(`Combustible ${fi+1}: falta TOTAL FACTURA.`);    setSaving(false); return; }
+  // estado: "abierta" (stand by) o "cerrada" (rendición finalizada).
+  // Al cerrar exigimos que el combustible cargado esté completo; en stand by se permite vacío/parcial.
+  async function handleSave(estado) {
+    if (estado === "cerrada") {
+      for (var fi = 0; fi < fuelRows.length; fi++) {
+        const f = fuelRows[fi];
+        const algoCargado = f.fecha || f.proveedor || f.litros || f.total;
+        if (!algoCargado) continue; // fila totalmente vacía: se ignora
+        if (!f.fecha)    { alert(`Combustible ${fi+1}: falta FECHA.`);        return; }
+        if (!f.proveedor){ alert(`Combustible ${fi+1}: falta PROVEEDOR.`);     return; }
+        if (!f.litros)   { alert(`Combustible ${fi+1}: falta LITROS.`);        return; }
+        if (!f.total)    { alert(`Combustible ${fi+1}: falta TOTAL FACTURA.`); return; }
+      }
     }
     setSaving(true);
     // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
     await onSave({
-      id:rendId, driver, segMonto, expenses, fuelRows, kmReales, devolucion,
+      id:rendId, driver, estado: estado || "abierta",
+      segMonto, expenses, fuelRows, kmReales, devolucion,
       segments:segs,
       totals:{ totalSegARS, porcChofer, anticipoSueldo, saldoChofer, entTotalARS, expTotalARS, consumo }
     });
@@ -3380,7 +3510,13 @@ function RendicionForm({ segs, driver, entregas, dropdowns, onSave, onBack, sess
 
       <div className="save-bar">
         <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?"Guardando...":"💾 Guardar Rendición"}</button>
+        <button className="btn btn-secondary" onClick={()=>handleSave("abierta")} disabled={saving}
+          title="Guarda el progreso sin cerrar la rendición">
+          {saving?"Guardando...":"⏸ Guardar en stand by"}
+        </button>
+        <button className="btn btn-primary" onClick={()=>handleSave("cerrada")} disabled={saving}>
+          {saving?"Guardando...":"💾 Cerrar rendición"}
+        </button>
       </div>
     </div>
   );
@@ -3846,6 +3982,10 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
   const [errors,  setErrors]  = useState({});
   const [saving,  setSaving]  = useState(false);
 
+  // FIX 1 — modal de justificación de diferencia de monto
+  const [showJustifModal, setShowJustifModal] = useState(false);
+  const [justifDif, setJustifDif] = useState(factura?.justificacionDiferencia || "");
+
   // R11: Auto-cobrado
   useEffect(() => {
     const shouldBeCobrado = tipoCanc && fechaCobro;
@@ -3885,7 +4025,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
     (montoFcNum !== montoViajeNum || divisaCliente !== cotizacionDivisa);
 
   function addExtraCosto() {
-    setExtraCostos(p => [...p, { cat:"", descripcion:"", monto:"", divisa:"USD" }]);
+    setExtraCostos(p => [...p, { naturaleza:"Extra Costo", cat:"", descripcion:"", monto:"", divisa:"USD" }]);
   }
   function removeExtraCosto(i) { setExtraCostos(p => p.filter((_,idx)=>idx!==i)); }
   function updateExtraCosto(i,k,v) {
@@ -3917,8 +4057,8 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       if (ec.cat==="OTROS"&&!ec.descripcion) e[`ec_desc_${i}`]="Requerido";
     });
 
-    // R13: bloquear si EGRESOS >= FC cliente (solo si hay monto cliente cargado)
-    if (montoClienteUSD > 0 && totalCostos > montoClienteUSD) {
+    // R13: bloquear si EGRESOS >= FC cliente (igual o mayor, solo si hay monto cliente cargado)
+    if (montoClienteUSD > 0 && totalCostos >= montoClienteUSD) {
       e.alertaCostos = "egresos_superan";
     }
 
@@ -3926,8 +4066,8 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
     return Object.keys(e).length === 0;
   }
 
-  async function handleSave() {
-    if (!validate()) return;
+  // Guardado real — recibe la justificación (vacía si no hubo diferencia de monto)
+  async function doSave(justificacion) {
     setSaving(true);
     await onSave({
       id:            factura?.id || ("FAC-"+Date.now()),
@@ -3944,9 +4084,29 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       cancelacion, descripcionCancelacion:descripcionCanc,
       tipoCancelacion:tipoCanc, fechaCobro,
       alertaDiferencia: hayDifMonto,
+      justificacionDiferencia: hayDifMonto ? justificacion : "",
       extraCostos,
     });
     setSaving(false);
+  }
+
+  async function handleSave() {
+    if (!validate()) {
+      alert("Hay campos obligatorios incompletos o los egresos superan la factura al cliente.");
+      return;
+    }
+    // FIX 1 — si el monto facturado difiere de la cotización inicial, pedir justificación
+    if (hayDifMonto) {
+      setShowJustifModal(true);
+      return;
+    }
+    await doSave("");
+  }
+
+  async function confirmJustificacion() {
+    if (!justifDif.trim()) return; // el botón ya está deshabilitado, doble seguro
+    setShowJustifModal(false);
+    await doSave(justifDif.trim());
   }
 
   const preFields = [
@@ -4147,7 +4307,7 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       {/* Extra Costos */}
       <div className="card" style={{marginBottom:16}}>
         <div className="card-header">
-          <div className="card-title">➕ Extra Costos</div>
+          <div className="card-title">➕ Agregar Costos</div>
           {!readonly && (
             <button className="btn btn-secondary btn-sm" onClick={addExtraCosto}>+ Agregar</button>
           )}
@@ -4165,12 +4325,20 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
             }}>
               <div className="form-row" style={{alignItems:"flex-end"}}>
                 <div className="form-group" style={{flex:2}}>
+                  <label className="form-label">Naturaleza <Req show={!readonly}/></label>
+                  <select className="form-select" value={ec.naturaleza||"Extra Costo"}
+                    onChange={e=>updateExtraCosto(i,"naturaleza",e.target.value)} disabled={readonly}>
+                    <option>Extra Costo</option>
+                    <option>Costo Incluido en Tarifa</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{flex:2}}>
                   <label className="form-label">
                     Categoría <Req show={!readonly}/>
                     {errors[`ec_cat_${i}`] && <span className="form-error"> {errors[`ec_cat_${i}`]}</span>}
                   </label>
                   <SearchableSelect
-                    options={dropdowns.EXTRA_COSTOS||[]}
+                    options={[...new Set([...(dropdowns.EXTRA_COSTOS||[]), "OTROS"])]}
                     value={ec.cat} onChange={v=>updateExtraCosto(i,"cat",v)}
                     placeholder="Seleccionar..." disabled={readonly}/>
                 </div>
@@ -4196,13 +4364,15 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
               {(ec.cat==="OTROS"||(readonly&&ec.descripcion)) && (
                 <div className="form-group" style={{margin:0}}>
                   <label className="form-label">
-                    Descripción <Req show={!readonly&&ec.cat==="OTROS"}/>
+                    {ec.cat==="OTROS" ? "Nueva categoría" : "Descripción"} <Req show={!readonly&&ec.cat==="OTROS"}/>
                     {errors[`ec_desc_${i}`] && <span className="form-error"> {errors[`ec_desc_${i}`]}</span>}
                   </label>
                   {readonly
                     ? <div className="field-readonly" style={{fontFamily:"var(--font)"}}>{ec.descripcion||"—"}</div>
                     : <input className="form-input" value={ec.descripcion||""}
-                        onChange={e=>updateExtraCosto(i,"descripcion",e.target.value)}/>
+                        placeholder={ec.cat==="OTROS" ? "Escribí la categoría nueva..." : ""}
+                        onChange={e=>updateExtraCosto(i,"descripcion",
+                          ec.cat==="OTROS" ? e.target.value.toUpperCase() : e.target.value)}/>
                   }
                 </div>
               )}
@@ -4215,14 +4385,10 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       <div className="card" style={{marginBottom:80}}>
         <div className="card-header"><div className="card-title">💸 Cancelación</div></div>
         <div className="card-body">
-          {/* Alerta EGRESOS vs FC Cliente */}
+          {/* Alerta EGRESOS vs FC Cliente — igual o mayor: roja y bloquea guardado */}
           {montoClienteUSD > 0 && totalCostos > 0 && (totalCostos >= montoClienteUSD) && (
-            <div className={totalCostos > montoClienteUSD ? "alert alert-danger" : "alert alert-info"}
-              style={{marginBottom:12,fontSize:12}}>
-              {totalCostos > montoClienteUSD
-                ? "La suma de las facturas de fleteros y extra costos supera a la factura al cliente."
-                : "La suma de las facturas de fleteros y extra costos es igual a la factura al cliente."
-              }
+            <div className="alert alert-danger" style={{marginBottom:12,fontSize:12}}>
+              La suma de las facturas de fleteros y extra costos supera a la factura al cliente.
             </div>
           )}
           <div className="form-row">
@@ -4268,9 +4434,38 @@ function FacturaForm({ factura, trip, dropdowns, canEdit, onSave, onBack }) {
       {!readonly && (
         <div className="save-bar">
           <button className="btn btn-secondary" onClick={onBack}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving||(montoClienteUSD > 0 && totalCostos > montoClienteUSD)}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving||(montoClienteUSD > 0 && totalCostos >= montoClienteUSD)}>
             {saving ? "Guardando..." : "💾 Guardar"}
           </button>
+        </div>
+      )}
+
+      {/* FIX 1 — Modal de justificación de diferencia de monto */}
+      {showJustifModal && (
+        <div className="modal-overlay" onMouseDown={e=>{ if(e.target===e.currentTarget) setShowJustifModal(false); }}>
+          <div className="modal-box">
+            <div className="modal-header">⚠️ Justificación requerida</div>
+            <div className="modal-body">
+              <p style={{fontSize:13,color:"var(--text2)",marginBottom:14,lineHeight:1.5}}>
+                El monto facturado al cliente ({fmtNum(montoFcNum)} {divisaCliente}) difiere de la
+                cotización inicial ({fmtNum(montoViajeNum)} {cotizacionDivisa}). Explicá por qué antes de guardar.
+              </p>
+              <label className="form-label">Justificación <Req/></label>
+              <textarea
+                className="form-textarea"
+                value={justifDif}
+                onChange={e=>setJustifDif(e.target.value)}
+                placeholder="Ej: se acordó un adicional por demora en aduana / descuento comercial..."
+                autoFocus
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={()=>setShowJustifModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={confirmJustificacion} disabled={!justifDif.trim()||saving}>
+                {saving ? "Guardando..." : "Confirmar y guardar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -4290,6 +4485,7 @@ function Module6({ session, canEdit, dropdowns, notif }) {
   const [selPeriodo,    setSelPeriodo]    = useState(""); // "MARZO 2026"
   const [basicoMensual, setBasicoMensual] = useState("");
   const [saving,        setSaving]        = useState(false);
+  const [resumenRend,   setResumenRend]   = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view,          setView]          = useState("list"); // "list"|"liq"
 
   useEffect(() => {
@@ -4425,6 +4621,7 @@ function Module6({ session, canEdit, dropdowns, notif }) {
                           <thead><tr>
                             <th>ID Rendición</th><th>Segmentos</th>
                             <th style={{textAlign:"right"}}>Saldo Chofer (ARS)</th>
+                            <th>Resumen</th>
                           </tr></thead>
                           <tbody>
                             {rendFiltradas.map(r=>(
@@ -4436,6 +4633,10 @@ function Module6({ session, canEdit, dropdowns, notif }) {
                                 <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>
                                   {fmtNum(r.totals?.saldoChofer||0)}
                                 </td>
+                                <td>
+                                  <button className="btn btn-secondary btn-sm" onClick={()=>setResumenRend(r)}
+                                    title="Ver resumen de la rendición">🔍 Ver</button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -4443,12 +4644,14 @@ function Module6({ session, canEdit, dropdowns, notif }) {
                             <tr style={{background:"var(--bg4)"}}>
                               <td colSpan={2} style={{fontWeight:600}}>Subtotal rendiciones</td>
                               <td style={{fontFamily:"var(--mono)",fontWeight:600,textAlign:"right"}}>{fmtNum(subtotal)}</td>
+                              <td></td>
                             </tr>
                             <tr>
                               <td colSpan={2}>Básico mensual</td>
                               <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>
                                 {fmtNum(parseFloat(String(basicoMensual||"").replace(/\./g,"").replace(",",".")) || 0)}
                               </td>
+                              <td></td>
                             </tr>
                             <tr style={{background:"rgba(79,127,255,.08)"}}>
                               <td colSpan={2} style={{fontWeight:600,fontSize:14}}>TOTAL</td>
@@ -4456,6 +4659,7 @@ function Module6({ session, canEdit, dropdowns, notif }) {
                                           textAlign:"right",color:"var(--success)"}}>
                                 {fmtNum(total)} ARS
                               </td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </table>
@@ -4480,6 +4684,92 @@ function Module6({ session, canEdit, dropdowns, notif }) {
         : <DataTable columns={liqCols} data={liquidaciones}
             searchPlaceholder="Buscar liquidaciones..." emptyText="Sin liquidaciones generadas." exportFilename="liquidaciones_rrhh"/>
       }
+
+      {/* FIX 4b — Modal de resumen de rendición */}
+      {resumenRend && (() => {
+        const r = resumenRend;
+        const t = r.totals || {};
+        const dev = r.devolucion || {};
+        const fmtMon = (v,m) => (v!==""&&v!=null&&Number(v)!==0) ? `${fmtNum(v)} ${m}` : null;
+        const devStr = [fmtMon(dev.ARS,"ARS"),fmtMon(dev.CLP,"CLP"),fmtMon(dev.USD,"USD")].filter(Boolean).join(" · ") || "—";
+        return (
+          <div className="modal-overlay" onMouseDown={e=>{ if(e.target===e.currentTarget) setResumenRend(null); }}>
+            <div className="modal-box" style={{width:560,maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
+              <div className="modal-header">
+                📊 Resumen de rendición <span style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--text3)",marginLeft:6}}>{r.id}</span>
+              </div>
+              <div className="modal-body" style={{overflowY:"auto"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+                  <div><div className="form-label">Chofer</div><div className="field-readonly">{r.driver||"—"}</div></div>
+                  <div><div className="form-label">Consumo</div><div className="field-readonly">{t.consumo||"—"} {t.consumo&&t.consumo!=="—"?"L/100km":""}</div></div>
+                  <div><div className="form-label">Plata entregada (anticipo)</div><div className="field-readonly">{fmtNum(t.entTotalARS||0)} ARS</div></div>
+                  <div><div className="form-label">Plata devuelta</div><div className="field-readonly">{devStr}</div></div>
+                  <div><div className="form-label">Total gastos</div><div className="field-readonly">{fmtNum(t.expTotalARS||0)} ARS</div></div>
+                  <div><div className="form-label">Cuenta del chofer (saldo)</div>
+                    <div className="field-readonly" style={{color:Number(t.saldoChofer||0)>=0?"var(--success)":"var(--danger)",fontWeight:600}}>
+                      {fmtNum(t.saldoChofer||0)} ARS
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-label" style={{marginBottom:6}}>Tramos y km</div>
+                <div className="table-wrap" style={{marginBottom:16}}>
+                  <table><thead><tr><th>Tramo</th><th>Ruta</th><th style={{textAlign:"right"}}>Km reales</th></tr></thead>
+                    <tbody>
+                      {(r.segments||[]).map(s=>(
+                        <tr key={s.segId}>
+                          <td style={{fontFamily:"var(--mono)",fontSize:11}}>{s.segId}</td>
+                          <td>{s.desde} → {s.hasta}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{(r.kmReales&&r.kmReales[s.segId])||"—"}</td>
+                        </tr>
+                      ))}
+                      {(r.segments||[]).length===0 && <tr><td colSpan={3} style={{color:"var(--text3)"}}>Sin tramos.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="form-label" style={{marginBottom:6}}>Combustible</div>
+                <div className="table-wrap" style={{marginBottom:16}}>
+                  <table><thead><tr><th>Fecha</th><th>Proveedor</th><th style={{textAlign:"right"}}>Litros</th><th style={{textAlign:"right"}}>Total</th></tr></thead>
+                    <tbody>
+                      {(r.fuelRows||[]).filter(f=>f.fecha||f.proveedor||f.litros||f.total).map((f,i)=>(
+                        <tr key={i}>
+                          <td>{fmtDate(f.fecha)}</td><td>{f.proveedor||"—"}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{f.litros||"—"}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{f.total?fmtNum(f.total):"—"}</td>
+                        </tr>
+                      ))}
+                      {(r.fuelRows||[]).filter(f=>f.fecha||f.proveedor||f.litros||f.total).length===0 &&
+                        <tr><td colSpan={4} style={{color:"var(--text3)"}}>Sin cargas de combustible.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="form-label" style={{marginBottom:6}}>Detalle de gastos</div>
+                <div className="table-wrap">
+                  <table><thead><tr><th>Categoría</th><th style={{textAlign:"right"}}>ARS</th><th style={{textAlign:"right"}}>CLP</th><th style={{textAlign:"right"}}>USD</th></tr></thead>
+                    <tbody>
+                      {(r.expenses||[]).filter(e=>Number(e.ARS)||Number(e.CLP)||Number(e.USD)).map((e,i)=>(
+                        <tr key={i}>
+                          <td>{e.cat}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{e.ARS?fmtNum(e.ARS):"—"}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{e.CLP?fmtNum(e.CLP):"—"}</td>
+                          <td style={{fontFamily:"var(--mono)",textAlign:"right"}}>{e.USD?fmtNum(e.USD):"—"}</td>
+                        </tr>
+                      ))}
+                      {(r.expenses||[]).filter(e=>Number(e.ARS)||Number(e.CLP)||Number(e.USD)).length===0 &&
+                        <tr><td colSpan={4} style={{color:"var(--text3)"}}>Sin gastos cargados.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-primary" onClick={()=>setResumenRend(null)}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
