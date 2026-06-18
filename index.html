@@ -201,16 +201,21 @@ const MODULES = [{
   id: 1,
   icon: "🚚",
   label: "Inicio de Viaje",
-  short: "Viajes"
+  short: "Inicio Viaje"
 }, {
   id: 2,
   icon: "💵",
-  label: "Entrega de Plata",
-  short: "Entregas"
+  label: "Plata a choferes",
+  short: "Plata choferes"
+}, {
+  id: 4,
+  icon: "🏦",
+  label: "Caja",
+  short: "Caja"
 }, {
   id: 3,
   icon: "📊",
-  label: "Rendición de Gastos",
+  label: "Rendición Viajes",
   short: "Rendición"
 }, {
   id: 5,
@@ -236,23 +241,23 @@ const MODULES = [{
 const PERMISSIONS = {
   SOL: {
     role: "Editor global",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: [1, 2, 3, 5, 6, 7]
+    mods: [1, 2, 4, 3, 5, 6, 7],
+    edit: [1, 2, 4, 3, 5, 6, 7]
   },
   PABLO: {
     role: "Solo lectura",
-    mods: [1, 2, 3, 5, 6, 7],
+    mods: [1, 2, 4, 3, 5, 6, 7],
     edit: []
   },
   JAVIER: {
-    role: "Solo lectura",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: []
+    role: "Editor parcial",
+    mods: [1, 2, 4, 3, 5, 6, 7],
+    edit: [4, 5]
   },
   SEBASTIAN: {
-    role: "Editor global",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: [1, 2, 3, 5, 6, 7]
+    role: "Editor parcial",
+    mods: [1, 2, 5, 7],
+    edit: [1, 2, 5, 7]
   },
   ROLANDO: {
     role: "Editor parcial",
@@ -261,8 +266,8 @@ const PERMISSIONS = {
   },
   AUGUSTO: {
     role: "Editor parcial",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: [2, 3, 5, 6, 7]
+    mods: [1, 2, 3, 5, 7],
+    edit: [2, 3, 5, 7]
   }
 };
 
@@ -2272,6 +2277,7 @@ function ModuleRenderer({
   };
   if (moduleId === 1) return /*#__PURE__*/React.createElement(Module1, props);
   if (moduleId === 2) return /*#__PURE__*/React.createElement(Module2, props);
+  if (moduleId === 4) return /*#__PURE__*/React.createElement(Module2, { ...props, mode: "caja" });
   if (moduleId === 3) return /*#__PURE__*/React.createElement(Module3, props);
   if (moduleId === 5) return /*#__PURE__*/React.createElement(Module5, props);
   if (moduleId === 6) return /*#__PURE__*/React.createElement(Module6, props);
@@ -3514,9 +3520,23 @@ function Module2({
   session,
   canEdit,
   dropdowns,
-  notif
+  notif,
+  mode = "entregas"
 }) {
+  // mode: "entregas" (Plata a choferes) | "caja" (Caja). Comparten UI, difieren en:
+  //  - destinatario: chofer (CHOFERES) vs colaborador (COLABORADORES)
+  //  - backend: getEntregas/saveEntrega vs getCaja/saveCaja
+  //  - cache key y editabilidad
+  const isCaja = mode === "caja";
+  const cfg = {
+    cacheKey:   isCaja ? "caja"      : "entregas",
+    getAction:  isCaja ? "getCaja"   : "getEntregas",
+    saveAction: isCaja ? "saveCaja"  : "saveEntrega",
+    payloadKey: isCaja ? "caja"      : "entrega",
+    okMsg:      isCaja ? "Movimiento de caja registrado" : "Entrega registrada"
+  };
   const [view, setView] = useState("list");
+  const [editItem, setEditItem] = useState(null);
   const [entregas, setEntregas] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -3524,30 +3544,32 @@ function Module2({
   }, []);
   async function loadEntregas() {
     setLoading(true);
-    // Usa caché: si los datos ya están en memoria no hace llamada al servidor
-    const r = await cachedGet("getEntregas", "entregas");
+    const r = await cachedGet(cfg.getAction, cfg.cacheKey);
     if (r.ok) setEntregas(r.data);
     setLoading(false);
   }
   async function handleSave(data) {
-    const r = await gasCall("saveEntrega", {
-      entrega: data,
+    const r = await gasCall(cfg.saveAction, {
+      [cfg.payloadKey]: data,
       user: session.username
     });
     if (r.ok) {
-      invalidateCache("entregas");
-      notif.add("Entrega registrada");
+      invalidateCache(cfg.cacheKey);
+      notif.add(cfg.okMsg);
       loadEntregas();
       setView("list");
+      setEditItem(null);
     } else {
       notif.add(r.error || "Error al guardar", "error");
     }
-    return r; // devolver resultado para que EntregaForm pueda detectar errores
+    return r;
   }
   if (view === "form") return /*#__PURE__*/React.createElement(EntregaForm, {
     dropdowns: dropdowns,
     onSave: handleSave,
-    onBack: () => setView("list")
+    onBack: () => { setView("list"); setEditItem(null); },
+    mode: mode,
+    entrega: editItem
   });
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
@@ -3555,12 +3577,12 @@ function Module2({
     className: "module-header"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "module-title"
-  }, "💵 Entrega de Plata"), /*#__PURE__*/React.createElement("div", {
+  }, isCaja ? "🏦 Caja" : "💵 Plata a choferes"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
-  }, entregas.length, " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
+  }, entregas.length, isCaja ? " movimiento(s) registrado(s)" : " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
-    onClick: () => setView("form")
-  }, "+ Nueva Entrega")), loading ? /*#__PURE__*/React.createElement("div", {
+    onClick: () => { setEditItem(null); setView("form"); }
+  }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega")), loading ? /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 32
@@ -3591,11 +3613,13 @@ function Module2({
           createdAt: e.createdAt,
           ARS: "",
           CLP: "",
-          USD: ""
+          USD: "",
+          _items: []
         };
         grouped.push(seen[key]);
       }
       seen[key][e.moneda] = e.monto;
+      seen[key]._items.push(e);
     });
     const cols = [{
       key: "fecha",
@@ -3603,7 +3627,7 @@ function Module2({
       render: v => fmtDate(v)
     }, {
       key: "chofer",
-      label: "Chofer",
+      label: isCaja ? "Destinatario" : "Chofer",
       render: v => /*#__PURE__*/React.createElement("span", {
         style: {
           fontWeight: 500,
@@ -3668,26 +3692,49 @@ function Module2({
         }
       }, fmtDT(v))
     }];
+    // En Caja, agregar columna para editar (FIX 1: Caja es editable)
+    if (isCaja && canEdit) {
+      cols.push({
+        key: "_edit",
+        label: "",
+        render: (v, row) => /*#__PURE__*/React.createElement("button", {
+          className: "btn btn-secondary btn-sm btn-icon",
+          title: "Editar movimiento",
+          onClick: () => {
+            // row es el grupo; tomar el primer item original para editar
+            const orig = (row._items && row._items[0]) ? row._items[0] : row;
+            setEditItem(orig);
+            setView("form");
+          }
+        }, "✏️")
+      });
+    }
     return /*#__PURE__*/React.createElement(DataTable, {
       columns: cols,
       data: grouped,
-      searchPlaceholder: "Buscar entregas...",
-      emptyText: "No hay entregas.",
-      exportFilename: "entregas"
+      searchPlaceholder: isCaja ? "Buscar movimientos..." : "Buscar entregas...",
+      emptyText: isCaja ? "No hay movimientos de caja." : "No hay entregas.",
+      exportFilename: isCaja ? "caja" : "entregas"
     });
   })());
 }
 function EntregaForm({
   dropdowns,
   onSave,
-  onBack
+  onBack,
+  mode = "entregas",
+  entrega: entregaInicial
 }) {
-  const [fecha, setFecha] = useState(nowISO());
-  const [chofer, setChofer] = useState("");
-  const [responsable, setResponsable] = useState("");
-  // NEW: forma de pago (obligatorio) y observaciones (opcional)
-  const [formaPago, setFormaPago] = useState("");
-  const [obs, setObs] = useState("");
+  const isCaja = mode === "caja";
+  const isEdit = !!(entregaInicial && entregaInicial.id);
+  // En Caja el destinatario son COLABORADORES; en Entregas son CHOFERES.
+  const destOptions = isCaja ? (dropdowns.COLABORADORES || []) : (dropdowns.CHOFERES || []);
+  const destLabel   = isCaja ? "Destinatario" : "Chofer (destinatario)";
+  const [fecha, setFecha] = useState(entregaInicial?.fecha ? toInputDate(entregaInicial.fecha) : nowISO());
+  const [chofer, setChofer] = useState(entregaInicial?.chofer || "");
+  const [responsable, setResponsable] = useState(entregaInicial?.responsable || "");
+  const [formaPago, setFormaPago] = useState(entregaInicial?.formaPago || "");
+  const [obs, setObs] = useState(entregaInicial?.obs || "");
   // Montos: una fila por divisa, el usuario activa las que necesita
   const [montos, setMontos] = useState([{
     moneda: "ARS",
@@ -3732,13 +3779,12 @@ function EntregaForm({
       const m = montosConValor[i];
       // UPDATE: entrega incluye formaPago y obs además de los campos previos
       const entrega = {
+        id: isEdit ? entregaInicial.id : undefined,
         fecha: fecha,
         chofer: chofer,
         responsable: responsable,
         formaPago: formaPago,
-        // NEW: obligatorio
         obs: obs,
-        // NEW: opcional
         monto: String(m.monto),
         moneda: m.moneda,
         _baseId: baseId
@@ -3783,10 +3829,10 @@ function EntregaForm({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Chofer (destinatario) ", /*#__PURE__*/React.createElement(Req, null), " ", errors.chofer && /*#__PURE__*/React.createElement("span", {
+  }, destLabel, " ", /*#__PURE__*/React.createElement(Req, null), " ", errors.chofer && /*#__PURE__*/React.createElement("span", {
     className: "form-error"
   }, errors.chofer)), /*#__PURE__*/React.createElement(SearchableSelect, {
-    options: dropdowns.CHOFERES || [],
+    options: destOptions,
     value: chofer,
     onChange: setChofer,
     placeholder: "A quién se entrega..."
@@ -4393,7 +4439,23 @@ function RendicionForm({
   // SALDO CHOFER = porcentaje chofer − anticipo de sueldo
   const porcChofer = totalSegARS * 0.13;
   const anticipoSueldo = entTotalARS - expTotalARS; // entregado neto − gastos
-  const saldoChofer = porcChofer - anticipoSueldo;
+  const saldoChoferPropio = porcChofer - anticipoSueldo;
+
+  // FIX 5 — Choferes FLETEROS: 85% del monto EN DIVISA ORIGINAL, sin conversión a ARS.
+  const esFletero = (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[driver]) === "FLETEROS";
+  // Saldo fletero por divisa: 85% de la suma de montos de tramo en cada divisa original.
+  const saldoFleteroPorDivisa = (() => {
+    const acc = { ARS: 0, CLP: 0, USD: 0 };
+    Object.values(segMonto).forEach(m => {
+      if (m && m.monto) {
+        const div = m.moneda || "USD";
+        acc[div] = (acc[div] || 0) + Number(m.monto) * 0.85;
+      }
+    });
+    return acc;
+  })();
+  // saldoChofer final: para propios el cálculo de siempre; para fleteros se usa saldoFleteroPorDivisa
+  const saldoChofer = saldoChoferPropio;
 
   // estado: "abierta" (stand by) o "cerrada" (rendición finalizada).
   // Al cerrar exigimos que el combustible cargado esté completo; en stand by se permite vacío/parcial.
@@ -4440,7 +4502,9 @@ function RendicionForm({
         saldoChofer,
         entTotalARS,
         expTotalARS,
-        consumo
+        consumo,
+        esFletero,
+        saldoFleteroPorDivisa
       }
     });
     setSaving(false);
@@ -4729,7 +4793,9 @@ function RendicionForm({
       paddingTop: 12,
       marginTop: 12
     }
-  }, "Total entregado neto (ARS equiv.): ", fmtNum(entTotalARS)))), /*#__PURE__*/React.createElement("div", {
+  }, "Total entregado neto (ARS equiv.): ", fmtNum(entTotalARS)))),
+  /* FIX 5.1 — card Gastos oculta para fleteros */
+  !esFletero && /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 16
@@ -4763,7 +4829,8 @@ function RendicionForm({
       fecha: "",
       proveedor: "",
       litros: "",
-      total: ""
+      total: "",
+      pagadoPorEllos: false
     }])
   }, "+ Carga")), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
@@ -4862,7 +4929,25 @@ function RendicionForm({
     className: "form-label"
   }, "$/L"), /*#__PURE__*/React.createElement("div", {
     className: "field-readonly"
-  }, f.litros && f.total ? (Number(f.total) / Number(f.litros)).toFixed(2) : "—")), /*#__PURE__*/React.createElement("button", {
+  }, f.litros && f.total ? (Number(f.total) / Number(f.litros)).toFixed(2) : "—")),
+  // FIX 5.3 — check "lo pagaron ellos" (sólo fleteros): si está activo, NO se descuenta en RRHH
+  esFletero && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { maxWidth: 150 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Pago"), /*#__PURE__*/React.createElement("label", {
+    style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", paddingTop: 6 },
+    title: "Activar si esta carga la pagó el fletero con su plata"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!f.pagadoPorEllos,
+    onChange: e => {
+      const n = [...fuelRows];
+      n[i] = { ...n[i], pagadoPorEllos: e.target.checked };
+      setFuelRows(n);
+    }
+  }), "Lo pagaron ellos")), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-danger btn-sm btn-icon",
     onClick: () => setFuelRows(p => p.filter((_, idx) => idx !== i))
   }, "✕"))), /*#__PURE__*/React.createElement("div", {
@@ -4938,7 +5023,32 @@ function RendicionForm({
     className: "card-title"
   }, "💰 Liquidación final — ", driver)), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
+  },
+  // FIX 5.2 — Para FLETEROS: una sola línea SALDO = 85% del monto en divisa original
+  esFletero ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--bg3)",
+      borderRadius: "var(--radius)",
+      padding: "20px"
+    }
   }, /*#__PURE__*/React.createElement("div", {
+    className: "liq-row highlight",
+    style: {
+      border: "2px solid var(--accent)",
+      background: "rgba(79,127,255,0.08)"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 14, fontWeight: 600, color: "var(--text)" }
+  }, "SALDO"), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: "var(--text3)" }
+  }, "85% del monto en divisa original")), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }
+  }, ["USD", "CLP", "ARS"].filter(d => saldoFleteroPorDivisa[d] > 0).map(d => /*#__PURE__*/React.createElement("span", {
+    key: d,
+    style: { fontFamily: "var(--mono)", fontSize: 17, fontWeight: 600, color: "var(--success)" }
+  }, fmtNum(saldoFleteroPorDivisa[d]), " ", d)), (["USD","CLP","ARS"].every(d => !saldoFleteroPorDivisa[d]) && /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", fontSize: 17, color: "var(--text3)" }
+  }, "—"))))) : /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--bg3)",
       borderRadius: "var(--radius)",
@@ -5154,6 +5264,7 @@ function Module5({
 
   // R10: Filtro por fecha relativa
   const [filtTipoFecha, setFiltTipoFecha] = useState("fcCliente"); // "fcCliente"|"fcFletero1"
+  const [filtVerif, setFiltVerif] = useState("todas"); // FIX 4: "todas"|"verificadas"|"sin_verificar"
   const [filtDesde, setFiltDesde] = useState("");
   const [filtHasta, setFiltHasta] = useState("");
   useEffect(() => {
@@ -5262,6 +5373,9 @@ function Module5({
     return row.factura.createdAt ? row.factura.createdAt.slice(0, 10) : "";
   };
   const shownRows = rows.filter(row => {
+    // FIX 4 — filtro por verificación de cobro (Javier)
+    if (filtVerif === "verificadas" && !row.factura?.cobroVerificado) return false;
+    if (filtVerif === "sin_verificar" && row.factura?.cobroVerificado) return false;
     if (!filtDesde && !filtHasta) return true;
     const dateVal = getDateVal(row, filtTipoFecha);
     if (!dateVal) return !filtDesde && !filtHasta;
@@ -5462,6 +5576,7 @@ function Module5({
     trip: editTripId ? trips.find(t => t.id === editTripId) : editFac ? trips.find(t => t.id === editFac.tripId) : null,
     dropdowns: dropdowns,
     canEdit: canEdit && !isClosed(editFac),
+    session: session,
     onSave: handleSave,
     onBack: () => {
       setView("list");
@@ -5528,7 +5643,21 @@ function Module5({
     value: "fcCliente"
   }, "FC Cliente"), /*#__PURE__*/React.createElement("option", {
     value: "fcFletero1"
-  }, "FC Fletero"))), /*#__PURE__*/React.createElement("div", {
+  }, "FC Fletero"))),
+  // FIX 4 — filtro por verificación de cobro, sólo visible para Javier
+  String(session.username).toUpperCase() === "JAVIER" && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { margin: 0, minWidth: 150 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Verificación de cobro"), /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    style: { fontSize: 12 },
+    value: filtVerif,
+    onChange: e => setFiltVerif(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", { value: "todas" }, "Todas"),
+     /*#__PURE__*/React.createElement("option", { value: "verificadas" }, "✓ Verificadas"),
+     /*#__PURE__*/React.createElement("option", { value: "sin_verificar" }, "Sin verificar"))), /*#__PURE__*/React.createElement("div", {
     className: "form-group",
     style: {
       margin: 0
@@ -5655,11 +5784,14 @@ function FacturaForm({
   trip,
   dropdowns,
   canEdit,
+  session,
   onSave,
   onBack
 }) {
   const readonly = !canEdit;
   const isNew = !factura;
+  // FIX 4 — check de verificación de cobro, solo JAVIER puede marcar/desmarcar
+  const isJavier = session && String(session.username).toUpperCase() === "JAVIER";
 
   // Datos precargados del viaje
   const pre = useMemo(() => {
@@ -5737,6 +5869,8 @@ function FacturaForm({
   const [descripcionCanc, setDescripcionCanc] = useState(factura?.descripcionCancelacion || "");
   const [tipoCanc, setTipoCanc] = useState(factura?.tipoCancelacion || "");
   const [fechaCobro, setFechaCobro] = useState(toInputDate(factura?.fechaCobro));
+  // FIX 4 — verificación de cobro por Javier (cobroVerificado)
+  const [cobroVerificado, setCobroVerificado] = useState(!!factura?.cobroVerificado);
 
   // Extra costos
   const [extraCostos, setExtraCostos] = useState(factura?.extraCostos?.length > 0 ? factura.extraCostos : []);
@@ -5871,6 +6005,7 @@ function FacturaForm({
       descripcionCancelacion: descripcionCanc,
       tipoCancelacion: tipoCanc,
       fechaCobro,
+      cobroVerificado: cobroVerificado,
       alertaDiferencia: hayDifMonto,
       justificacionDiferencia: hayDifMonto ? justificacion : "",
       extraCostos
@@ -6339,9 +6474,30 @@ function FacturaForm({
     className: "card-header"
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-title"
-  }, "💸 Cancelación")), /*#__PURE__*/React.createElement("div", {
+  }, "💸 Cancelación"), /*#__PURE__*/React.createElement("div", {
+    style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }
+  },
+    // El check sólo tiene sentido cuando la factura está cobrada al cliente
+    estadoCliente === "cobrado" && /*#__PURE__*/React.createElement("label", {
+      style: {
+        display: "flex", alignItems: "center", gap: 6, fontSize: 13,
+        cursor: isJavier ? "pointer" : "default",
+        color: cobroVerificado ? "var(--success)" : "var(--text2)",
+        fontWeight: cobroVerificado ? 600 : 400
+      },
+      title: isJavier ? "Verificar el cobro contra el banco" : "Verificación de cobro (sólo Javier puede modificarla)"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: cobroVerificado,
+      disabled: !isJavier,
+      onChange: e => setCobroVerificado(e.target.checked)
+    }), cobroVerificado ? "✓ Cobro verificado por Javier" : "Cobro verificado")
+  )), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
-  }, montoClienteUSD > 0 && totalCostos > 0 && totalCostos >= montoClienteUSD && /*#__PURE__*/React.createElement("div", {
+  }, cobroVerificado && /*#__PURE__*/React.createElement("div", {
+    className: "alert alert-info",
+    style: { marginBottom: 12, fontSize: 12 }
+  }, "🔒 Cobro verificado por Javier. Los datos de cancelación quedaron bloqueados."), montoClienteUSD > 0 && totalCostos > 0 && totalCostos >= montoClienteUSD && /*#__PURE__*/React.createElement("div", {
     className: "alert alert-danger",
     style: {
       marginBottom: 12,
@@ -6356,7 +6512,7 @@ function FacturaForm({
   }, "Cancelación"), /*#__PURE__*/React.createElement(MoneyInput, {
     value: cancelacion,
     onChange: setCancelacion,
-    disabled: readonly
+    disabled: readonly || cobroVerificado
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
@@ -6380,7 +6536,7 @@ function FacturaForm({
     className: "form-input",
     value: descripcionCanc,
     onChange: e => setDescripcionCanc(e.target.value),
-    disabled: readonly
+    disabled: readonly || cobroVerificado
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
@@ -6389,7 +6545,7 @@ function FacturaForm({
     options: dropdowns.FORMAS_PAGO || [],
     value: tipoCanc,
     onChange: setTipoCanc,
-    disabled: readonly,
+    disabled: readonly || cobroVerificado,
     placeholder: "Forma de pago..."
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
@@ -6398,14 +6554,16 @@ function FacturaForm({
   }, "Fecha de cobro"), /*#__PURE__*/React.createElement(DateInput, {
     value: fechaCobro,
     onChange: setFechaCobro,
-    disabled: readonly
+    disabled: readonly || cobroVerificado
   }))), tipoCanc && fechaCobro && /*#__PURE__*/React.createElement("div", {
     className: "alert alert-success",
     style: {
       marginTop: 8,
       fontSize: 12
     }
-  }, "✓ Estado cliente cambiará automáticamente a ", /*#__PURE__*/React.createElement("strong", null, "COBRADO")))), !readonly && /*#__PURE__*/React.createElement("div", {
+  }, "✓ Estado cliente cambiará automáticamente a ", /*#__PURE__*/React.createElement("strong", null, "COBRADO")))),
+  // Save-bar normal (cuando se puede editar)
+  !readonly && /*#__PURE__*/React.createElement("div", {
     className: "save-bar"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
@@ -6414,7 +6572,18 @@ function FacturaForm({
     className: "btn btn-primary",
     onClick: handleSave,
     disabled: saving || montoClienteUSD > 0 && totalCostos >= montoClienteUSD
-  }, saving ? "Guardando..." : "💾 Guardar")), showJustifModal && /*#__PURE__*/React.createElement("div", {
+  }, saving ? "Guardando..." : "💾 Guardar")),
+  // FIX 4 — Save-bar especial: factura cerrada (readonly) pero Javier puede tocar el check de verificación
+  readonly && isJavier && estadoCliente === "cobrado" && /*#__PURE__*/React.createElement("div", {
+    className: "save-bar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: onBack
+  }, "Volver"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    onClick: () => doSave(""),
+    disabled: saving
+  }, saving ? "Guardando..." : "💾 Guardar verificación")), showJustifModal && /*#__PURE__*/React.createElement("div", {
     className: "modal-overlay",
     onMouseDown: e => {
       if (e.target === e.currentTarget) setShowJustifModal(false);
@@ -6453,6 +6622,66 @@ function FacturaForm({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FIX 5 — Liquidación de FLETEROS (saldos − entregas − combustible)
+// ═══════════════════════════════════════════════════════════════════════════════
+function FleteroLiquidacion(props) {
+  const { saldos, entregas, combustible, stSaldos, stEntregas, stCombustible,
+          saldosARS, entregasARS, combustibleARS, totalFletero,
+          tcUsdArs, tcUsdClp, chofer, periodo, canEdit, saving, onGuardar } = props;
+
+  const fmtDiv = (st) => ["USD","CLP","ARS"].filter(d => st[d] > 0)
+    .map(d => `${fmtNum(st[d])} ${d}`).join(" · ") || "—";
+
+  const seccion = (titulo, items, colItems, st, arsTotal, signo, color) =>
+    /*#__PURE__*/React.createElement("div", { style: { marginBottom: 16 } },
+      /*#__PURE__*/React.createElement("div", {
+        style: { fontWeight: 600, fontSize: 13, marginBottom: 6, color: color }
+      }, titulo),
+      /*#__PURE__*/React.createElement("div", { className: "table-wrap" },
+        /*#__PURE__*/React.createElement("table", null,
+          /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
+            colItems.map((h, i) => /*#__PURE__*/React.createElement("th", { key: i, style: i >= colItems.length - 1 ? { textAlign: "right" } : null }, h)))),
+          /*#__PURE__*/React.createElement("tbody", null,
+            items.length === 0
+              ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", { colSpan: colItems.length, style: { color: "var(--text3)" } }, "Sin registros."))
+              : items.map((it, i) => /*#__PURE__*/React.createElement("tr", { key: i },
+                  /*#__PURE__*/React.createElement("td", null, fmtDate(it.fecha)),
+                  /*#__PURE__*/React.createElement("td", null, it.tramo || (it.responsable ? `${it.responsable} (${it.formaPago})` : "—")),
+                  /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", textAlign: "right", color: color } },
+                    signo, fmtNum(it.monto), " ", it.divisa)))),
+          /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", { style: { background: "var(--bg4)" } },
+            /*#__PURE__*/React.createElement("td", { colSpan: 2, style: { fontWeight: 600 } }, "Subtotal: ", fmtDiv(st)),
+            /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", fontWeight: 600, textAlign: "right", color: color } },
+              signo, fmtNum(arsTotal), " ARS"))))));
+
+  return /*#__PURE__*/React.createElement("div", null,
+    (!tcUsdArs || !tcUsdClp) && /*#__PURE__*/React.createElement("div", {
+      className: "alert alert-warning", style: { marginBottom: 12, fontSize: 12 }
+    }, "⚠️ Ingresá los cambios USD/ARS y USD/CLP para calcular la conversión a ARS."),
+    seccion("(+) Saldos de tramos (85% en divisa original)", saldos,
+      ["Fecha", "Tramo", "Saldo"], stSaldos, saldosARS, "", "var(--success)"),
+    seccion("(−) Entregas de plata en el período", entregas,
+      ["Fecha", "Responsable / forma de pago", "Monto"], stEntregas, entregasARS, "−", "var(--danger)"),
+    seccion("(−) Combustible (sólo lo que pagamos nosotros)", combustible,
+      ["Fecha", "Tramo", "Monto"], stCombustible, combustibleARS, "−", "var(--danger)"),
+    /*#__PURE__*/React.createElement("div", {
+      className: "liq-row highlight",
+      style: { border: "2px solid var(--accent)", background: "rgba(79,127,255,0.08)", padding: "16px", borderRadius: "var(--radius)", marginBottom: 16 }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 14, fontWeight: 600 }
+    }, "TOTAL A PAGAR AL FLETERO"), /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 11, color: "var(--text3)" }
+    }, "Saldos − Entregas − Combustible (ARS)")), /*#__PURE__*/React.createElement("span", {
+      style: { fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700, color: totalFletero >= 0 ? "var(--success)" : "var(--danger)" }
+    }, totalFletero < 0 ? "−" : "", fmtNum(Math.abs(totalFletero)), " ARS")),
+    canEdit && /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", justifyContent: "flex-end" }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-primary", onClick: onGuardar, disabled: saving
+    }, saving ? "Guardando..." : "💾 Guardar liquidación")));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 6 — RRHH
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module6({
@@ -6470,14 +6699,27 @@ function Module6({
   const [saving, setSaving] = useState(false);
   const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view, setView] = useState("list"); // "list"|"liq"
+  const [entregas, setEntregas] = useState([]); // FIX 3 — para anticipos de sueldo
+  // FIX 5 — tipos de cambio para liquidación de fleteros (se guardan con la liquidación)
+  const [cambioUsdArs, setCambioUsdArs] = useState("");
+  const [cambioUsdClp, setCambioUsdClp] = useState("");
 
   useEffect(() => {
-    Promise.all([cachedGet("getRendiciones", "rendiciones"), gasCall("getRRHH")]).then(([r, l]) => {
+    Promise.all([
+      cachedGet("getRendiciones", "rendiciones"),
+      gasCall("getRRHH"),
+      cachedGet("getEntregas", "entregas")
+    ]).then(([r, l, e]) => {
       if (r.ok) setRendiciones(r.data);
       if (l.ok) setLiquidaciones(l.data);
+      if (e.ok) setEntregas(e.data);
       setLoading(false);
     });
   }, []);
+
+  // Tipo de chofer (PROPIO / FLETEROS) — FIX 5
+  const tipoChofer = (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[selChofer]) || "PROPIO";
+  const esFletero = tipoChofer === "FLETEROS";
 
   // Choferes únicos con rendiciones
   const choferes = useMemo(() => [...new Set((rendiciones || []).map(r => r.driver).filter(Boolean))], [rendiciones]);
@@ -6514,7 +6756,136 @@ function Module6({
     });
   }, [rendiciones, selChofer, selPeriodo]);
   const subtotal = rendFiltradas.reduce((s, r) => s + Number(r.totals?.saldoChofer || 0), 0);
-  const total = subtotal + (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0);
+
+  // FIX 3 — Entregas huérfanas (anticipos de sueldo).
+  // Una entrega de un chofer PROPIO es "huérfana" si su fecha no cae dentro del rango
+  // de fechas de NINGÚN tramo incluido en alguna rendición de ese chofer.
+  // Esas entregas se trasladan a RRHH como ANTICIPO DE SUELDO.
+  const anticiposSueldo = useMemo(() => {
+    if (!selChofer || esFletero) return []; // los fleteros se manejan distinto (FIX 5)
+    // Rangos de fechas de todos los tramos rendidos del chofer (de TODAS sus rendiciones)
+    const rangos = [];
+    (rendiciones || []).forEach(r => {
+      if (r.driver !== selChofer) return;
+      (r.segments || []).forEach(sg => {
+        // buscar el tramo real para sus fechas
+        const fi = toInputDate(sg.fechaInicio);
+        const ff = toInputDate(sg.fechaLlegadaReal || sg.fechaLlegadaPrevista || sg.fechaInicio);
+        if (fi) rangos.push({ desde: fi, hasta: ff || fi });
+      });
+    });
+    // Entregas del chofer que NO caen en ningún rango
+    return (entregas || []).filter(e => {
+      if (e.chofer !== selChofer) return false;
+      const fe = toInputDate(e.fecha);
+      if (!fe) return false;
+      const dentro = rangos.some(rg => fe >= rg.desde && fe <= rg.hasta);
+      return !dentro; // huérfana = fuera de todo rango
+    });
+  }, [entregas, rendiciones, selChofer, esFletero]);
+
+  // Filtrar anticipos al período seleccionado
+  const anticiposPeriodo = useMemo(() => {
+    if (!selPeriodo) return [];
+    return anticiposSueldo.filter(e => {
+      const dt = parseDate(e.fecha);
+      if (!dt) return false;
+      const key = `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
+      return key === selPeriodo;
+    });
+  }, [anticiposSueldo, selPeriodo]);
+
+  // Total de anticipos (en ARS equivalente, usando TC global del sistema)
+  const totalAnticipos = anticiposPeriodo.reduce((s, e) => s + toARS(e.monto, e.moneda || "ARS"), 0);
+
+  const total = subtotal + (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0) - totalAnticipos;
+
+  // ════════ FIX 5 — Liquidación de FLETEROS ════════
+  // Helpers de conversión usando los cambios ingresados en ESTA liquidación
+  const tcUsdArs = parseFloat(String(cambioUsdArs || "").replace(/\./g, "").replace(",", ".")) || 0;
+  const tcUsdClp = parseFloat(String(cambioUsdClp || "").replace(/\./g, "").replace(",", ".")) || 0;
+  // Convierte un monto en su divisa a ARS según los cambios de la liquidación
+  const fleteroARS = (monto, divisa) => {
+    const n = Number(monto) || 0;
+    if (divisa === "ARS") return n;
+    if (divisa === "USD") return n * tcUsdArs;
+    if (divisa === "CLP") return tcUsdClp > 0 ? (n / tcUsdClp) * tcUsdArs : 0; // CLP→USD→ARS
+    return 0;
+  };
+
+  // (+) SALDOS: 85% del monto en divisa original, por cada tramo de las rendiciones del período
+  const fleteroSaldos = [];
+  if (esFletero) {
+    rendFiltradas.forEach(r => {
+      const sfd = r.totals?.saldoFleteroPorDivisa || {};
+      (r.segments || []).forEach(sg => {
+        // distribuir el saldo por divisa que corresponda a esa rendición
+        // (mostramos una línea por tramo con su monto 85%)
+      });
+      // Una línea por divisa con saldo > 0 en esta rendición
+      ["USD", "CLP", "ARS"].forEach(d => {
+        if (sfd[d] > 0) {
+          fleteroSaldos.push({
+            fecha: parseDate(r.createdAt) ? toInputDate(r.createdAt) : "",
+            tramo: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
+            monto: sfd[d],
+            divisa: d
+          });
+        }
+      });
+    });
+  }
+
+  // (−) ENTREGAS de plata al chofer en el período (en divisa original)
+  const fleteroEntregas = useMemo(() => {
+    if (!esFletero || !selChofer || !selPeriodo) return [];
+    return (entregas || []).filter(e => {
+      if (e.chofer !== selChofer) return false;
+      const dt = parseDate(e.fecha);
+      if (!dt) return false;
+      const key = `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
+      return key === selPeriodo;
+    }).map(e => ({
+      fecha: e.fecha,
+      responsable: e.responsable || "",
+      formaPago: e.formaPago || "",
+      monto: e.monto,
+      divisa: e.moneda || "ARS"
+    }));
+  }, [entregas, esFletero, selChofer, selPeriodo]);
+
+  // (−) COMBUSTIBLE de los tramos del chofer en el período, SOLO si NO tiene el check "lo pagaron ellos"
+  const fleteroCombustible = [];
+  if (esFletero) {
+    rendFiltradas.forEach(r => {
+      (r.fuelRows || []).forEach(f => {
+        if (f.pagadoPorEllos) return; // si lo pagaron ellos, NO se descuenta
+        if (!f.total) return;
+        fleteroCombustible.push({
+          fecha: f.fecha,
+          tramo: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
+          monto: f.total,
+          divisa: "ARS" // las facturas de combustible se cargan en ARS (total factura)
+        });
+      });
+    });
+  }
+
+  // Subtotales por divisa
+  const subtotalPorDivisa = (arr) => {
+    const acc = { ARS: 0, CLP: 0, USD: 0 };
+    arr.forEach(x => { acc[x.divisa] = (acc[x.divisa] || 0) + Number(x.monto || 0); });
+    return acc;
+  };
+  const stSaldos = subtotalPorDivisa(fleteroSaldos);
+  const stEntregas = subtotalPorDivisa(fleteroEntregas);
+  const stCombustible = subtotalPorDivisa(fleteroCombustible);
+  // Conversión de cada subtotal a ARS según los cambios de la liquidación
+  const arsDe = (st) => fleteroARS(st.ARS, "ARS") + fleteroARS(st.USD, "USD") + fleteroARS(st.CLP, "CLP");
+  const saldosARS = arsDe(stSaldos);
+  const entregasARS = arsDe(stEntregas);
+  const combustibleARS = arsDe(stCombustible);
+  const totalFletero = saldosARS - entregasARS - combustibleARS;
   async function handleGuardarLiquidacion() {
     if (!selChofer || !selPeriodo) {
       notif.add("Seleccioná chofer y período", "warn");
@@ -6526,15 +6897,36 @@ function Module6({
       segmentos: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
       saldoChofer: r.totals?.saldoChofer || 0
     }));
+    // FIX 3 — detalle de anticipos de sueldo (entregas huérfanas)
+    const detalleAnticipos = anticiposPeriodo.map(e => ({
+      id: e.id,
+      fecha: e.fecha,
+      responsable: e.responsable || "",
+      formaPago: e.formaPago || "",
+      monto: e.monto,
+      moneda: e.moneda || "ARS",
+      montoARS: toARS(e.monto, e.moneda || "ARS")
+    }));
     const r = await gasCall("saveRRHH", {
       liquidacion: {
         chofer: selChofer,
         periodo: selPeriodo,
-        basicoMensual: parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0,
-        subtotalRendiciones: subtotal,
-        total,
+        tipoChofer: tipoChofer,
+        basicoMensual: esFletero ? 0 : (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0),
+        subtotalRendiciones: esFletero ? saldosARS : subtotal,
+        totalAnticipos: esFletero ? 0 : totalAnticipos,
+        total: esFletero ? totalFletero : total,
         rendicionIds: rendFiltradas.map(r => r.id),
-        detalleRendiciones: detalle
+        detalleRendiciones: detalle,
+        detalleAnticipos: esFletero ? [] : detalleAnticipos,
+        // FIX 5 — datos específicos de fletero
+        cambioUsdArs: esFletero ? tcUsdArs : "",
+        cambioUsdClp: esFletero ? tcUsdClp : "",
+        detalleFletero: esFletero ? {
+          saldos: fleteroSaldos, entregas: fleteroEntregas, combustible: fleteroCombustible,
+          stSaldos, stEntregas, stCombustible,
+          saldosARS, entregasARS, combustibleARS, totalFletero
+        } : {}
       },
       user: session.username
     });
@@ -6547,7 +6939,19 @@ function Module6({
   }
   const liqCols = [{
     key: "periodo",
-    label: "Período"
+    label: "Período",
+    render: v => {
+      // FIX 6 — si el período quedó guardado como fecha ISO, mostrarlo como "JUNIO 2026"
+      if (!v) return "—";
+      const s = String(v);
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+        const dt = new Date(s);
+        if (!isNaN(dt)) {
+          return `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
+        }
+      }
+      return s; // ya viene como "JUNIO 2026"
+    }
   }, {
     key: "chofer",
     label: "Chofer"
@@ -6651,7 +7055,23 @@ function Module6({
     onChange: setSelPeriodo,
     placeholder: "Ej: MARZO 2026",
     disabled: !selChofer
+  })),
+  // FIX 5 — Fleteros: cambios USD/ARS y USD/CLP. Propios: básico mensual.
+  esFletero ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Cambio USD/ARS"), /*#__PURE__*/React.createElement(MoneyInput, {
+    value: cambioUsdArs,
+    onChange: setCambioUsdArs
   })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Cambio USD/CLP"), /*#__PURE__*/React.createElement(MoneyInput, {
+    value: cambioUsdClp,
+    onChange: setCambioUsdClp
+  }))) : /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
@@ -6662,7 +7082,15 @@ function Module6({
     style: {
       marginTop: 12
     }
-  }, rendFiltradas.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, esFletero ? /*#__PURE__*/React.createElement(FleteroLiquidacion, {
+    saldos: fleteroSaldos, entregas: fleteroEntregas, combustible: fleteroCombustible,
+    stSaldos, stEntregas, stCombustible,
+    saldosARS, entregasARS, combustibleARS, totalFletero,
+    tcUsdArs, tcUsdClp, fleteroARS,
+    chofer: selChofer, periodo: selPeriodo,
+    canEdit, saving,
+    onGuardar: handleGuardarLiquidacion
+  }) : rendFiltradas.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "alert alert-info"
   }, "No hay rendiciones para ", selChofer, " en ", selPeriodo, ".") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap",
@@ -6715,7 +7143,32 @@ function Module6({
       fontFamily: "var(--mono)",
       textAlign: "right"
     }
-  }, fmtNum(parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0)), /*#__PURE__*/React.createElement("td", null)), /*#__PURE__*/React.createElement("tr", {
+  }, fmtNum(parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0)), /*#__PURE__*/React.createElement("td", null)),
+  // FIX 3 — Filas de anticipos de sueldo (entregas huérfanas), sólo choferes propios
+  ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
+    key: "ant-header",
+    style: { background: "var(--bg4)" }
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: 4,
+    style: { fontWeight: 600, fontSize: 12, color: "var(--warning)" }
+  }, "− Anticipos de sueldo (entregas no rendidas)"))] : []),
+  ...anticiposPeriodo.map((e, i) => /*#__PURE__*/React.createElement("tr", {
+    key: "ant-" + (e.id || i)
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: 2,
+    style: { fontSize: 12 }
+  }, fmtDate(e.fecha), " — ", e.responsable || "", " (", e.formaPago || "", ")"), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)" }
+  }, "−", fmtNum(toARS(e.monto, e.moneda || "ARS")), " ARS", e.moneda !== "ARS" ? ` (${fmtNum(e.monto)} ${e.moneda})` : ""), /*#__PURE__*/React.createElement("td", null))),
+  ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
+    key: "ant-subtotal"
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: 2,
+    style: { fontWeight: 600 }
+  }, "Subtotal anticipos"), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", fontWeight: 600, textAlign: "right", color: "var(--danger)" }
+  }, "−", fmtNum(totalAnticipos), " ARS"), /*#__PURE__*/React.createElement("td", null))] : []),
+  /*#__PURE__*/React.createElement("tr", {
     style: {
       background: "rgba(79,127,255,.08)"
     }
@@ -7081,6 +7534,7 @@ function GastoGeneralForm({
   const [divisa, setDivisa] = useState("USD");
   const [patente, setPatente] = useState("");
   const [chofer, setChofer] = useState("");
+  const [responsablePago, setResponsablePago] = useState("");
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   function validate() {
@@ -7100,7 +7554,8 @@ function GastoGeneralForm({
       monto: String(monto),
       divisa,
       patente,
-      chofer
+      chofer,
+      responsablePago
     });
     setSaving(false);
   }
@@ -7195,6 +7650,15 @@ function GastoGeneralForm({
     value: chofer,
     onChange: setChofer,
     placeholder: "Seleccionar chofer..."
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Responsable del pago"), /*#__PURE__*/React.createElement(SearchableSelect, {
+    options: dropdowns.COLABORADORES || [],
+    value: responsablePago,
+    onChange: setResponsablePago,
+    placeholder: "Seleccionar responsable..."
   }))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
