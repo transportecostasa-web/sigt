@@ -174,6 +174,12 @@ tr:hover td{background:var(--bg3);}
 .modal-header{padding:16px 20px;border-bottom:1px solid var(--border);font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
 .modal-body{padding:20px;}
 .modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
+/* FIX 1 — tabla compacta: más columnas sin scroll horizontal */
+.tabla-compacta{font-size:11.5px;}
+.tabla-compacta th{padding:6px 6px;font-size:10.5px;white-space:nowrap;}
+.tabla-compacta td{padding:5px 6px;}
+.tabla-compacta .btn-sm{padding:2px 6px;font-size:11px;}
+.tabla-compacta .badge{font-size:10px;padding:1px 6px;}
 </style>
 </head>
 <body>
@@ -2305,6 +2311,8 @@ function Module1({
   const [editTrip, setEditTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [histView, setHistView] = useState(false);
+  const [filtroId, setFiltroId] = useState(""); // FIX 3 — filtro por ID viaje o tramo
+  const [expandido, setExpandido] = useState(null); // FIX 4 — viaje con tramos desplegados
   useEffect(() => {
     loadTrips();
   }, []);
@@ -2339,6 +2347,27 @@ function Module1({
       setView("list");
     } else notif.add(r.error || "Error al finalizar", "error");
   }
+  // FIX 1 — Duplicar viaje: replica TODO menos los IDs (viaje y tramos).
+  function handleDuplicar(t) {
+    // Clon profundo simple
+    const clon = JSON.parse(JSON.stringify(t));
+    // Quitar identificadores y estado de finalización para que se cree como nuevo
+    delete clon.id;
+    delete clon.finalizedAt;
+    delete clon.finalizedBy;
+    delete clon.createdAt;
+    delete clon.createdBy;
+    clon.status = "activo";
+    // Limpiar los segId de los tramos: el TripForm/backend les asignará IDs nuevos
+    clon.segments = (clon.segments || []).map(sg => {
+      const s = { ...sg };
+      delete s.segId;
+      return s;
+    });
+    setEditTrip(clon); // sin id → el form lo trata como nuevo y genera ID nuevo
+    setView("form");
+    notif.add("Viaje duplicado. Revisá los datos y guardá para crear el nuevo viaje.");
+  }
   if (view === "form") return /*#__PURE__*/React.createElement(TripForm, {
     trip: editTrip,
     trips: trips,
@@ -2351,7 +2380,19 @@ function Module1({
   });
   const active = trips.filter(t => t.status !== "finalizado");
   const hist = trips.filter(t => t.status === "finalizado");
-  const shown = histView ? hist : active;
+  let shown = histView ? hist : active;
+  // FIX 3 — filtro por ID de viaje o por ID/ruta de algún tramo
+  if (filtroId.trim()) {
+    const q = filtroId.trim().toLowerCase();
+    shown = shown.filter(t => {
+      if (String(t.id || "").toLowerCase().includes(q)) return true;
+      return (t.segments || []).some(sg =>
+        String(sg.segId || "").toLowerCase().includes(q) ||
+        String(sg.desde || "").toLowerCase().includes(q) ||
+        String(sg.hasta || "").toLowerCase().includes(q)
+      );
+    });
+  }
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2386,7 +2427,21 @@ function Module1({
   }, "📥"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: () => setHistView(!histView)
-  }, histView ? "← Activos" : "Ver Historial"), !histView && canEdit && /*#__PURE__*/React.createElement("button", {
+  }, histView ? "← Activos" : "Ver Historial"),
+  // FIX 3 — filtro por ID de viaje o tramo
+  /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    style: { maxWidth: 220, fontSize: 12, height: 30 },
+    placeholder: "🔎 Filtrar por ID viaje o tramo...",
+    value: filtroId,
+    onChange: e => setFiltroId(e.target.value)
+  }),
+  filtroId && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm btn-icon",
+    onClick: () => setFiltroId(""),
+    title: "Limpiar filtro"
+  }, "✕"),
+  !histView && canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
     onClick: () => {
       setEditTrip(null);
@@ -2408,26 +2463,40 @@ function Module1({
     className: "empty-icon"
   }, histView ? "📂" : "🚚"), /*#__PURE__*/React.createElement("p", null, histView ? "No hay viajes finalizados." : "No hay viajes activos.")) : /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Viaje"), /*#__PURE__*/React.createElement("th", null, "Carga"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Cliente"), /*#__PURE__*/React.createElement("th", null, "Monto Cotizado"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "KM total"), /*#__PURE__*/React.createElement("th", null, "Estado doc."), /*#__PURE__*/React.createElement("th", null, "Días abierto"), histView && /*#__PURE__*/React.createElement("th", null, "Finalizado"))), /*#__PURE__*/React.createElement("tbody", null, shown.map(t => {
+  }, /*#__PURE__*/React.createElement("table", { className: "tabla-compacta" }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Viaje"), /*#__PURE__*/React.createElement("th", null, "Carga"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Pies"), /*#__PURE__*/React.createElement("th", null, "Clasif."), /*#__PURE__*/React.createElement("th", null, "Cant."), /*#__PURE__*/React.createElement("th", null, "Cliente"), /*#__PURE__*/React.createElement("th", null, "Reserva"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "KM"), /*#__PURE__*/React.createElement("th", null, "Estado doc."), /*#__PURE__*/React.createElement("th", null, "Días ab."), histView && /*#__PURE__*/React.createElement("th", null, "Finalizado"))), /*#__PURE__*/React.createElement("tbody", null, shown.map(t => {
     const totalKm = (t.segments || []).reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0);
     // Días abierto: desde la fecha de tramo más antigua (inicio) hasta hoy.
     const fechasIni = (t.segments || []).map(sg => toInputDate(sg.fechaInicio)).filter(Boolean).sort();
     const diasAbierto = fechasIni.length ? diasDesde(fechasIni[0]) : null;
-    return /*#__PURE__*/React.createElement("tr", {
+    const filaPrincipal = /*#__PURE__*/React.createElement("tr", {
       key: t.id
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 4 }
+    }, /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
       onClick: () => {
         setEditTrip(t);
         setView("form");
       },
       title: "Ver/Editar"
-    }, "🔍")), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    }, "🔍"),
+    // FIX 4 — botón + para desplegar el detalle de tramos
+    /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-secondary btn-icon btn-sm",
+      onClick: () => setExpandido(expandido === t.id ? null : t.id),
+      title: "Ver tramos"
+    }, expandido === t.id ? "−" : "+"),
+    // FIX 1 — botón duplicar (sólo en activos y si puede editar)
+    !histView && canEdit && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-secondary btn-icon btn-sm",
+      onClick: () => handleDuplicar(t),
+      title: "Duplicar viaje"
+    }, "📑"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       style: {
         fontFamily: "var(--mono)",
         fontSize: 12
       }
-    }, t.id)), /*#__PURE__*/React.createElement("td", null, t.carga), /*#__PURE__*/React.createElement("td", null, t.tipoCarga), /*#__PURE__*/React.createElement("td", null, t.cliente), /*#__PURE__*/React.createElement("td", {
+    }, t.id)), /*#__PURE__*/React.createElement("td", null, t.carga), /*#__PURE__*/React.createElement("td", null, t.tipoCarga), /*#__PURE__*/React.createElement("td", null, t.pies || "—"), /*#__PURE__*/React.createElement("td", null, t.clasificacion || "—"), /*#__PURE__*/React.createElement("td", { style: { textAlign: "center" } }, t.cantidad || "—"), /*#__PURE__*/React.createElement("td", null, t.cliente), /*#__PURE__*/React.createElement("td", null, t.reserva || "—"), /*#__PURE__*/React.createElement("td", {
       style: {
         fontFamily: "var(--mono)"
       }
@@ -2455,6 +2524,31 @@ function Module1({
         color: "var(--text3)"
       }
     }, fmtDate(t.finalizedAt)));
+    // FIX 4 — fila desplegable con el detalle de tramos
+    if (expandido !== t.id) return filaPrincipal;
+    const nCols = histView ? 15 : 14;
+    const filaDetalle = /*#__PURE__*/React.createElement("tr", {
+      key: t.id + "_detalle"
+    }, /*#__PURE__*/React.createElement("td", {
+      colSpan: nCols,
+      style: { background: "var(--bg2)", padding: "8px 16px" }
+    }, /*#__PURE__*/React.createElement("table", {
+      style: { width: "100%", fontSize: 11 }
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
+      ["ID Tramo", "Fecha inicio", "Desde → Hasta", "Chofer", "Camion", "Semi", "Estado"].map((h, i) =>
+        /*#__PURE__*/React.createElement("th", { key: i, style: { textAlign: "left", padding: "4px 6px", color: "var(--text3)" } }, h)))),
+    /*#__PURE__*/React.createElement("tbody", null,
+      (t.segments || []).length === 0
+        ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", { colSpan: 7, style: { color: "var(--text3)", padding: "4px 6px" } }, "Sin tramos."))
+        : (t.segments || []).map((sg, i) => /*#__PURE__*/React.createElement("tr", { key: sg.segId || i },
+            /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", padding: "4px 6px" } }, sg.segId || "—"),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, fmtDate(sg.fechaInicio) || "—"),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, `${sg.desde || "?"} → ${sg.hasta || "?"}`),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.chofer || "—"),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.tractor || "—"),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.semi || "—"),
+            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, /*#__PURE__*/React.createElement(StatusBadge, { status: sg.status || "stand by" }))))))));
+    return [filaPrincipal, filaDetalle];
   })))));
 }
 
@@ -2501,7 +2595,14 @@ function TripForm({
   const [montoFactura, setMontoFactura] = useState(trip?.montoFactura || "");
   const [moneda, setMoneda] = useState(trip?.moneda || "USD");
   const [cliente, setCliente] = useState(trip?.cliente || "");
-  const [segments, setSegments] = useState(trip?.segments || [makeNewSegment(id, 1, "", "")]);
+  const [segments, setSegments] = useState(() => {
+    if (!trip?.segments || trip.segments.length === 0) return [makeNewSegment(id, 1, "", "")];
+    // FIX 1 — si los tramos vienen sin segId (viaje duplicado), generar IDs nuevos
+    return trip.segments.map((sg, i) => {
+      if (sg.segId) return sg;
+      return { ...sg, segId: makeSegmentId(id, sg.desde, sg.hasta, i + 1) };
+    });
+  });
   const [numMIC, setNumMIC] = useState(trip?.numMIC || "");
   // FIX: toInputDate() convierte cualquier formato de fecha a "YYYY-MM-DD" para el input
   const [fechaMIC, setFechaMIC] = useState(toInputDate(trip?.fechaMIC) || "");
@@ -2965,7 +3066,12 @@ function TripForm({
       label: "20 PIES"
     }],
     value: pies,
-    onChange: v => setPies(v),
+    onChange: v => {
+      setPies(v);
+      // FIX 2 — 40 pies fuerza cantidad 1; 20 pies admite 1 o 2
+      if (v === "40 PIES") setCantidad("1");
+      else if (v === "20 PIES" && cantidad !== "1" && cantidad !== "2") setCantidad("1");
+    },
     placeholder: "20 / 40...",
     disabled: readonly
   })), pies && /*#__PURE__*/React.createElement("div", {
@@ -3009,15 +3115,15 @@ function TripForm({
     className: "form-label"
   }, "Cantidad ", /*#__PURE__*/React.createElement(Req, {
     show: !readonly
-  })), /*#__PURE__*/React.createElement("input", {
-    className: "form-input",
-    type: "number",
-    min: "1",
-    step: "1",
+  })), /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
     value: cantidad || "1",
     onChange: e => setCantidad(e.target.value),
-    disabled: readonly
-  }))) : tipoRow ? /*#__PURE__*/React.createElement("div", {
+    disabled: readonly || pies === "40 PIES"
+  }, pies === "20 PIES"
+    ? [/*#__PURE__*/React.createElement("option", { key: "1", value: "1" }, "1"),
+       /*#__PURE__*/React.createElement("option", { key: "2", value: "2" }, "2")]
+    : /*#__PURE__*/React.createElement("option", { value: "1" }, "1")))) : tipoRow ? /*#__PURE__*/React.createElement("div", {
     className: "form-row"
   }, showUM && /*#__PURE__*/React.createElement("div", {
     className: "form-group",
