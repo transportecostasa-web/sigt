@@ -252,7 +252,7 @@ const PERMISSIONS = {
   },
   PABLO: {
     role: "Solo lectura",
-    mods: [1, 2, 4, 3, 5, 6, 7],
+    mods: [1, 2, 3, 5, 6, 7],
     edit: []
   },
   JAVIER: {
@@ -262,18 +262,18 @@ const PERMISSIONS = {
   },
   SEBASTIAN: {
     role: "Editor parcial",
-    mods: [1, 2, 5, 7],
-    edit: [1, 2, 5, 7]
+    mods: [1, 2, 5],
+    edit: [1, 2, 5]
   },
   ROLANDO: {
     role: "Editor parcial",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: [2, 3, 6, 7]
+    mods: [2, 3],
+    edit: [2, 3]
   },
-  AUGUSTO: {
+  LUCIANA: {
     role: "Editor parcial",
-    mods: [1, 2, 3, 5, 7],
-    edit: [2, 3, 5, 7]
+    mods: [5, 6],
+    edit: [5, 6]
   }
 };
 
@@ -484,9 +484,29 @@ function isAlphanumeric(pw) {
 function isLugarExtranjero(lugar, lugares) {
   if (!lugar) return false;
   const l = lugar.toUpperCase();
+  // Detectar por país explícito en el nombre del lugar (ej: "SAN ANTONIO (CHILE)")
   if (PAISES_EXTRANJEROS.some(p => l.includes(p))) return true;
-  const ciudadesExt = ["ASUNCIÓN", "MONTEVIDEO", "SANTIAGO", "SÃO PAULO", "RIO DE JANEIRO", "LA PAZ", "LIMA", "BOGOTÁ", "SANTA CRUZ", "ENCARNACIÓN", "CIUDAD DEL ESTE"];
-  return ciudadesExt.some(c => l.includes(c));
+  // Detectar por ciudad extranjera conocida
+  const ciudadesExt = ["ASUNCIÓN", "MONTEVIDEO", "SANTIAGO", "SÃO PAULO", "RIO DE JANEIRO",
+    "LA PAZ", "LIMA", "BOGOTÁ", "SANTA CRUZ", "ENCARNACIÓN", "CIUDAD DEL ESTE",
+    "VALPARAÍSO", "CONCEPCIÓN", "ANTOFAGASTA", "IQUIQUE", "ARICA", "TEMUCO",
+    "SAN ANTONIO", "PUERTO MONTT", "OSORNO", "CHILLÁN"];
+  if (ciudadesExt.some(ct => l.includes(ct))) return true;
+  return false;
+}
+
+// Devuelve true si el lugar es argentino (para clasificar viajes)
+function isLugarArgentino(lugar) {
+  if (!lugar) return false;
+  const l = lugar.toUpperCase();
+  // Si el nombre menciona explícitamente Argentina, es argentino
+  if (l.includes("ARGENTINA") || l.includes("(ARG)")) return true;
+  // Si menciona explícitamente otro país, NO es argentino
+  if (PAISES_EXTRANJEROS.filter(p => p !== "ARGENTINA NO").some(p => l.includes(p))) return false;
+  // Si es una ciudad extranjera conocida, NO es argentino
+  if (isLugarExtranjero(lugar, [])) return false;
+  // Por defecto, asumir que es argentino
+  return true;
 }
 
 // Genera el ID automático de un viaje nuevo.
@@ -496,7 +516,10 @@ function isLugarExtranjero(lugar, lugares) {
 //   0001 = correlativo según cuántos viajes NAC o INT ya existen
 //   7342 = número aleatorio para evitar duplicados si dos personas crean viajes al mismo tiempo
 function generateTripId(trips, segments, lugares) {
-  const hasInt = (segments || []).some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares));
+  const segs = segments || [];
+  // INT si algún lugar es extranjero, O si hay tramos pero ningún lugar es argentino (ej: Chile-Chile)
+  const hasInt = segs.some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares))
+    || (segs.length > 0 && !segs.some(s => isLugarArgentino(s.desde) || isLugarArgentino(s.hasta)));
   const prefix = hasInt ? "INT" : "NAC";
   const count = (trips || []).filter(t => t.id && t.id.startsWith(prefix)).length + 1;
   const seq = count.toString().padStart(4, "0");
@@ -510,7 +533,9 @@ function generateTripId(trips, segments, lugares) {
 // de los tramos, para que el ID se actualice solo.
 // Ej: si el usuario agrega un tramo con destino ASUNCIÓN → el ID cambia de NAC a INT
 function recalcPrefix(id, segments, lugares) {
-  const hasInt = (segments || []).some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares));
+  const segs = segments || [];
+  const hasInt = segs.some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares))
+    || (segs.length > 0 && !segs.some(s => isLugarArgentino(s.desde) || isLugarArgentino(s.hasta)));
   const newPrefix = hasInt ? "INT" : "NAC";
   const oldPrefix = id.startsWith("INT") ? "INT" : "NAC";
   if (newPrefix === oldPrefix) return id;
@@ -2282,8 +2307,8 @@ function ModuleRenderer({
     notif
   };
   if (moduleId === 1) return /*#__PURE__*/React.createElement(Module1, props);
-  if (moduleId === 2) return /*#__PURE__*/React.createElement(Module2, props);
-  if (moduleId === 4) return /*#__PURE__*/React.createElement(Module2, { ...props, mode: "caja" });
+  if (moduleId === 2) return /*#__PURE__*/React.createElement(Module2, { ...props, key: "mod2-entregas", mode: "entregas" });
+  if (moduleId === 4) return /*#__PURE__*/React.createElement(Module2, { ...props, key: "mod4-caja", mode: "caja" });
   if (moduleId === 3) return /*#__PURE__*/React.createElement(Module3, props);
   if (moduleId === 5) return /*#__PURE__*/React.createElement(Module5, props);
   if (moduleId === 6) return /*#__PURE__*/React.createElement(Module6, props);
@@ -2535,7 +2560,7 @@ function Module1({
     }, /*#__PURE__*/React.createElement("table", {
       style: { width: "100%", fontSize: 11 }
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
-      ["ID Tramo", "Fecha inicio", "Desde → Hasta", "Chofer", "Camion", "Semi", "Estado"].map((h, i) =>
+      ["ID Tramo", "Fecha inicio", "Desde → Hasta", "Chofer", "Pat. camión", "Pat. semi", "Estado"].map((h, i) =>
         /*#__PURE__*/React.createElement("th", { key: i, style: { textAlign: "left", padding: "4px 6px", color: "var(--text3)" } }, h)))),
     /*#__PURE__*/React.createElement("tbody", null,
       (t.segments || []).length === 0
@@ -3647,9 +3672,10 @@ function Module2({
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     loadEntregas();
-  }, []);
+  }, [mode]);
   async function loadEntregas() {
     setLoading(true);
+    setEntregas([]); // limpiar datos del módulo anterior antes de cargar
     const r = await cachedGet(cfg.getAction, cfg.cacheKey);
     if (r.ok) setEntregas(r.data);
     setLoading(false);
@@ -3807,9 +3833,8 @@ function Module2({
           className: "btn btn-secondary btn-sm btn-icon",
           title: "Editar movimiento",
           onClick: () => {
-            // row es el grupo; tomar el primer item original para editar
-            const orig = (row._items && row._items[0]) ? row._items[0] : row;
-            setEditItem(orig);
+            // Pasar el grupo completo: tiene _baseId, ARS/CLP/USD y _items con cada registro original
+            setEditItem(row);
             setView("form");
           }
         }, "✏️")
@@ -3842,16 +3867,21 @@ function EntregaForm({
   const [formaPago, setFormaPago] = useState(entregaInicial?.formaPago || "");
   const [obs, setObs] = useState(entregaInicial?.obs || "");
   // Montos: una fila por divisa, el usuario activa las que necesita
-  const [montos, setMontos] = useState([{
-    moneda: "ARS",
-    monto: ""
-  }, {
-    moneda: "CLP",
-    monto: ""
-  }, {
-    moneda: "USD",
-    monto: ""
-  }]);
+  const [montos, setMontos] = useState(() => {
+    // FIX 2 — al editar un movimiento de Caja, heredar los montos de cada divisa
+    if (entregaInicial) {
+      return [
+        { moneda: "ARS", monto: entregaInicial.ARS || "" },
+        { moneda: "CLP", monto: entregaInicial.CLP || "" },
+        { moneda: "USD", monto: entregaInicial.USD || "" }
+      ];
+    }
+    return [
+      { moneda: "ARS", monto: "" },
+      { moneda: "CLP", monto: "" },
+      { moneda: "USD", monto: "" }
+    ];
+  });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   function updateMonto(idx, val) {
@@ -3880,12 +3910,18 @@ function EntregaForm({
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    const baseId = "ENT-" + Date.now();
+    // FIX 2 — al editar, reusar el _baseId del grupo; al crear, generar uno nuevo
+    const baseId = (isEdit && entregaInicial._baseId) ? entregaInicial._baseId : ("ENT-" + Date.now());
+    // Mapa divisa→id de los registros originales (para actualizar el correcto)
+    const idsPorDivisa = {};
+    if (isEdit && Array.isArray(entregaInicial._items)) {
+      entregaInicial._items.forEach(it => { idsPorDivisa[it.moneda] = it.id; });
+    }
     for (let i = 0; i < montosConValor.length; i++) {
       const m = montosConValor[i];
-      // UPDATE: entrega incluye formaPago y obs además de los campos previos
       const entrega = {
-        id: isEdit ? entregaInicial.id : undefined,
+        // Si esa divisa ya existía en el grupo, mantener su id (update); si no, crear
+        id: isEdit ? (idsPorDivisa[m.moneda] || undefined) : undefined,
         fecha: fecha,
         chofer: chofer,
         responsable: responsable,
@@ -3916,7 +3952,7 @@ function EntregaForm({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-body"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, !isCaja && /*#__PURE__*/React.createElement("div", {
     className: "alert alert-info",
     style: {
       marginBottom: 16
@@ -5371,6 +5407,7 @@ function Module5({
   // R10: Filtro por fecha relativa
   const [filtTipoFecha, setFiltTipoFecha] = useState("fcCliente"); // "fcCliente"|"fcFletero1"
   const [filtVerif, setFiltVerif] = useState("todas"); // FIX 4: "todas"|"verificadas"|"sin_verificar"
+  const [filtTextoFC, setFiltTextoFC] = useState(""); // FIX 4 — buscar por N° de factura
   const [filtDesde, setFiltDesde] = useState("");
   const [filtHasta, setFiltHasta] = useState("");
   useEffect(() => {
@@ -5479,14 +5516,32 @@ function Module5({
     return row.factura.createdAt ? row.factura.createdAt.slice(0, 10) : "";
   };
   const shownRows = rows.filter(row => {
+    // FIX 6 — las facturas cerradas (cliente cobrado Y todos los fleteros pagados)
+    // van solo al historial; la tabla principal muestra únicamente las pendientes.
+    if (isClosed(row.factura)) return false;
     // FIX 4 — filtro por verificación de cobro (Javier)
     if (filtVerif === "verificadas" && !row.factura?.cobroVerificado) return false;
     if (filtVerif === "sin_verificar" && row.factura?.cobroVerificado) return false;
-    if (!filtDesde && !filtHasta) return true;
-    const dateVal = getDateVal(row, filtTipoFecha);
-    if (!dateVal) return !filtDesde && !filtHasta;
-    if (filtDesde && dateVal < filtDesde) return false;
-    if (filtHasta && dateVal > filtHasta) return false;
+    // FIX 4 — filtro por N° de factura (del tipo seleccionado en el desplegable)
+    if (filtTextoFC.trim()) {
+      const q = filtTextoFC.trim().toLowerCase();
+      const f = row.factura || {};
+      let campo = "";
+      if (filtTipoFecha === "fcCliente") {
+        campo = String(f.fcCliente || "");
+      } else {
+        // FC Fletero: buscar en todas las facturas de fletero
+        campo = (f.fleteros || []).map(fl => fl.fcFletero || "").join(" ");
+      }
+      if (!campo.toLowerCase().includes(q)) return false;
+    }
+    // Filtro por rango de fechas
+    if (filtDesde || filtHasta) {
+      const dateVal = getDateVal(row, filtTipoFecha);
+      if (!dateVal) return false;
+      if (filtDesde && dateVal < filtDesde) return false;
+      if (filtHasta && dateVal > filtHasta) return false;
+    }
     return true;
   });
 
@@ -5750,6 +5805,25 @@ function Module5({
   }, "FC Cliente"), /*#__PURE__*/React.createElement("option", {
     value: "fcFletero1"
   }, "FC Fletero"))),
+  // FIX 4 — campo para escribir el N° de factura a filtrar (del tipo elegido arriba)
+  /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { margin: 0, minWidth: 160 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "N° de factura"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 4 }
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    style: { fontSize: 12 },
+    placeholder: filtTipoFecha === "fcCliente" ? "N° FC Cliente..." : "N° FC Fletero...",
+    value: filtTextoFC,
+    onChange: e => setFiltTextoFC(e.target.value)
+  }), filtTextoFC && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm btn-icon",
+    onClick: () => setFiltTextoFC(""),
+    title: "Limpiar"
+  }, "✕"))),
   // FIX 4 — filtro por verificación de cobro, sólo visible para Javier
   String(session.username).toUpperCase() === "JAVIER" && /*#__PURE__*/React.createElement("div", {
     className: "form-group",
