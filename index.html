@@ -214,15 +214,15 @@ const MODULES = [{
   label: "Plata a choferes",
   short: "Plata choferes"
 }, {
-  id: 4,
-  icon: "🏦",
-  label: "Caja",
-  short: "Caja"
-}, {
   id: 3,
   icon: "📊",
   label: "Rendición Viajes",
   short: "Rendición"
+}, {
+    id: 4,
+  icon: "🏦",
+  label: "Caja",
+  short: "Caja"
 }, {
   id: 5,
   icon: "🧾",
@@ -235,7 +235,7 @@ const MODULES = [{
   short: "RRHH"
 }, {
   id: 7,
-  icon: "🏗",
+  icon: "🛒​",
   label: "Gastos Generales",
   short: "Gs. Generales"
 }];
@@ -267,8 +267,8 @@ const PERMISSIONS = {
   },
   ROLANDO: {
     role: "Editor parcial",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: [2, 3, 6, 7]
+    mods: [1, 2, 6, 7],
+    edit: [2, 6, 7]
   },
   AUGUSTO: {
     role: "Editor parcial",
@@ -7678,7 +7678,7 @@ function Module7({
     className: "module-header"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "module-title"
-  }, "🏗 Gastos Generales"), /*#__PURE__*/React.createElement("div", {
+  }, "🛒​ Gastos Generales"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
   }, gastos.length, " gasto(s) registrado(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
