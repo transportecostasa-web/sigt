@@ -235,7 +235,7 @@ const MODULES = [{
   short: "RRHH"
 }, {
   id: 7,
-  icon: "🏗",
+  icon: "🛒",
   label: "Gastos Generales",
   short: "Gs. Generales"
 }];
@@ -251,29 +251,29 @@ const PERMISSIONS = {
     edit: [1, 2, 4, 3, 5, 6, 7]
   },
   PABLO: {
-    role: "Solo lectura",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: []
+    role: "Editor global",
+    mods: [1, 2, 4, 3, 5, 6, 7],
+    edit: [1, 2, 4, 3, 5, 6, 7]
   },
   JAVIER: {
-    role: "Editor parcial",
+    role: "Editor global",
     mods: [1, 2, 4, 3, 5, 6, 7],
-    edit: [4, 5]
+    edit: [1, 2, 4, 3, 5, 6, 7]
   },
   SEBASTIAN: {
     role: "Editor parcial",
-    mods: [1, 2, 5],
-    edit: [1, 2, 5]
+    mods: [1, 2, 5, 7],
+    edit: [1, 2, 5, 7]
   },
   ROLANDO: {
     role: "Editor parcial",
-    mods: [2, 3],
-    edit: [2, 3]
+    mods: [1, 2, 6, 7],
+    edit: [2, 6, 7]
   },
-  LUCIANA: {
+  AUGUSTO: {
     role: "Editor parcial",
-    mods: [5, 6],
-    edit: [5, 6]
+    mods: [1, 2, 3, 5, 7],
+    edit: [2, 3, 5, 7]
   }
 };
 
@@ -7680,7 +7680,7 @@ function Module7({
     className: "module-header"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "module-title"
-  }, "🏗 Gastos Generales"), /*#__PURE__*/React.createElement("div", {
+  }, "🛒 Gastos Generales"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
   }, gastos.length, " gasto(s) registrado(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
