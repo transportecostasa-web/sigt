@@ -235,7 +235,7 @@ const MODULES = [{
   short: "RRHH"
 }, {
   id: 7,
-  icon: "🛒",
+  icon: "🏗",
   label: "Gastos Generales",
   short: "Gs. Generales"
 }];
@@ -251,29 +251,29 @@ const PERMISSIONS = {
     edit: [1, 2, 4, 3, 5, 6, 7]
   },
   PABLO: {
-    role: "Editor global",
-    mods: [1, 2, 4, 3, 5, 6, 7],
-    edit: [1, 2, 4, 3, 5, 6, 7]
+    role: "Solo lectura",
+    mods: [1, 2, 3, 5, 6, 7],
+    edit: []
   },
   JAVIER: {
-    role: "Editor global",
+    role: "Editor parcial",
     mods: [1, 2, 4, 3, 5, 6, 7],
-    edit: [1, 2, 4, 3, 5, 6, 7]
+    edit: [4, 5]
   },
   SEBASTIAN: {
     role: "Editor parcial",
-    mods: [1, 2, 5, 7],
-    edit: [1, 2, 5, 7]
+    mods: [1, 2, 5],
+    edit: [1, 2, 5]
   },
   ROLANDO: {
     role: "Editor parcial",
-    mods: [1, 2, 6, 7],
-    edit: [2, 6, 7]
+    mods: [2, 3],
+    edit: [2, 3]
   },
-  AUGUSTO: {
+  LUCIANA: {
     role: "Editor parcial",
-    mods: [1, 2, 3, 5, 7],
-    edit: [2, 3, 5, 7]
+    mods: [5, 6],
+    edit: [5, 6]
   }
 };
 
@@ -647,7 +647,8 @@ async function gasCall(action, payload = {}) {
   const url = `${GAS_URL}?p=${encodeURIComponent(p)}&t=${encodeURIComponent(token)}`;
   try {
     const res = await fetch(url, {
-      redirect: "follow"
+      redirect: "follow",
+      keepalive: true // completa la petición aunque se cierre la pestaña (guardados en 2° plano)
     });
     if (!res.ok) return {
       ok: false,
@@ -2350,29 +2351,45 @@ function Module1({
     if (r.ok) setTrips(r.data);
     setLoading(false);
   }
-  async function handleSave(tripData) {
-    const r = await gasCall("saveTrip", {
+  function handleSave(tripData) {
+    // GUARDADO INSTANTÁNEO: la UI se actualiza YA con los datos locales y vuelve
+    // a la lista; la llamada al servidor corre en segundo plano. Si falla, se
+    // avisa con error y se re-sincroniza desde el servidor.
+    const esFinalizado = tripData.status === "finalizado";
+    setTrips(prev => {
+      const idx = prev.findIndex(t => t.id === tripData.id);
+      const extra = esFinalizado ? {
+        finalizedAt: new Date().toISOString(),
+        finalizedBy: session.username
+      } : {};
+      const next = idx >= 0
+        ? prev.map(t => t.id === tripData.id ? { ...t, ...tripData, ...extra } : t)
+        : [...prev, { ...tripData, ...extra, createdAt: new Date().toISOString(), createdBy: session.username }];
+      _cache.trips = next; // mantener coherente el caché para los otros módulos
+      return next;
+    });
+    notif.add(esFinalizado ? "Viaje finalizado" : "Viaje guardado");
+    setView("list");
+
+    // Sincronización en segundo plano — no bloquea la UI
+    gasCall("saveTrip", {
       trip: tripData,
       user: session.username
+    }).then(r => {
+      if (!r.ok) {
+        // El guardado falló: avisar fuerte y re-sincronizar con el servidor
+        notif.add(`⚠ ${tripData.id} NO se guardó en el servidor: ${r.error || "error desconocido"}. Reabrí el viaje y guardá de nuevo.`, "error");
+        invalidateCache("trips");
+        loadTrips();
+      }
     });
-    if (r.ok) {
-      invalidateCache("trips"); // fuerza recarga después de guardar
-      notif.add("Viaje guardado");
-      loadTrips();
-      setView("list");
-    } else notif.add(r.error || "Error al guardar", "error");
+    return Promise.resolve({ ok: true });
   }
   async function handleFinalize(tripId) {
-    const r = await gasCall("finalizeTrip", {
-      tripId,
-      user: session.username
-    });
-    if (r.ok) {
-      invalidateCache("trips"); // fuerza recarga después de finalizar
-      notif.add("Viaje finalizado");
-      loadTrips();
-      setView("list");
-    } else notif.add(r.error || "Error al finalizar", "error");
+    // Ya no se usa una llamada separada: el status "finalizado" viaja dentro
+    // del propio saveTrip y el backend sella finalizedAt/finalizedBy.
+    // Se conserva la función por compatibilidad, sin acción.
+    return { ok: true };
   }
   // FIX 1 — Duplicar viaje: replica TODO menos los IDs (viaje y tramos).
   function handleDuplicar(t) {
@@ -2982,8 +2999,9 @@ function TripForm({
     }
     if (!validateSegments()) return;
     setSaving(true);
+    // UNA sola llamada: el status "finalizado" viaja dentro del saveTrip y el
+    // backend sella finalizedAt/finalizedBy. Antes eran 2 llamadas en serie.
     await onSave(buildData("finalizado"));
-    await onFinalize(id);
     clearDraft(); // borrar borrador tras finalizar
     setSaving(false);
   }
@@ -5323,6 +5341,8 @@ function RendicionForm({
 
 const ESTADO_FLETERO_OPTS = ["pendiente", "facturado", "pagado"];
 const ESTADO_CLIENTE_OPTS = ["pendiente", "facturado", "cobrado"];
+// Entidad desde la que se emite la FC al cliente
+const ENTIDADES_FACTURADORAS = ["JAVIER COSTA E HIJOS SA", "SOCELPA"];
 const MAX_FLETEROS = 5; // máximo de facturas fletero por registro
 
 const ESTADO_FAC_COLORS = {
@@ -6039,6 +6059,8 @@ function FacturaForm({
   }
 
   // FC Cliente
+  // Entidad facturadora: desde qué empresa se emite la factura
+  const [entidadFacturadora, setEntidadFacturadora] = useState(factura?.entidadFacturadora || "");
   const [destinatario, setDestinatario] = useState(factura?.destinatario || "");
   const [fcCliente, setFcCliente] = useState(factura?.fcCliente || "");
   const [montoFcCliente, setMontoFcCliente] = useState(factura?.montoFcCliente || "");
@@ -6130,6 +6152,7 @@ function FacturaForm({
     if (!G("tripId")) e.tripId = "Falta viaje";
 
     // FC Cliente — todos los campos obligatorios
+    if (!entidadFacturadora) e.entidadFacturadora = "Requerido";
     if (!destinatario) e.destinatario = "Requerido";
     if (!fcCliente) e.fcCliente = "Requerido";
     if (!montoFcCliente) e.montoFcCliente = "Requerido";
@@ -6177,6 +6200,7 @@ function FacturaForm({
       montoViajeOrig: cotizacionInicial,
       divisaViajeOrig: cotizacionDivisa,
       fleteros,
+      entidadFacturadora,
       destinatario,
       fcCliente,
       montoFcCliente,
@@ -6432,6 +6456,24 @@ function FacturaForm({
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-row"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Facturar desde ", /*#__PURE__*/React.createElement(Req, {
+    show: !readonly
+  }), errors.entidadFacturadora && /*#__PURE__*/React.createElement("span", {
+    className: "form-error"
+  }, " ", errors.entidadFacturadora)), /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    value: entidadFacturadora,
+    onChange: e => setEntidadFacturadora(e.target.value),
+    disabled: readonly
+  }, !entidadFacturadora && /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "— Seleccionar —"), ENTIDADES_FACTURADORAS.map(ent => /*#__PURE__*/React.createElement("option", {
+    key: ent,
+    value: ent
+  }, ent)))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
@@ -7680,7 +7722,7 @@ function Module7({
     className: "module-header"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "module-title"
-  }, "🛒 Gastos Generales"), /*#__PURE__*/React.createElement("div", {
+  }, "🏗 Gastos Generales"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
   }, gastos.length, " gasto(s) registrado(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
