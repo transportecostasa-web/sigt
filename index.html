@@ -235,9 +235,14 @@ const MODULES = [{
   short: "RRHH"
 }, {
   id: 7,
-  icon: "🏗",
+  icon: "🛒​",
   label: "Gastos Generales",
   short: "Gs. Generales"
+}, {
+  id: 8,
+  icon: "🚛",
+  label: "Fleteros",
+  short: "Fleteros"
 }];
 
 // Permisos por usuario.
@@ -247,33 +252,33 @@ const MODULES = [{
 const PERMISSIONS = {
   SOL: {
     role: "Editor global",
-    mods: [1, 2, 4, 3, 5, 6, 7],
-    edit: [1, 2, 4, 3, 5, 6, 7]
+    mods: [1, 2, 4, 3, 5, 6, 7, 8],
+    edit: [1, 2, 4, 3, 5, 6, 7, 8]
   },
   PABLO: {
-    role: "Solo lectura",
-    mods: [1, 2, 3, 5, 6, 7],
-    edit: []
+    role: "Editor global",
+    mods: [1, 2, 4, 3, 5, 6, 7, 8],
+    edit: [1, 2, 4, 3, 5, 6, 7, 8]
   },
   JAVIER: {
-    role: "Editor parcial",
-    mods: [1, 2, 4, 3, 5, 6, 7],
-    edit: [4, 5]
+    role: "Editor global",
+    mods: [1, 2, 4, 3, 5, 6, 7, 8],
+    edit: [1, 2, 4, 3, 5, 6, 7, 8]
   },
   SEBASTIAN: {
     role: "Editor parcial",
-    mods: [1, 2, 5],
-    edit: [1, 2, 5]
+    mods: [1, 2, 5, 7],
+    edit: [1, 2, 5, 7]
   },
   ROLANDO: {
     role: "Editor parcial",
-    mods: [2, 3],
-    edit: [2, 3]
+    mods: [1, 2, 3, 5, 6, 7, 8],
+    edit: [2, 3, 6, 7, 8]
   },
-  LUCIANA: {
+  AUGUSTO: {
     role: "Editor parcial",
-    mods: [5, 6],
-    edit: [5, 6]
+    mods: [1, 2, 3, 5, 7],
+    edit: [2, 3, 5, 7]
   }
 };
 
@@ -836,6 +841,27 @@ function mockApi(action, payload) {
         resolve({
           ok: true,
           data: db.auditLog.slice().reverse().slice(0, 200)
+        });
+      } else if (action === "getFleterosLiq") {
+        resolve({
+          ok: true,
+          data: db.fleterosLiq || []
+        });
+      } else if (action === "saveFleteroLiq") {
+        db.fleterosLiq = db.fleterosLiq || [];
+        db.fleterosLiq.push({
+          ...payload.liq,
+          id: "FLQ-" + Date.now(),
+          createdAt: new Date().toISOString(),
+          createdBy: payload.user,
+          cantTramos: (payload.liq.tramos || []).length,
+          pdfUrl: ""
+        });
+        lsSet("sigt_db", db);
+        resolve({
+          ok: true,
+          id: "FLQ-mock",
+          pdfUrl: ""
         });
       } else {
         resolve({
@@ -1779,6 +1805,9 @@ function App() {
   // dropdowns: objeto con todas las listas de opciones para los desplegables.
   // null mientras se están cargando desde el servidor.
   const [dropdowns, setDropdowns] = useState(null);
+  // FLETEROS (módulo 8): patentes con tramos pendientes (sub-ítems del sidebar) y patente elegida
+  const [fleteroPatentes, setFleteroPatentes] = useState([]);
+  const [selPatenteFletero, setSelPatenteFletero] = useState("");
   const [lightMode, setLightMode] = useState(() => lsGet("sigt_theme") === "light");
   const notif = useNotifications();
 
@@ -1854,6 +1883,8 @@ function App() {
         CHOFERES: withFallback(d.CHOFERES, ["RODRIGUEZ JUAN", "GARCIA PEDRO", "MARTINEZ LUIS", "LOPEZ CARLOS"]),
         // FIX 5 — mapa nombre→tipo (PROPIO/FLETEROS). Sin esto, esFletero siempre da false.
         CHOFERES_TIPO: d.CHOFERES_TIPO || {},
+        // Mapa patente semi→dueño (col G de SEMIS) — CASO A/B del módulo FLETEROS
+        SEMIS_DUENO: d.SEMIS_DUENO || {},
         CAMIONES: withFallback(d.CAMIONES, ["TRA-001 VOLVO", "TRA-002 SCANIA", "TRA-003 MERCEDES", "TRA-004 MAN"]),
         SEMIS: withFallback(d.SEMIS, ["SEMI-001", "SEMI-002", "SEMI-003", "SEMI-004"]),
         COLABORADORES: withFallback(d.COLABORADORES, ["RODRIGUEZ JUAN", "GARCIA PEDRO", "PEREZ ANA", "GOMEZ SOFIA"]),
@@ -1955,7 +1986,13 @@ function App() {
     username: session.username,
     role: perms.role,
     lightMode: lightMode,
-    onToggleTheme: () => setLightMode(p => !p)
+    onToggleTheme: () => setLightMode(p => !p),
+    fleteroPatentes: fleteroPatentes,
+    selPatente: selPatenteFletero,
+    onSelectPatente: p => {
+      setSelPatenteFletero(p);
+      setActiveModule(8);
+    }
   }), /*#__PURE__*/React.createElement("main", {
     className: "main"
   }, dropdowns ? /*#__PURE__*/React.createElement(ModuleRenderer, {
@@ -1963,7 +2000,9 @@ function App() {
     session: session,
     canEdit: canEdit(activeModule),
     dropdowns: dropdowns,
-    notif: notif
+    notif: notif,
+    selPatenteFletero: selPatenteFletero,
+    onFleteroPatentes: setFleteroPatentes
   }) : /*#__PURE__*/React.createElement("div", {
     style: {
       padding: 32,
@@ -2032,7 +2071,10 @@ function Sidebar({
   username,
   role,
   lightMode,
-  onToggleTheme
+  onToggleTheme,
+  fleteroPatentes = [],
+  selPatente = "",
+  onSelectPatente
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: `sidebar${open ? "" : " collapsed"}`
@@ -2043,8 +2085,9 @@ function Sidebar({
     onClick: onToggle
   }, open ? "◀" : "▶")), /*#__PURE__*/React.createElement("nav", {
     className: "sidebar-nav"
-  }, modules.map(m => /*#__PURE__*/React.createElement("div", {
-    key: m.id,
+  }, modules.map(m => /*#__PURE__*/React.createElement(React.Fragment, {
+    key: m.id
+  }, /*#__PURE__*/React.createElement("div", {
     className: `nav-item${active === m.id ? " active" : ""}`,
     onClick: () => onSelect(m.id)
   }, /*#__PURE__*/React.createElement("span", {
@@ -2053,7 +2096,38 @@ function Sidebar({
     className: "nav-label"
   }, m.short), /*#__PURE__*/React.createElement("span", {
     className: "nav-num"
-  }, "0", m.id))))), open && /*#__PURE__*/React.createElement("div", {
+  }, "0", m.id))),
+  // Sub-ítems del módulo FLETEROS: patentes de camiones con tramos pendientes
+  m.id === 8 && active === 8 && open && /*#__PURE__*/React.createElement("div", {
+    style: {
+      margin: "2px 6px 6px 22px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 2
+    }
+  }, fleteroPatentes.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--text3)",
+      padding: "4px 10px",
+      fontStyle: "italic"
+    }
+  }, "Sin tramos pendientes") : fleteroPatentes.map(pat => /*#__PURE__*/React.createElement("div", {
+    key: pat,
+    onClick: e => {
+      e.stopPropagation();
+      onSelectPatente && onSelectPatente(pat);
+    },
+    style: {
+      padding: "6px 10px",
+      borderRadius: 6,
+      cursor: "pointer",
+      fontSize: 12,
+      fontFamily: "var(--mono)",
+      color: selPatente === pat ? "var(--accent)" : "var(--text2)",
+      background: selPatente === pat ? "var(--accent-glow)" : "transparent"
+    }
+  }, "🚛 ", pat)))))), open && /*#__PURE__*/React.createElement("div", {
     className: "sidebar-footer"
   }, /*#__PURE__*/React.createElement("div", {
     className: "user-badge"
@@ -2301,7 +2375,9 @@ function ModuleRenderer({
   session,
   canEdit,
   dropdowns,
-  notif
+  notif,
+  selPatenteFletero,
+  onFleteroPatentes
 }) {
   const props = {
     session,
@@ -2316,6 +2392,11 @@ function ModuleRenderer({
   if (moduleId === 5) return /*#__PURE__*/React.createElement(Module5, props);
   if (moduleId === 6) return /*#__PURE__*/React.createElement(Module6, props);
   if (moduleId === 7) return /*#__PURE__*/React.createElement(Module7, props);
+  if (moduleId === 8) return /*#__PURE__*/React.createElement(Module8, {
+    ...props,
+    selPatente: selPatenteFletero,
+    onPatentesChange: onFleteroPatentes
+  });
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
   }, /*#__PURE__*/React.createElement("div", {
@@ -4139,6 +4220,8 @@ function Module3({
     trips.forEach(trip => {
       if (trip.status === "finalizado" || trip.status === "activo") {
         (trip.segments || []).forEach(seg => {
+          // Los tramos de choferes FLETEROS se liquidan en el módulo FLETEROS (8)
+          if ((dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[seg.chofer]) === "FLETEROS") return;
           if (!settledIds.has(seg.segId)) segs.push({
             ...seg,
             tripId: trip.id,
@@ -4149,7 +4232,7 @@ function Module3({
       }
     });
     return segs;
-  }, [trips, settledIds]);
+  }, [trips, settledIds, dropdowns]);
   const filtered = selDriver ? unsettled.filter(s => s.chofer === selDriver) : unsettled;
   const allDrivers = [...new Set(unsettled.map(s => s.chofer).filter(Boolean))];
   const selSegs = filtered.filter(s => selSegIds.includes(s.segId));
@@ -4603,20 +4686,7 @@ function RendicionForm({
   const anticipoSueldo = entTotalARS - expTotalARS; // entregado neto − gastos
   const saldoChoferPropio = porcChofer - anticipoSueldo;
 
-  // FIX 5 — Choferes FLETEROS: 85% del monto EN DIVISA ORIGINAL, sin conversión a ARS.
-  const esFletero = (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[driver]) === "FLETEROS";
-  // Saldo fletero por divisa: 85% de la suma de montos de tramo en cada divisa original.
-  const saldoFleteroPorDivisa = (() => {
-    const acc = { ARS: 0, CLP: 0, USD: 0 };
-    Object.values(segMonto).forEach(m => {
-      if (m && m.monto) {
-        const div = m.moneda || "USD";
-        acc[div] = (acc[div] || 0) + Number(m.monto) * 0.85;
-      }
-    });
-    return acc;
-  })();
-  // saldoChofer final: para propios el cálculo de siempre; para fleteros se usa saldoFleteroPorDivisa
+  // Los choferes FLETEROS ya no pasan por Rendición: se liquidan en el módulo FLETEROS (8).
   const saldoChofer = saldoChoferPropio;
 
   // estado: "abierta" (stand by) o "cerrada" (rendición finalizada).
@@ -4664,9 +4734,7 @@ function RendicionForm({
         saldoChofer,
         entTotalARS,
         expTotalARS,
-        consumo,
-        esFletero,
-        saldoFleteroPorDivisa
+        consumo
       }
     });
     setSaving(false);
@@ -4956,8 +5024,7 @@ function RendicionForm({
       marginTop: 12
     }
   }, "Total entregado neto (ARS equiv.): ", fmtNum(entTotalARS)))),
-  /* FIX 5.1 — card Gastos oculta para fleteros */
-  !esFletero && /*#__PURE__*/React.createElement("div", {
+  /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 16
@@ -4991,8 +5058,7 @@ function RendicionForm({
       fecha: "",
       proveedor: "",
       litros: "",
-      total: "",
-      pagadoPorEllos: false
+      total: ""
     }])
   }, "+ Carga")), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
@@ -5092,24 +5158,7 @@ function RendicionForm({
   }, "$/L"), /*#__PURE__*/React.createElement("div", {
     className: "field-readonly"
   }, f.litros && f.total ? (Number(f.total) / Number(f.litros)).toFixed(2) : "—")),
-  // FIX 5.3 — check "lo pagaron ellos" (sólo fleteros): si está activo, NO se descuenta en RRHH
-  esFletero && /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
-    style: { maxWidth: 150 }
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Pago"), /*#__PURE__*/React.createElement("label", {
-    style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", paddingTop: 6 },
-    title: "Activar si esta carga la pagó el fletero con su plata"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: !!f.pagadoPorEllos,
-    onChange: e => {
-      const n = [...fuelRows];
-      n[i] = { ...n[i], pagadoPorEllos: e.target.checked };
-      setFuelRows(n);
-    }
-  }), "Lo pagaron ellos")), /*#__PURE__*/React.createElement("button", {
+  /*#__PURE__*/React.createElement("button", {
     className: "btn btn-danger btn-sm btn-icon",
     onClick: () => setFuelRows(p => p.filter((_, idx) => idx !== i))
   }, "✕"))), /*#__PURE__*/React.createElement("div", {
@@ -5186,31 +5235,7 @@ function RendicionForm({
   }, "💰 Liquidación final — ", driver)), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
   },
-  // FIX 5.2 — Para FLETEROS: una sola línea SALDO = 85% del monto en divisa original
-  esFletero ? /*#__PURE__*/React.createElement("div", {
-    style: {
-      background: "var(--bg3)",
-      borderRadius: "var(--radius)",
-      padding: "20px"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "liq-row highlight",
-    style: {
-      border: "2px solid var(--accent)",
-      background: "rgba(79,127,255,0.08)"
-    }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 14, fontWeight: 600, color: "var(--text)" }
-  }, "SALDO"), /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 11, color: "var(--text3)" }
-  }, "85% del monto en divisa original")), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }
-  }, ["USD", "CLP", "ARS"].filter(d => saldoFleteroPorDivisa[d] > 0).map(d => /*#__PURE__*/React.createElement("span", {
-    key: d,
-    style: { fontFamily: "var(--mono)", fontSize: 17, fontWeight: 600, color: "var(--success)" }
-  }, fmtNum(saldoFleteroPorDivisa[d]), " ", d)), (["USD","CLP","ARS"].every(d => !saldoFleteroPorDivisa[d]) && /*#__PURE__*/React.createElement("span", {
-    style: { fontFamily: "var(--mono)", fontSize: 17, color: "var(--text3)" }
-  }, "—"))))) : /*#__PURE__*/React.createElement("div", {
+  /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--bg3)",
       borderRadius: "var(--radius)",
@@ -6846,66 +6871,6 @@ function FacturaForm({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX 5 — Liquidación de FLETEROS (saldos − entregas − combustible)
-// ═══════════════════════════════════════════════════════════════════════════════
-function FleteroLiquidacion(props) {
-  const { saldos, entregas, combustible, stSaldos, stEntregas, stCombustible,
-          saldosARS, entregasARS, combustibleARS, totalFletero,
-          tcUsdArs, tcUsdClp, chofer, periodo, canEdit, saving, onGuardar } = props;
-
-  const fmtDiv = (st) => ["USD","CLP","ARS"].filter(d => st[d] > 0)
-    .map(d => `${fmtNum(st[d])} ${d}`).join(" · ") || "—";
-
-  const seccion = (titulo, items, colItems, st, arsTotal, signo, color) =>
-    /*#__PURE__*/React.createElement("div", { style: { marginBottom: 16 } },
-      /*#__PURE__*/React.createElement("div", {
-        style: { fontWeight: 600, fontSize: 13, marginBottom: 6, color: color }
-      }, titulo),
-      /*#__PURE__*/React.createElement("div", { className: "table-wrap" },
-        /*#__PURE__*/React.createElement("table", null,
-          /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
-            colItems.map((h, i) => /*#__PURE__*/React.createElement("th", { key: i, style: i >= colItems.length - 1 ? { textAlign: "right" } : null }, h)))),
-          /*#__PURE__*/React.createElement("tbody", null,
-            items.length === 0
-              ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", { colSpan: colItems.length, style: { color: "var(--text3)" } }, "Sin registros."))
-              : items.map((it, i) => /*#__PURE__*/React.createElement("tr", { key: i },
-                  /*#__PURE__*/React.createElement("td", null, fmtDate(it.fecha)),
-                  /*#__PURE__*/React.createElement("td", null, it.tramo || (it.responsable ? `${it.responsable} (${it.formaPago})` : "—")),
-                  /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", textAlign: "right", color: color } },
-                    signo, fmtNum(it.monto), " ", it.divisa)))),
-          /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", { style: { background: "var(--bg4)" } },
-            /*#__PURE__*/React.createElement("td", { colSpan: 2, style: { fontWeight: 600 } }, "Subtotal: ", fmtDiv(st)),
-            /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", fontWeight: 600, textAlign: "right", color: color } },
-              signo, fmtNum(arsTotal), " ARS"))))));
-
-  return /*#__PURE__*/React.createElement("div", null,
-    (!tcUsdArs || !tcUsdClp) && /*#__PURE__*/React.createElement("div", {
-      className: "alert alert-warning", style: { marginBottom: 12, fontSize: 12 }
-    }, "⚠️ Ingresá los cambios USD/ARS y USD/CLP para calcular la conversión a ARS."),
-    seccion("(+) Saldos de tramos (85% en divisa original)", saldos,
-      ["Fecha", "Tramo", "Saldo"], stSaldos, saldosARS, "", "var(--success)"),
-    seccion("(−) Entregas de plata en el período", entregas,
-      ["Fecha", "Responsable / forma de pago", "Monto"], stEntregas, entregasARS, "−", "var(--danger)"),
-    seccion("(−) Combustible (sólo lo que pagamos nosotros)", combustible,
-      ["Fecha", "Tramo", "Monto"], stCombustible, combustibleARS, "−", "var(--danger)"),
-    /*#__PURE__*/React.createElement("div", {
-      className: "liq-row highlight",
-      style: { border: "2px solid var(--accent)", background: "rgba(79,127,255,0.08)", padding: "16px", borderRadius: "var(--radius)", marginBottom: 16 }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      style: { fontSize: 14, fontWeight: 600 }
-    }, "TOTAL A PAGAR AL FLETERO"), /*#__PURE__*/React.createElement("div", {
-      style: { fontSize: 11, color: "var(--text3)" }
-    }, "Saldos − Entregas − Combustible (ARS)")), /*#__PURE__*/React.createElement("span", {
-      style: { fontFamily: "var(--mono)", fontSize: 18, fontWeight: 700, color: totalFletero >= 0 ? "var(--success)" : "var(--danger)" }
-    }, totalFletero < 0 ? "−" : "", fmtNum(Math.abs(totalFletero)), " ARS")),
-    canEdit && /*#__PURE__*/React.createElement("div", {
-      style: { display: "flex", justifyContent: "flex-end" }
-    }, /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-primary", onClick: onGuardar, disabled: saving
-    }, saving ? "Guardando..." : "💾 Guardar liquidación")));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 6 — RRHH
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module6({
@@ -6924,9 +6889,6 @@ function Module6({
   const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view, setView] = useState("list"); // "list"|"liq"
   const [entregas, setEntregas] = useState([]); // FIX 3 — para anticipos de sueldo
-  // FIX 5 — tipos de cambio para liquidación de fleteros (se guardan con la liquidación)
-  const [cambioUsdArs, setCambioUsdArs] = useState("");
-  const [cambioUsdClp, setCambioUsdClp] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -6941,9 +6903,6 @@ function Module6({
     });
   }, []);
 
-  // Tipo de chofer (PROPIO / FLETEROS) — FIX 5
-  const tipoChofer = (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[selChofer]) || "PROPIO";
-  const esFletero = tipoChofer === "FLETEROS";
 
   // Choferes únicos con rendiciones
   const choferes = useMemo(() => [...new Set((rendiciones || []).map(r => r.driver).filter(Boolean))], [rendiciones]);
@@ -6986,7 +6945,7 @@ function Module6({
   // de fechas de NINGÚN tramo incluido en alguna rendición de ese chofer.
   // Esas entregas se trasladan a RRHH como ANTICIPO DE SUELDO.
   const anticiposSueldo = useMemo(() => {
-    if (!selChofer || esFletero) return []; // los fleteros se manejan distinto (FIX 5)
+    if (!selChofer) return [];
     // Rangos de fechas de todos los tramos rendidos del chofer (de TODAS sus rendiciones)
     const rangos = [];
     (rendiciones || []).forEach(r => {
@@ -7006,7 +6965,7 @@ function Module6({
       const dentro = rangos.some(rg => fe >= rg.desde && fe <= rg.hasta);
       return !dentro; // huérfana = fuera de todo rango
     });
-  }, [entregas, rendiciones, selChofer, esFletero]);
+  }, [entregas, rendiciones, selChofer]);
 
   // Filtrar anticipos al período seleccionado
   const anticiposPeriodo = useMemo(() => {
@@ -7024,92 +6983,6 @@ function Module6({
 
   const total = subtotal + (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0) - totalAnticipos;
 
-  // ════════ FIX 5 — Liquidación de FLETEROS ════════
-  // Helpers de conversión usando los cambios ingresados en ESTA liquidación
-  const tcUsdArs = parseFloat(String(cambioUsdArs || "").replace(/\./g, "").replace(",", ".")) || 0;
-  const tcUsdClp = parseFloat(String(cambioUsdClp || "").replace(/\./g, "").replace(",", ".")) || 0;
-  // Convierte un monto en su divisa a ARS según los cambios de la liquidación
-  const fleteroARS = (monto, divisa) => {
-    const n = Number(monto) || 0;
-    if (divisa === "ARS") return n;
-    if (divisa === "USD") return n * tcUsdArs;
-    if (divisa === "CLP") return tcUsdClp > 0 ? (n / tcUsdClp) * tcUsdArs : 0; // CLP→USD→ARS
-    return 0;
-  };
-
-  // (+) SALDOS: 85% del monto en divisa original, por cada tramo de las rendiciones del período
-  const fleteroSaldos = [];
-  if (esFletero) {
-    rendFiltradas.forEach(r => {
-      const sfd = r.totals?.saldoFleteroPorDivisa || {};
-      (r.segments || []).forEach(sg => {
-        // distribuir el saldo por divisa que corresponda a esa rendición
-        // (mostramos una línea por tramo con su monto 85%)
-      });
-      // Una línea por divisa con saldo > 0 en esta rendición
-      ["USD", "CLP", "ARS"].forEach(d => {
-        if (sfd[d] > 0) {
-          fleteroSaldos.push({
-            fecha: parseDate(r.createdAt) ? toInputDate(r.createdAt) : "",
-            tramo: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
-            monto: sfd[d],
-            divisa: d
-          });
-        }
-      });
-    });
-  }
-
-  // (−) ENTREGAS de plata al chofer en el período (en divisa original)
-  const fleteroEntregas = useMemo(() => {
-    if (!esFletero || !selChofer || !selPeriodo) return [];
-    return (entregas || []).filter(e => {
-      if (e.chofer !== selChofer) return false;
-      const dt = parseDate(e.fecha);
-      if (!dt) return false;
-      const key = `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
-      return key === selPeriodo;
-    }).map(e => ({
-      fecha: e.fecha,
-      responsable: e.responsable || "",
-      formaPago: e.formaPago || "",
-      monto: e.monto,
-      divisa: e.moneda || "ARS"
-    }));
-  }, [entregas, esFletero, selChofer, selPeriodo]);
-
-  // (−) COMBUSTIBLE de los tramos del chofer en el período, SOLO si NO tiene el check "lo pagaron ellos"
-  const fleteroCombustible = [];
-  if (esFletero) {
-    rendFiltradas.forEach(r => {
-      (r.fuelRows || []).forEach(f => {
-        if (f.pagadoPorEllos) return; // si lo pagaron ellos, NO se descuenta
-        if (!f.total) return;
-        fleteroCombustible.push({
-          fecha: f.fecha,
-          tramo: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
-          monto: f.total,
-          divisa: "ARS" // las facturas de combustible se cargan en ARS (total factura)
-        });
-      });
-    });
-  }
-
-  // Subtotales por divisa
-  const subtotalPorDivisa = (arr) => {
-    const acc = { ARS: 0, CLP: 0, USD: 0 };
-    arr.forEach(x => { acc[x.divisa] = (acc[x.divisa] || 0) + Number(x.monto || 0); });
-    return acc;
-  };
-  const stSaldos = subtotalPorDivisa(fleteroSaldos);
-  const stEntregas = subtotalPorDivisa(fleteroEntregas);
-  const stCombustible = subtotalPorDivisa(fleteroCombustible);
-  // Conversión de cada subtotal a ARS según los cambios de la liquidación
-  const arsDe = (st) => fleteroARS(st.ARS, "ARS") + fleteroARS(st.USD, "USD") + fleteroARS(st.CLP, "CLP");
-  const saldosARS = arsDe(stSaldos);
-  const entregasARS = arsDe(stEntregas);
-  const combustibleARS = arsDe(stCombustible);
-  const totalFletero = saldosARS - entregasARS - combustibleARS;
   async function handleGuardarLiquidacion() {
     if (!selChofer || !selPeriodo) {
       notif.add("Seleccioná chofer y período", "warn");
@@ -7135,22 +7008,17 @@ function Module6({
       liquidacion: {
         chofer: selChofer,
         periodo: selPeriodo,
-        tipoChofer: tipoChofer,
-        basicoMensual: esFletero ? 0 : (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0),
-        subtotalRendiciones: esFletero ? saldosARS : subtotal,
-        totalAnticipos: esFletero ? 0 : totalAnticipos,
-        total: esFletero ? totalFletero : total,
+        tipoChofer: "PROPIO",
+        basicoMensual: parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0,
+        subtotalRendiciones: subtotal,
+        totalAnticipos: totalAnticipos,
+        total: total,
         rendicionIds: rendFiltradas.map(r => r.id),
         detalleRendiciones: detalle,
-        detalleAnticipos: esFletero ? [] : detalleAnticipos,
-        // FIX 5 — datos específicos de fletero
-        cambioUsdArs: esFletero ? tcUsdArs : "",
-        cambioUsdClp: esFletero ? tcUsdClp : "",
-        detalleFletero: esFletero ? {
-          saldos: fleteroSaldos, entregas: fleteroEntregas, combustible: fleteroCombustible,
-          stSaldos, stEntregas, stCombustible,
-          saldosARS, entregasARS, combustibleARS, totalFletero
-        } : {}
+        detalleAnticipos: detalleAnticipos,
+        cambioUsdArs: "",
+        cambioUsdClp: "",
+        detalleFletero: {}
       },
       user: session.username
     });
@@ -7280,22 +7148,7 @@ function Module6({
     placeholder: "Ej: MARZO 2026",
     disabled: !selChofer
   })),
-  // FIX 5 — Fleteros: cambios USD/ARS y USD/CLP. Propios: básico mensual.
-  esFletero ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Cambio USD/ARS"), /*#__PURE__*/React.createElement(MoneyInput, {
-    value: cambioUsdArs,
-    onChange: setCambioUsdArs
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Cambio USD/CLP"), /*#__PURE__*/React.createElement(MoneyInput, {
-    value: cambioUsdClp,
-    onChange: setCambioUsdClp
-  }))) : /*#__PURE__*/React.createElement("div", {
+  /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
@@ -7306,15 +7159,7 @@ function Module6({
     style: {
       marginTop: 12
     }
-  }, esFletero ? /*#__PURE__*/React.createElement(FleteroLiquidacion, {
-    saldos: fleteroSaldos, entregas: fleteroEntregas, combustible: fleteroCombustible,
-    stSaldos, stEntregas, stCombustible,
-    saldosARS, entregasARS, combustibleARS, totalFletero,
-    tcUsdArs, tcUsdClp, fleteroARS,
-    chofer: selChofer, periodo: selPeriodo,
-    canEdit, saving,
-    onGuardar: handleGuardarLiquidacion
-  }) : rendFiltradas.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, rendFiltradas.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "alert alert-info"
   }, "No hay rendiciones para ", selChofer, " en ", selPeriodo, ".") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap",
@@ -7907,6 +7752,512 @@ function GastoGeneralForm({
     onClick: handleSave,
     disabled: saving
   }, saving ? "Guardando..." : "💾 Guardar")))));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MODULE 8 — FLETEROS
+// Liquidación de tramos hechos por choferes fleteros, agrupados por patente de
+// CAMIÓN (tractor). Las patentes con tramos pendientes aparecen como sub-ítems
+// del sidebar. Detección (BD de lectura):
+//   - CHOFERES col B → tipo FLETEROS
+//   - SEMIS col G    → dueño del semi
+// CASO A: dueño del semi = JAVIER COSTA o SOCELPA → saldo = MONTO × 0,85
+// CASO B: cualquier otro dueño → saldo = MONTO × (1 − 0,039) − COMISIÓN
+// MONTO manual en ambos casos. Descuentos estilo planilla (fecha, tipo, detalle,
+// monto, divisa) reordenables por arrastre. Totales POR DIVISA sin conversión.
+// Guardar → hoja FLETEROS_LIQ + PDF en Drive. Historial con link al PDF.
+// ═══════════════════════════════════════════════════════════════════════════════
+const TIPOS_DESCUENTO_FLETERO = ["COMBUSTIBLE", "INSUMOS VARIOS", "SEGURO", "OTROS"];
+function Module8({
+  session,
+  canEdit,
+  dropdowns,
+  notif,
+  selPatente,
+  onPatentesChange
+}) {
+  const [trips, setTrips] = useState([]);
+  const [liqs, setLiqs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [histView, setHistView] = useState(false);
+  const [selSegIds, setSelSegIds] = useState([]);
+  const [datos, setDatos] = useState({}); // { segId: { monto, divisa, comision } }
+  const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, monto, divisa }]
+  const [saving, setSaving] = useState(false);
+  const dragIdxRef = useRef(null);
+  const patentesPrevRef = useRef("");
+  useEffect(() => {
+    Promise.all([cachedGet("getTrips", "trips"), gasCall("getFleterosLiq")]).then(([t, l]) => {
+      if (t.ok) setTrips(t.data);
+      if (l.ok) setLiqs(l.data);
+      setLoading(false);
+    });
+  }, []);
+  const tipoDe = ch => (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[ch]) || "PROPIO";
+  const duenoDe = semi => String(dropdowns.SEMIS_DUENO && dropdowns.SEMIS_DUENO[semi] || "").trim().toUpperCase();
+  const esCasoA = semi => {
+    const d = duenoDe(semi);
+    return d === "JAVIER COSTA" || d === "SOCELPA";
+  };
+
+  // Tramos ya liquidados en FLETEROS_LIQ
+  const settledIds = useMemo(() => {
+    const s = new Set();
+    liqs.forEach(l => (l.tramos || []).forEach(t => s.add(t.segId)));
+    return s;
+  }, [liqs]);
+
+  // Tramos pendientes de fleteros: chofer FLETEROS y no liquidados
+  const pendientes = useMemo(() => {
+    const out = [];
+    trips.forEach(tr => {
+      (tr.segments || []).forEach(sg => {
+        if (tipoDe(sg.chofer) !== "FLETEROS") return;
+        if (settledIds.has(sg.segId)) return;
+        out.push({
+          ...sg,
+          tripId: tr.id
+        });
+      });
+    });
+    return out;
+  }, [trips, settledIds, dropdowns]);
+
+  // Patentes de CAMIONES con tramos pendientes → sub-ítems del sidebar
+  const patentes = useMemo(() => [...new Set(pendientes.map(s => s.tractor).filter(Boolean))].sort(), [pendientes]);
+  useEffect(() => {
+    const key = patentes.join("|");
+    if (key !== patentesPrevRef.current) {
+      patentesPrevRef.current = key;
+      onPatentesChange && onPatentesChange(patentes);
+    }
+  }, [patentes]);
+  const tramosPatente = useMemo(() => pendientes.filter(s => s.tractor === selPatente), [pendientes, selPatente]);
+  const selSegs = tramosPatente.filter(s => selSegIds.includes(s.segId));
+  function toggleSeg(segId) {
+    setSelSegIds(p => p.includes(segId) ? p.filter(x => x !== segId) : [...p, segId]);
+  }
+  function setDato(segId, k, v) {
+    setDatos(p => ({
+      ...p,
+      [segId]: {
+        ...(p[segId] || {
+          divisa: "USD"
+        }),
+        [k]: v
+      }
+    }));
+  }
+  const saldoTramo = sg => {
+    const d = datos[sg.segId] || {};
+    const m = Number(d.monto || 0);
+    if (!m) return 0;
+    if (esCasoA(sg.semi)) return m * 0.85;
+    return m * (1 - 0.039) - Number(d.comision || 0);
+  };
+
+  // Totales por divisa — cada divisa se liquida en su propia moneda, sin conversión
+  const totales = useMemo(() => {
+    const t = {
+      saldos: { ARS: 0, CLP: 0, USD: 0 },
+      descuentos: { ARS: 0, CLP: 0, USD: 0 },
+      neto: { ARS: 0, CLP: 0, USD: 0 }
+    };
+    selSegs.forEach(sg => {
+      const d = datos[sg.segId] || {};
+      const div = d.divisa || "USD";
+      t.saldos[div] += saldoTramo(sg);
+    });
+    descuentos.forEach(ds => {
+      const div = ds.divisa || "ARS";
+      t.descuentos[div] += Number(ds.monto || 0);
+    });
+    CURRENCIES.forEach(dv => {
+      t.neto[dv] = (t.saldos[dv] || 0) - (t.descuentos[dv] || 0);
+    });
+    return t;
+  }, [selSegs, datos, descuentos]);
+
+  // Descuentos estilo planilla: alta, edición, borrado, reordenado por arrastre
+  function addDescuento() {
+    setDescuentos(p => [...p, {
+      fecha: "",
+      tipo: "",
+      detalle: "",
+      monto: "",
+      divisa: "ARS"
+    }]);
+  }
+  function updDescuento(i, k, v) {
+    setDescuentos(p => {
+      const n = [...p];
+      n[i] = {
+        ...n[i],
+        [k]: v
+      };
+      return n;
+    });
+  }
+  function delDescuento(i) {
+    setDescuentos(p => p.filter((_, idx) => idx !== i));
+  }
+  function handleDragStart(i) {
+    dragIdxRef.current = i;
+  }
+  function handleDragOver(e, i) {
+    e.preventDefault();
+    const from = dragIdxRef.current;
+    if (from === null || from === i) return;
+    setDescuentos(p => {
+      const n = [...p];
+      const [row] = n.splice(from, 1);
+      n.splice(i, 0, row);
+      return n;
+    });
+    dragIdxRef.current = i;
+  }
+  async function handleGuardar() {
+    if (!selSegs.length) {
+      notif.add("Seleccioná al menos un tramo", "warn");
+      return;
+    }
+    for (let si = 0; si < selSegs.length; si++) {
+      const sg = selSegs[si];
+      const d = datos[sg.segId] || {};
+      if (!d.monto || Number(d.monto) <= 0) {
+        alert(`Falta MONTO en el tramo ${sg.segId}.`);
+        return;
+      }
+    }
+    const descLimpios = descuentos.filter(ds => ds.monto || ds.tipo || ds.fecha || ds.detalle);
+    for (let di = 0; di < descLimpios.length; di++) {
+      const ds = descLimpios[di];
+      if (!ds.fecha) { alert(`Descuento ${di + 1}: falta FECHA.`); return; }
+      if (!ds.tipo)  { alert(`Descuento ${di + 1}: falta TIPO.`);  return; }
+      if (!ds.monto) { alert(`Descuento ${di + 1}: falta MONTO.`); return; }
+    }
+    setSaving(true);
+    const tramosPayload = selSegs.map(sg => {
+      const d = datos[sg.segId] || {};
+      const casoA = esCasoA(sg.semi);
+      return {
+        segId: sg.segId,
+        tripId: sg.tripId,
+        desde: sg.desde,
+        hasta: sg.hasta,
+        chofer: sg.chofer,
+        tractor: sg.tractor,
+        semi: sg.semi,
+        duenoSemi: duenoDe(sg.semi),
+        caso: casoA ? "A" : "B",
+        monto: Number(d.monto || 0),
+        divisa: d.divisa || "USD",
+        comision: casoA ? 0 : Number(d.comision || 0),
+        saldo: saldoTramo(sg)
+      };
+    });
+    const r = await gasCall("saveFleteroLiq", {
+      liq: {
+        patente: selPatente,
+        tramos: tramosPayload,
+        descuentos: descLimpios,
+        totales
+      },
+      user: session.username
+    });
+    setSaving(false);
+    if (r.ok) {
+      notif.add("Liquidación guardada" + (r.pdfUrl && !String(r.pdfUrl).startsWith("Error") ? " — PDF generado" : ""));
+      setSelSegIds([]);
+      setDatos({});
+      setDescuentos([]);
+      const l = await gasCall("getFleterosLiq");
+      if (l.ok) setLiqs(l.data);
+    } else notif.add(r.error || "Error al guardar", "error");
+  }
+  const histCols = [{
+    key: "createdAt",
+    label: "Fecha",
+    render: v => /*#__PURE__*/React.createElement("span", {
+      style: { fontSize: 11, color: "var(--text3)" }
+    }, fmtDT(v))
+  }, {
+    key: "patente",
+    label: "Patente",
+    render: v => /*#__PURE__*/React.createElement("span", {
+      style: { fontFamily: "var(--mono)", fontSize: 12 }
+    }, v)
+  }, {
+    key: "cantTramos",
+    label: "Tramos",
+    align: "right"
+  }, {
+    key: "_neto",
+    label: "Neto a pagar",
+    sortable: false,
+    filterable: false,
+    render: (v, row) => {
+      const n = row.totales && row.totales.neto || {};
+      const parts = CURRENCIES.filter(d => n[d]).map(d => `${fmtNum(n[d])} ${d}`);
+      return /*#__PURE__*/React.createElement("span", {
+        style: { fontFamily: "var(--mono)", fontSize: 12 }
+      }, parts.join(" · ") || "—");
+    }
+  }, {
+    key: "pdfUrl",
+    label: "PDF",
+    sortable: false,
+    filterable: false,
+    render: v => v && !String(v).startsWith("Error") ? /*#__PURE__*/React.createElement("a", {
+      href: v,
+      target: "_blank",
+      rel: "noreferrer",
+      style: { color: "var(--accent)", fontSize: 12 }
+    }, "📄 Ver PDF") : /*#__PURE__*/React.createElement("span", {
+      style: { color: "var(--text3)", fontSize: 11 }
+    }, v || "—")
+  }, {
+    key: "createdBy",
+    label: "Usuario",
+    render: v => /*#__PURE__*/React.createElement("span", {
+      style: { fontSize: 11 }
+    }, v)
+  }];
+
+  // ── RENDER ──
+  return /*#__PURE__*/React.createElement("div", {
+    className: "module-container"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "module-header"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "module-title"
+  }, "🚛 Fleteros", selPatente && !histView && /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", fontSize: 14, color: "var(--accent)", marginLeft: 10 }
+  }, selPatente)), /*#__PURE__*/React.createElement("div", {
+    className: "module-subtitle"
+  }, histView ? `${liqs.length} liquidación(es) en historial` : `${pendientes.length} tramo(s) de fleteros pendiente(s) en total`)), /*#__PURE__*/React.createElement("div", {
+    className: "module-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: `btn btn-sm ${!histView ? "btn-primary" : "btn-secondary"}`,
+    onClick: () => setHistView(false)
+  }, "Pendientes"), /*#__PURE__*/React.createElement("button", {
+    className: `btn btn-sm ${histView ? "btn-primary" : "btn-secondary"}`,
+    onClick: () => setHistView(true)
+  }, "📁 Historial (", liqs.length, ")"))), loading ? /*#__PURE__*/React.createElement("div", {
+    style: { textAlign: "center", padding: 32 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "spinner",
+    style: { margin: "0 auto" }
+  })) : histView ? /*#__PURE__*/React.createElement(DataTable, {
+    columns: histCols,
+    data: liqs,
+    searchPlaceholder: "Buscar liquidaciones...",
+    emptyText: "Sin liquidaciones de fleteros.",
+    exportFilename: "liquidaciones_fleteros"
+  }) : !selPatente ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty-icon"
+  }, "🚛"), /*#__PURE__*/React.createElement("p", null, patentes.length === 0 ? "No hay tramos de fleteros pendientes." : "Seleccioná una patente en el menú lateral para ver sus tramos.")) : tramosPatente.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty-icon"
+  }, "✅"), /*#__PURE__*/React.createElement("p", null, "No quedan tramos pendientes para ", selPatente, ".")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "card",
+    style: { marginBottom: 16 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-title"
+  }, "🗺 Tramos pendientes — ", selPatente)), /*#__PURE__*/React.createElement("div", {
+    className: "card-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Ruta"), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Semi / dueño"), /*#__PURE__*/React.createElement("th", null, "Caso"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Comisión"), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "Saldo"))), /*#__PURE__*/React.createElement("tbody", null, tramosPatente.map(sg => {
+    const casoA = esCasoA(sg.semi);
+    const sel = selSegIds.includes(sg.segId);
+    const d = datos[sg.segId] || {};
+    return /*#__PURE__*/React.createElement("tr", {
+      key: sg.segId
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: sel,
+      onChange: () => toggleSeg(sg.segId)
+    })), /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", fontSize: 11 }
+    }, sg.segId), /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", fontSize: 11 }
+    }, sg.tripId), /*#__PURE__*/React.createElement("td", null, sg.chofer), /*#__PURE__*/React.createElement("td", {
+      style: { fontSize: 12 }
+    }, sg.desde, " → ", sg.hasta), /*#__PURE__*/React.createElement("td", {
+      style: { fontSize: 12 }
+    }, fmtDate(sg.fechaInicio)), /*#__PURE__*/React.createElement("td", {
+      style: { fontSize: 11 }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: { fontFamily: "var(--mono)" }
+    }, sg.semi || "—"), /*#__PURE__*/React.createElement("div", {
+      style: { color: "var(--text3)", fontSize: 10 }
+    }, duenoDe(sg.semi) || "sin dueño")), /*#__PURE__*/React.createElement("td", null, casoA ? /*#__PURE__*/React.createElement("span", {
+      className: "badge badge-green",
+      title: "Dueño del semi: JAVIER COSTA / SOCELPA → saldo = 85% del monto"
+    }, "A · 85%") : /*#__PURE__*/React.createElement("span", {
+      className: "badge badge-yellow",
+      title: "Semi de tercero → saldo = monto × (1 − 3,9%) − comisión"
+    }, "B · −3,9% − com.")), /*#__PURE__*/React.createElement("td", {
+      style: { minWidth: 170 }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "input-with-currency"
+    }, /*#__PURE__*/React.createElement(MoneyInput, {
+      value: d.monto || "",
+      onChange: v => setDato(sg.segId, "monto", v),
+      placeholder: "0",
+      disabled: !sel || !canEdit,
+      style: { fontSize: 12, padding: "5px 8px" }
+    }), /*#__PURE__*/React.createElement("select", {
+      className: "form-select",
+      style: { width: 70, fontSize: 12 },
+      value: d.divisa || "USD",
+      disabled: !sel || !canEdit,
+      onChange: e => setDato(sg.segId, "divisa", e.target.value)
+    }, CURRENCIES.map(cu => /*#__PURE__*/React.createElement("option", {
+      key: cu,
+      value: cu
+    }, cu))))), /*#__PURE__*/React.createElement("td", {
+      style: { minWidth: 110 }
+    }, casoA ? /*#__PURE__*/React.createElement("span", {
+      style: { color: "var(--text3)", fontSize: 11 }
+    }, "no aplica") : /*#__PURE__*/React.createElement(MoneyInput, {
+      value: d.comision || "",
+      onChange: v => setDato(sg.segId, "comision", v),
+      placeholder: "0",
+      disabled: !sel || !canEdit,
+      style: { fontSize: 12, padding: "5px 8px" }
+    })), /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 600, color: saldoTramo(sg) > 0 ? "var(--success)" : "var(--text3)" }
+    }, sel && d.monto ? fmtNum(saldoTramo(sg)) + " " + (d.divisa || "USD") : "—"));
+  })))))), /*#__PURE__*/React.createElement("div", {
+    className: "card",
+    style: { marginBottom: 16 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-title"
+  }, "➖ Descuentos ", /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 11, fontWeight: 400, color: "var(--text3)" }
+  }, "(arrastrá las filas para ordenarlas)")), canEdit && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: addDescuento
+  }, "+ Agregar fila")), /*#__PURE__*/React.createElement("div", {
+    className: "card-body"
+  }, descuentos.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text3)", fontStyle: "italic" }
+  }, "Sin descuentos. Usá '+ Agregar fila' para cargar combustible, insumos, seguro u otros.") : /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: { width: 30 }
+  }), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Detalle"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", {
+    style: { width: 40 }
+  }))), /*#__PURE__*/React.createElement("tbody", null, descuentos.map((ds, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i,
+    draggable: canEdit,
+    onDragStart: () => handleDragStart(i),
+    onDragOver: e => handleDragOver(e, i),
+    onDragEnd: () => { dragIdxRef.current = null; },
+    style: { cursor: canEdit ? "grab" : "default" }
+  }, /*#__PURE__*/React.createElement("td", {
+    style: { color: "var(--text3)", textAlign: "center", cursor: canEdit ? "grab" : "default" },
+    title: "Arrastrar para reordenar"
+  }, "⠿"), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 150 }
+  }, /*#__PURE__*/React.createElement(DateInput, {
+    value: ds.fecha,
+    onChange: v => updDescuento(i, "fecha", v),
+    disabled: !canEdit
+  })), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 140 }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    style: { fontSize: 12 },
+    value: ds.tipo,
+    disabled: !canEdit,
+    onChange: e => updDescuento(i, "tipo", e.target.value)
+  }, !ds.tipo && /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "— Tipo —"), TIPOS_DESCUENTO_FLETERO.map(tp => /*#__PURE__*/React.createElement("option", {
+    key: tp,
+    value: tp
+  }, tp)))), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 160 }
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    style: { fontSize: 12 },
+    value: ds.detalle,
+    placeholder: "Opcional",
+    disabled: !canEdit,
+    onChange: e => updDescuento(i, "detalle", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 180 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "input-with-currency"
+  }, /*#__PURE__*/React.createElement(MoneyInput, {
+    value: ds.monto,
+    onChange: v => updDescuento(i, "monto", v),
+    placeholder: "0",
+    disabled: !canEdit,
+    style: { fontSize: 12, padding: "5px 8px" }
+  }), /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    style: { width: 70, fontSize: 12 },
+    value: ds.divisa || "ARS",
+    disabled: !canEdit,
+    onChange: e => updDescuento(i, "divisa", e.target.value)
+  }, CURRENCIES.map(cu => /*#__PURE__*/React.createElement("option", {
+    key: cu,
+    value: cu
+  }, cu))))), /*#__PURE__*/React.createElement("td", null, canEdit && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-danger btn-sm btn-icon",
+    onClick: () => delDescuento(i)
+  }, "✕"))))))))), /*#__PURE__*/React.createElement("div", {
+    className: "card",
+    style: { marginBottom: 80 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-header"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card-title"
+  }, "💰 Totales por divisa")), /*#__PURE__*/React.createElement("div", {
+    className: "card-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Divisa"), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "Saldos tramos"), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "Descuentos"), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "NETO A PAGAR"))), /*#__PURE__*/React.createElement("tbody", null, CURRENCIES.filter(dv => totales.saldos[dv] || totales.descuentos[dv]).map(dv => /*#__PURE__*/React.createElement("tr", {
+    key: dv
+  }, /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", fontWeight: 600 }
+  }, dv), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--success)" }
+  }, fmtNum(totales.saldos[dv])), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)" }
+  }, "− ", fmtNum(totales.descuentos[dv])), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 700, fontSize: 14, color: totales.neto[dv] >= 0 ? "var(--success)" : "var(--danger)" }
+  }, fmtNum(totales.neto[dv]), " ", dv))), CURRENCIES.every(dv => !totales.saldos[dv] && !totales.descuentos[dv]) && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 4,
+    style: { color: "var(--text3)", textAlign: "center" }
+  }, "Seleccioná tramos e ingresá montos para ver los totales."))))))), canEdit && /*#__PURE__*/React.createElement("div", {
+    className: "save-bar"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { color: "var(--text2)", fontSize: 13, marginRight: "auto" }
+  }, selSegs.length, " tramo(s) seleccionado(s)"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    onClick: handleGuardar,
+    disabled: saving || selSegs.length === 0
+  }, saving ? "Generando PDF..." : "🖨 Guardar liquidación"))));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
