@@ -2408,6 +2408,142 @@ function ModuleRenderer({
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 1 — INICIO DE VIAJE
+// ─── ENCABEZADO CON FILTRO ESTILO EXCEL (Módulo 1) ─────────────────────────
+// Cada columna tiene un botón ▼ que abre un popover con: ordenar A→Z / Z→A,
+// buscador, "(Seleccionar todo)" y los valores únicos con checkboxes.
+// selected = [] significa "todos" (sin filtro). Popover en position:fixed para
+// que el overflow de la tabla no lo recorte.
+function FilterTh({
+  col,
+  values,
+  selected,
+  onChangeSel,
+  sortCol,
+  sortDir,
+  onSort,
+  open,
+  onToggleOpen,
+  sortOnly
+}) {
+  const [search, setSearch] = useState("");
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  // null/undefined = sin filtro (todos); array = filtro activo (aunque esté vacío)
+  const active = Array.isArray(selected);
+  const sortedHere = sortCol === col.key;
+  function openPop(e) {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setPos({
+      x: Math.max(8, Math.min(r.left, window.innerWidth - 270)),
+      y: r.bottom + 4
+    });
+    setSearch("");
+    onToggleOpen(open ? null : col.key);
+  }
+  const list = open ? values.filter(v => String(v).toLowerCase().includes(search.toLowerCase())) : [];
+  const isChecked = v => !active ? true : selected.includes(v);
+  function toggleVal(v) {
+    const base = active ? selected : values;
+    const next = base.includes(v) ? base.filter(x => x !== v) : [...base, v];
+    // Si quedaron todos marcados, volvemos a "sin filtro" (null)
+    onChangeSel(next.length === values.length ? null : next);
+  }
+  return /*#__PURE__*/React.createElement("th", {
+    style: { whiteSpace: "nowrap" }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { display: "inline-flex", alignItems: "center", gap: 3 }
+  }, col.label, /*#__PURE__*/React.createElement("button", {
+    onClick: openPop,
+    title: sortOnly ? "Ordenar" : "Filtrar / ordenar",
+    style: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      fontSize: 9,
+      padding: "0 2px",
+      lineHeight: 1,
+      color: active || sortedHere ? "var(--accent)" : "var(--text3)"
+    }
+  }, active ? "▼\u2009●" : "▼")), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    onClick: () => onToggleOpen(null),
+    style: { position: "fixed", inset: 0, zIndex: 998 }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      left: pos.x,
+      top: pos.y,
+      zIndex: 999,
+      background: "var(--bg2)",
+      border: "1px solid var(--border2)",
+      borderRadius: 8,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+      width: 250,
+      padding: 10,
+      textTransform: "none",
+      fontWeight: 400,
+      letterSpacing: 0,
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 6, marginBottom: sortOnly ? 0 : 8 }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm " + (sortedHere && sortDir === "asc" ? "btn-primary" : "btn-secondary"),
+    style: { flex: 1, fontSize: 11 },
+    onClick: () => onSort(col.key, "asc")
+  }, "↑ A→Z"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm " + (sortedHere && sortDir === "desc" ? "btn-primary" : "btn-secondary"),
+    style: { flex: 1, fontSize: 11 },
+    onClick: () => onSort(col.key, "desc")
+  }, "↓ Z→A")), !sortOnly && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    placeholder: "Buscar...",
+    value: search,
+    onChange: e => setSearch(e.target.value),
+    style: { fontSize: 12, marginBottom: 8, height: 28 }
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 6,
+      fontSize: 12,
+      padding: "3px 2px",
+      cursor: "pointer",
+      alignItems: "center",
+      borderBottom: "1px solid var(--border)",
+      marginBottom: 4,
+      color: "var(--text)"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !active,
+    onChange: () => onChangeSel(null)
+  }), "(Seleccionar todo)"), /*#__PURE__*/React.createElement("div", {
+    style: { maxHeight: 200, overflowY: "auto" }
+  }, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: "var(--text3)", padding: 4 }
+  }, "Sin valores") : list.map(v => /*#__PURE__*/React.createElement("label", {
+    key: v,
+    style: {
+      display: "flex",
+      gap: 6,
+      fontSize: 12,
+      padding: "3px 2px",
+      cursor: "pointer",
+      alignItems: "center",
+      color: "var(--text)"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: isChecked(v),
+    onChange: () => toggleVal(v)
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+  }, v)))), active && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    style: { width: "100%", marginTop: 8, fontSize: 11 },
+    onClick: () => onChangeSel(null)
+  }, "Limpiar filtro")))));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 function Module1({
   session,
@@ -2420,8 +2556,12 @@ function Module1({
   const [editTrip, setEditTrip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [histView, setHistView] = useState(false);
-  const [filtroId, setFiltroId] = useState(""); // FIX 3 — filtro por ID viaje o tramo
   const [expandido, setExpandido] = useState(null); // FIX 4 — viaje con tramos desplegados
+  // Filtros de columna estilo Excel: { colKey: [valores] } — [] = sin filtro
+  const [colFilters, setColFilters] = useState({});
+  const [sortCol, setSortCol] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
+  const [openFilter, setOpenFilter] = useState(null);
   useEffect(() => {
     loadTrips();
   }, []);
@@ -2505,18 +2645,70 @@ function Module1({
   });
   const active = trips.filter(t => t.status !== "finalizado");
   const hist = trips.filter(t => t.status === "finalizado");
-  let shown = histView ? hist : active;
-  // FIX 3 — filtro por ID de viaje o por ID/ruta de algún tramo
-  if (filtroId.trim()) {
-    const q = filtroId.trim().toLowerCase();
-    shown = shown.filter(t => {
-      if (String(t.id || "").toLowerCase().includes(q)) return true;
-      return (t.segments || []).some(sg =>
-        String(sg.segId || "").toLowerCase().includes(q) ||
-        String(sg.desde || "").toLowerCase().includes(q) ||
-        String(sg.hasta || "").toLowerCase().includes(q)
-      );
+  // ── Helpers de columna (primer tramo / último tramo / tipo / días) ──
+  const seg1 = t => (t.segments || [])[0] || {};
+  const segN = t => {
+    const s = t.segments || [];
+    return s.length ? s[s.length - 1] : {};
+  };
+  const nT = t => (t.segments || []).length;
+  const tipoDe = t => [t.tipoCarga, t.pies ? `${t.pies} PIES` : t.um || "", t.clasificacion].filter(x => x && x !== "-").join(" · ") || "—";
+  // Días abierto: activos = desde el primer tramo hasta hoy; historial = hasta el finalizado
+  const diasDeViaje = t => {
+    const fIni = (t.segments || []).map(sg => toInputDate(sg.fechaInicio)).filter(Boolean).sort();
+    if (!fIni.length) return null;
+    if (histView && t.finalizedAt) {
+      const finStr = toInputDate(String(t.finalizedAt).split(" ")[0]);
+      if (finStr) {
+        const d = Math.round((new Date(finStr) - new Date(fIni[0])) / 86400000);
+        if (!isNaN(d)) return Math.max(0, d);
+      }
+    }
+    return diasDesde(fIni[0]);
+  };
+  // ── Definición de columnas (todas con filtro estilo Excel) ──
+  const M1COLS = [
+    { key: "id",      label: "ID Viaje",  get: t => String(t.id || "—") },
+    { key: "fecha",   label: "Fecha",     get: t => fmtDate(seg1(t).fechaInicio) || "—" },
+    { key: "chofer",  label: "Chofer",    get: t => seg1(t).chofer || "—" },
+    { key: "tractor", label: "Tractor",   get: t => seg1(t).tractor || "—" },
+    { key: "semi",    label: "Semi",      get: t => seg1(t).semi || "—" },
+    { key: "carga",   label: "Carga",     get: t => t.carga || "—" },
+    { key: "tipo",    label: "Tipo",      get: t => tipoDe(t) },
+    { key: "tramo1",  label: "Tramo 1",   get: t => seg1(t).desde || seg1(t).hasta ? `${seg1(t).desde || "?"} - ${seg1(t).hasta || "?"}` : "—" },
+    { key: "fecha2",  label: "Fecha 2",   get: t => nT(t) >= 2 ? fmtDate(segN(t).fechaInicio) || "—" : "—" },
+    { key: "chofer2", label: "Chofer 2",  get: t => nT(t) >= 2 ? segN(t).chofer || "—" : "—" },
+    { key: "tractor2",label: "Tractor 2", get: t => nT(t) >= 2 ? segN(t).tractor || "—" : "—" },
+    { key: "semi2",   label: "Semi 2",    get: t => nT(t) >= 2 ? segN(t).semi || "—" : "—" },
+    { key: "tramo2",  label: "Tramo 2",   get: t => nT(t) >= 2 ? `${segN(t).desde || "?"} - ${segN(t).hasta || "?"}` : "—" },
+    { key: "cliente", label: "Cliente",   get: t => t.cliente || "—" }
+  ];
+  // Valores únicos de una columna, respetando los filtros de las DEMÁS (como Excel)
+  const valoresCol = colKey => {
+    let base = histView ? hist : active;
+    M1COLS.forEach(col => {
+      if (col.key === colKey) return;
+      const sel = colFilters[col.key];
+      if (Array.isArray(sel)) base = base.filter(t => sel.includes(col.get(t)));
     });
+    const col = M1COLS.find(cl => cl.key === colKey);
+    return [...new Set(base.map(t => col.get(t)))].sort((a, b) => String(a).localeCompare(String(b), "es", { numeric: true }));
+  };
+  const hayFiltros = Object.values(colFilters).some(s => Array.isArray(s));
+  // ── Pipeline: filtros de columna (AND) + orden ──
+  let shown = histView ? hist : active;
+  M1COLS.forEach(col => {
+    const sel = colFilters[col.key];
+    if (Array.isArray(sel)) shown = shown.filter(t => sel.includes(col.get(t)));
+  });
+  if (sortCol) {
+    const dir = sortDir === "asc" ? 1 : -1;
+    if (sortCol === "obs") {
+      shown = [...shown].sort((a, b) => (((diasDeViaje(a) ?? -1) - (diasDeViaje(b) ?? -1)) || 0) * dir);
+    } else {
+      const col = M1COLS.find(cl => cl.key === sortCol);
+      if (col) shown = [...shown].sort((a, b) => String(col.get(a)).localeCompare(String(col.get(b)), "es", { numeric: true }) * dir);
+    }
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
@@ -2531,12 +2723,8 @@ function Module1({
   }, /*#__PURE__*/React.createElement("button", {
     title: "Exportar a Excel",
     onClick: () => {
-      const headers = ["ID Viaje", "Carga", "Tipo", "Cliente", "Monto cotizado", "Moneda", "Tramos", "KM total", "Estado doc", "Días abierto", "Estado viaje", "Finalizado"];
-      const rows = shown.map(t => {
-        const fIni = (t.segments || []).map(sg => toInputDate(sg.fechaInicio)).filter(Boolean).sort();
-        const dAb = fIni.length ? diasDesde(fIni[0]) : "";
-        return [t.id, t.carga || "", t.tipoCarga || "", t.cliente || "", t.montoFactura || "", t.moneda || "", (t.segments || []).length, (t.segments || []).reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0), t.statusDoc || "", dAb, t.status || "", t.finalizedAt || ""];
-      });
+      const headers = [...M1COLS.map(col => col.label), "Días abierto", "Tramos", "Finalizado"];
+      const rows = shown.map(t => [...M1COLS.map(col => col.get(t)), diasDeViaje(t) ?? "", nT(t), t.finalizedAt || ""]);
       exportToCSV(histView ? "viajes_historial" : "viajes_activos", headers, rows);
     },
     style: {
@@ -2551,21 +2739,19 @@ function Module1({
     }
   }, "📥"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
-    onClick: () => setHistView(!histView)
+    onClick: () => {
+      setHistView(!histView);
+      setColFilters({});
+      setOpenFilter(null);
+      setSortCol(null);
+    }
   }, histView ? "← Activos" : "Ver Historial"),
-  // FIX 3 — filtro por ID de viaje o tramo
-  /*#__PURE__*/React.createElement("input", {
-    className: "form-input",
-    style: { maxWidth: 220, fontSize: 12, height: 30 },
-    placeholder: "🔎 Filtrar por ID viaje o tramo...",
-    value: filtroId,
-    onChange: e => setFiltroId(e.target.value)
-  }),
-  filtroId && /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-secondary btn-sm btn-icon",
-    onClick: () => setFiltroId(""),
-    title: "Limpiar filtro"
-  }, "✕"),
+  // Botón global para limpiar todos los filtros de columna activos
+  hayFiltros && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: () => setColFilters({}),
+    title: "Quitar todos los filtros de columna"
+  }, "✕ Limpiar filtros"),
   !histView && canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
     onClick: () => {
@@ -2582,17 +2768,70 @@ function Module1({
     style: {
       margin: "0 auto"
     }
-  })) : shown.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  })) : shown.length === 0 && !hayFiltros ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, /*#__PURE__*/React.createElement("div", {
     className: "empty-icon"
   }, histView ? "📂" : "🚚"), /*#__PURE__*/React.createElement("p", null, histView ? "No hay viajes finalizados." : "No hay viajes activos.")) : /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", { className: "tabla-compacta" }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Viaje"), /*#__PURE__*/React.createElement("th", null, "Carga"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Pies"), /*#__PURE__*/React.createElement("th", null, "Clasif."), /*#__PURE__*/React.createElement("th", null, "Cant."), /*#__PURE__*/React.createElement("th", null, "Cliente"), /*#__PURE__*/React.createElement("th", null, "Reserva"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "KM"), /*#__PURE__*/React.createElement("th", null, "Estado doc."), /*#__PURE__*/React.createElement("th", null, "Días ab."), histView && /*#__PURE__*/React.createElement("th", null, "Finalizado"))), /*#__PURE__*/React.createElement("tbody", null, shown.map(t => {
+  }, /*#__PURE__*/React.createElement("table", { className: "tabla-compacta" }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), M1COLS.map(col => /*#__PURE__*/React.createElement(FilterTh, {
+    key: col.key,
+    col: col,
+    values: valoresCol(col.key),
+    selected: colFilters[col.key],
+    onChangeSel: sel => setColFilters(p => {
+      const n = { ...p };
+      if (sel === null) delete n[col.key];else n[col.key] = sel;
+      return n;
+    }),
+    sortCol: sortCol,
+    sortDir: sortDir,
+    onSort: (k, d) => {
+      setSortCol(k);
+      setSortDir(d);
+    },
+    open: openFilter === col.key,
+    onToggleOpen: k => setOpenFilter(k)
+  })), /*#__PURE__*/React.createElement(FilterTh, {
+    col: { key: "obs", label: "Observaciones" },
+    values: [],
+    selected: null,
+    onChangeSel: () => {},
+    sortCol: sortCol,
+    sortDir: sortDir,
+    onSort: (k, d) => {
+      setSortCol(k);
+      setSortDir(d);
+    },
+    open: openFilter === "obs",
+    onToggleOpen: k => setOpenFilter(k),
+    sortOnly: true
+  }))), /*#__PURE__*/React.createElement("tbody", null, shown.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 16,
+    style: { textAlign: "center", color: "var(--text3)", padding: 18, fontSize: 12 }
+  }, "Sin resultados para los filtros aplicados. Usá \u2715 Limpiar filtros o destildá valores en los encabezados.")) : shown.map(t => {
     const totalKm = (t.segments || []).reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0);
-    // Días abierto: desde la fecha de tramo más antigua (inicio) hasta hoy.
-    const fechasIni = (t.segments || []).map(sg => toInputDate(sg.fechaInicio)).filter(Boolean).sort();
-    const diasAbierto = fechasIni.length ? diasDesde(fechasIni[0]) : null;
+    const diasAbierto = diasDeViaje(t);
+    const nTramos = nT(t);
+    const tipoConcat = tipoDe(t);
+    const mono11 = { fontFamily: "var(--mono)", fontSize: 11 };
+    // Estilo por columna: mono para IDs/patentes, nowrap para fechas/lugares
+    const cellStyle = {
+      id: mono11,
+      tractor: mono11,
+      semi: mono11,
+      tractor2: mono11,
+      semi2: mono11,
+      fecha: { fontSize: 11, whiteSpace: "nowrap" },
+      fecha2: { fontSize: 11, whiteSpace: "nowrap" },
+      tramo1: { fontSize: 12, whiteSpace: "nowrap" },
+      tramo2: { fontSize: 12, whiteSpace: "nowrap" },
+      chofer: { fontSize: 12, whiteSpace: "nowrap" },
+      chofer2: { fontSize: 12, whiteSpace: "nowrap" },
+      tipo: { fontSize: 11 },
+      carga: { fontSize: 12 },
+      cliente: { fontSize: 12 }
+    };
     const filaPrincipal = /*#__PURE__*/React.createElement("tr", {
       key: t.id
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
@@ -2604,75 +2843,85 @@ function Module1({
         setView("form");
       },
       title: "Ver/Editar"
-    }, "🔍"),
-    // FIX 4 — botón + para desplegar el detalle de tramos
-    /*#__PURE__*/React.createElement("button", {
+    }, "🔍"), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
       onClick: () => setExpandido(expandido === t.id ? null : t.id),
-      title: "Ver tramos"
-    }, expandido === t.id ? "−" : "+"),
-    // FIX 1 — botón duplicar (sólo en activos y si puede editar)
-    !histView && canEdit && /*#__PURE__*/React.createElement("button", {
+      title: "Ver resumen completo"
+    }, expandido === t.id ? "−" : "+"), !histView && canEdit && /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
       onClick: () => handleDuplicar(t),
       title: "Duplicar viaje"
-    }, "📑"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    }, "📑"))), M1COLS.map(col => /*#__PURE__*/React.createElement("td", {
+      key: col.key,
+      style: cellStyle[col.key] || { fontSize: 12 }
+    }, col.get(t))),
+    // OBSERVACIONES: días abierto + cantidad de tramos (+ fecha fin en historial)
+    /*#__PURE__*/React.createElement("td", {
+      style: { whiteSpace: "nowrap" }
+    }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontFamily: "var(--mono)",
-        fontSize: 12
-      }
-    }, t.id)), /*#__PURE__*/React.createElement("td", null, t.carga), /*#__PURE__*/React.createElement("td", null, t.tipoCarga), /*#__PURE__*/React.createElement("td", null, t.pies || "—"), /*#__PURE__*/React.createElement("td", null, t.clasificacion || "—"), /*#__PURE__*/React.createElement("td", { style: { textAlign: "center" } }, t.cantidad || "—"), /*#__PURE__*/React.createElement("td", null, t.cliente), /*#__PURE__*/React.createElement("td", null, t.reserva || "—"), /*#__PURE__*/React.createElement("td", {
-      style: {
-        fontFamily: "var(--mono)"
-      }
-    }, t.montoFactura, " ", t.moneda), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-      className: "badge badge-gray"
-    }, (t.segments || []).length)), /*#__PURE__*/React.createElement("td", {
-      style: {
-        fontFamily: "var(--mono)",
-        fontSize: 12
-      }
-    }, totalKm > 0 ? totalKm.toLocaleString("es-AR") : "—"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(StatusBadge, {
-      status: t.statusDoc || "incompleto"
-    })), /*#__PURE__*/React.createElement("td", {
-      style: {
-        fontFamily: "var(--mono)",
-        fontSize: 12
-      }
-    }, diasAbierto === null ? "—" : /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: diasAbierto > 30 ? "var(--danger)" : diasAbierto > 15 ? "var(--warning)" : "var(--text2)"
-      }
-    }, diasAbierto === 0 ? "hoy" : `${diasAbierto}d`)), histView && /*#__PURE__*/React.createElement("td", {
-      style: {
         fontSize: 11,
-        color: "var(--text3)"
+        color: diasAbierto === null ? "var(--text3)" : diasAbierto > 30 ? "var(--danger)" : diasAbierto > 15 ? "var(--warning)" : "var(--text2)"
       }
-    }, fmtDate(t.finalizedAt)));
-    // FIX 4 — fila desplegable con el detalle de tramos
+    }, diasAbierto === null ? "—" : diasAbierto === 0 ? "hoy" : `${diasAbierto}d`), /*#__PURE__*/React.createElement("span", {
+      className: "badge badge-gray",
+      style: { marginLeft: 6, fontSize: 9 }
+    }, nTramos, " tramo", nTramos === 1 ? "" : "s"), histView && t.finalizedAt && /*#__PURE__*/React.createElement("span", {
+      style: { marginLeft: 6, fontSize: 10, color: "var(--text3)" }
+    }, "Fin: ", fmtDate(t.finalizedAt))));
+    // Fila desplegable (+): resumen compacto de todo el formulario
     if (expandido !== t.id) return filaPrincipal;
-    const nCols = histView ? 15 : 14;
+    const nCols = 16;
+    const bloq = (label, val) => /*#__PURE__*/React.createElement("div", {
+      style: { minWidth: 120 }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 9, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 0.5 }
+    }, label), /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 11, color: "var(--text)" }
+    }, val || "—"));
     const filaDetalle = /*#__PURE__*/React.createElement("tr", {
       key: t.id + "_detalle"
     }, /*#__PURE__*/React.createElement("td", {
       colSpan: nCols,
-      style: { background: "var(--bg2)", padding: "8px 16px" }
-    }, /*#__PURE__*/React.createElement("table", {
+      style: { background: "var(--bg2)", padding: "10px 16px" }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", flexWrap: "wrap", gap: "8px 22px", marginBottom: 8 }
+    }, bloq("Carga", `${t.carga || "—"} · ${tipoConcat} · Cant: ${t.cantidad || "—"}`), bloq("Monto factura", `${t.montoFactura || "—"} ${t.moneda || ""}`), bloq("Cliente", t.cliente), bloq("MIC", t.numMIC ? `${t.numMIC} (${fmtDate(t.fechaMIC) || "s/f"})` : ""), bloq("CRT", t.numCRT ? `${t.numCRT} (${fmtDate(t.fechaCRT) || "s/f"})` : ""), bloq("Reserva", t.reserva), bloq("Contenedor", t.numContenedor), /*#__PURE__*/React.createElement("div", {
+      style: { minWidth: 120 }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 9, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 0.5 }
+    }, "Doc."), /*#__PURE__*/React.createElement(StatusBadge, {
+      status: t.statusDoc || "incompleto"
+    })), bloq("KM totales", totalKm > 0 ? totalKm.toLocaleString("es-AR") : ""), t.obsDoc && bloq("Obs. doc.", t.obsDoc)), /*#__PURE__*/React.createElement("table", {
       style: { width: "100%", fontSize: 11 }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
-      ["ID Tramo", "Fecha inicio", "Desde → Hasta", "Chofer", "Pat. camión", "Pat. semi", "Estado"].map((h, i) =>
-        /*#__PURE__*/React.createElement("th", { key: i, style: { textAlign: "left", padding: "4px 6px", color: "var(--text3)" } }, h)))),
-    /*#__PURE__*/React.createElement("tbody", null,
-      (t.segments || []).length === 0
-        ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", { colSpan: 7, style: { color: "var(--text3)", padding: "4px 6px" } }, "Sin tramos."))
-        : (t.segments || []).map((sg, i) => /*#__PURE__*/React.createElement("tr", { key: sg.segId || i },
-            /*#__PURE__*/React.createElement("td", { style: { fontFamily: "var(--mono)", padding: "4px 6px" } }, sg.segId || "—"),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, fmtDate(sg.fechaInicio) || "—"),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, `${sg.desde || "?"} → ${sg.hasta || "?"}`),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.chofer || "—"),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.tractor || "—"),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, sg.semi || "—"),
-            /*#__PURE__*/React.createElement("td", { style: { padding: "4px 6px" } }, /*#__PURE__*/React.createElement(StatusBadge, { status: sg.status || "stand by" }))))))));
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["ID Tramo", "Fecha inicio", "Desde → Hasta", "Chofer", "Pat. camión", "Pat. semi", "KM", "Estado"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+      key: i,
+      style: { textAlign: "left", padding: "4px 6px", color: "var(--text3)" }
+    }, h)))), /*#__PURE__*/React.createElement("tbody", null, (t.segments || []).length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+      colSpan: 8,
+      style: { color: "var(--text3)", padding: "4px 6px" }
+    }, "Sin tramos.")) : (t.segments || []).map((sg, i) => /*#__PURE__*/React.createElement("tr", {
+      key: sg.segId || i
+    }, /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", padding: "4px 6px" }
+    }, sg.segId || "—"), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, fmtDate(sg.fechaInicio) || "—"), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, `${sg.desde || "?"} → ${sg.hasta || "?"}`), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, sg.chofer || "—"), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, sg.tractor || "—"), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, sg.semi || "—"), /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", padding: "4px 6px" }
+    }, Number(sg.kmPrevistos || 0) > 0 ? Number(sg.kmPrevistos).toLocaleString("es-AR") : "—"), /*#__PURE__*/React.createElement("td", {
+      style: { padding: "4px 6px" }
+    }, /*#__PURE__*/React.createElement(StatusBadge, {
+      status: sg.status || "stand by"
+    }))))))));
     return [filaPrincipal, filaDetalle];
   })))));
 }
