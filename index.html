@@ -1250,58 +1250,38 @@ function DataTable({
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc"); // "asc" | "desc"
-  const [globalSearch, setGlobalSearch] = useState("");
-  const [colFilters, setColFilters] = useState({}); // { key: value }
+  // Filtros de columna estilo Excel: { key: [valores] }; null/ausente = sin filtro
+  const [colFilters, setColFilters] = useState({});
+  const [openFilter, setOpenFilter] = useState(null);
 
-  // Columnas que tienen filtro activo
-  const [openFilter, setOpenFilter] = useState(null); // key de col con filtro abierto
-  const filterRefs = useRef({});
-
-  // Cerrar filtro al hacer click fuera
-  useEffect(() => {
-    function handle(e) {
-      if (openFilter && filterRefs.current[openFilter] && !filterRefs.current[openFilter].contains(e.target)) {
-        setOpenFilter(null);
-      }
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [openFilter]);
-
-  // Valores únicos por columna para el dropdown de filtro
-  const colUniqueValues = useMemo(() => {
-    const map = {};
+  // Texto que se muestra/filtra para una celda (usa exportValue si existe, si no el valor crudo)
+  const cellText = (col, row) => {
+    const raw = col.filterValue ? col.filterValue(row) : row[col.filterKey || col.key];
+    return raw === null || raw === undefined ? "" : String(raw);
+  };
+  // Valores únicos de una columna, respetando los filtros de las DEMÁS (como Excel)
+  const valoresCol = colKey => {
+    let base = data;
     columns.forEach(col => {
-      if (col.filterable !== false) {
-        const vals = [...new Set(data.map(row => {
-          const v = row[col.key];
-          return v !== null && v !== undefined ? String(v) : "";
-        }).filter(v => v !== ""))].sort();
-        map[col.key] = vals;
-      }
+      if (col.key === colKey) return;
+      const sel = colFilters[col.key];
+      if (Array.isArray(sel)) base = base.filter(r => sel.includes(cellText(col, r)));
     });
-    return map;
-  }, [columns, data]);
+    const col = columns.find(cl => cl.key === colKey);
+    return [...new Set(base.map(r => cellText(col, r)).filter(v => v !== ""))].sort((a, b) => String(a).localeCompare(String(b), "es", { numeric: true }));
+  };
 
   // Pipeline: búsqueda global → filtros por columna → sort
   const processed = useMemo(() => {
     let rows = [...data];
 
-    // 1. Búsqueda global
-    if (globalSearch.trim()) {
-      const q = globalSearch.toLowerCase();
-      rows = rows.filter(row => columns.some(col => {
-        const v = row[col.key];
-        return v !== null && v !== undefined && String(v).toLowerCase().includes(q);
-      }));
-    }
-
-    // 2. Filtros por columna
-    Object.entries(colFilters).forEach(([key, val]) => {
-      if (val) rows = rows.filter(row => String(row[key] || "") === val);
+    // Filtros por columna (multi-valor, combinados con AND)
+    columns.forEach(col => {
+      const sel = colFilters[col.key];
+      if (Array.isArray(sel)) rows = rows.filter(row => sel.includes(cellText(col, row)));
     });
 
-    // 3. Sort — si la columna define sortKey, ordenar por ese campo en lugar del key visible
+    // Sort — si la columna define sortKey, ordenar por ese campo en lugar del key visible
     if (sortKey) {
       const activeCol = columns.find(cl => cl.key === sortKey);
       const sk = activeCol?.sortKey || sortKey;
@@ -1321,7 +1301,7 @@ function DataTable({
       });
     }
     return rows;
-  }, [data, globalSearch, colFilters, sortKey, sortDir]);
+  }, [data, colFilters, sortKey, sortDir]);
   function toggleSort(key) {
     if (sortKey === key) {
       setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -1330,20 +1310,23 @@ function DataTable({
       setSortDir("asc");
     }
   }
-  function setColFilter(key, val) {
-    setColFilters(p => ({
-      ...p,
-      [key]: val
-    }));
-    setOpenFilter(null);
+  function setColFilter(key, sel) {
+    setColFilters(p => {
+      const n = { ...p };
+      if (sel === null) delete n[key];else n[key] = sel;
+      return n;
+    });
+  }
+  function sortBy(key, dir) {
+    setSortKey(key);
+    setSortDir(dir);
   }
   function clearAllFilters() {
     setColFilters({});
-    setGlobalSearch("");
     setSortKey(null);
     setSortDir("asc");
   }
-  const hasActiveFilters = globalSearch || Object.values(colFilters).some(Boolean);
+  const hasActiveFilters = Object.values(colFilters).some(s => Array.isArray(s));
   const SortIcon = ({
     k
   }) => {
@@ -1371,31 +1354,8 @@ function DataTable({
       flexWrap: "wrap"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: "relative",
-      flex: 1,
-      minWidth: 200
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    className: "form-input",
-    style: {
-      paddingLeft: 28,
-      fontSize: 12
-    },
-    placeholder: searchPlaceholder,
-    value: globalSearch,
-    onChange: e => setGlobalSearch(e.target.value)
-  }), /*#__PURE__*/React.createElement("span", {
-    style: {
-      position: "absolute",
-      left: 9,
-      top: "50%",
-      transform: "translateY(-50%)",
-      color: "var(--text3)",
-      fontSize: 12,
-      pointerEvents: "none"
-    }
-  }, "🔍")), hasActiveFilters && /*#__PURE__*/React.createElement("button", {
+    style: { flex: 1, minWidth: 40 }
+  }), hasActiveFilters && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: clearAllFilters,
     style: {
@@ -1439,100 +1399,22 @@ function DataTable({
     }
   }, "📥")), /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(col => {
-    const hasFilter = colFilters[col.key];
-    const isOpen = openFilter === col.key;
-    const uniqueVals = colUniqueValues[col.key] || [];
-    return /*#__PURE__*/React.createElement("th", {
-      key: col.key,
-      style: {
-        ...col.style,
-        position: "relative",
-        userSelect: "none"
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 4
-      }
-    }, col.sortable !== false ? /*#__PURE__*/React.createElement("span", {
-      style: {
-        cursor: "pointer",
-        flex: 1,
-        display: "flex",
-        alignItems: "center"
-      },
-      onClick: () => toggleSort(col.key)
-    }, col.label, /*#__PURE__*/React.createElement(SortIcon, {
-      k: col.key
-    })) : /*#__PURE__*/React.createElement("span", {
-      style: {
-        flex: 1
-      }
-    }, col.label), col.filterable !== false && uniqueVals.length > 1 && /*#__PURE__*/React.createElement("div", {
-      ref: el => filterRefs.current[col.key] = el,
-      style: {
-        position: "relative"
-      }
-    }, /*#__PURE__*/React.createElement("button", {
-      onClick: e => {
-        e.stopPropagation();
-        setOpenFilter(isOpen ? null : col.key);
-      },
-      style: {
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        color: hasFilter ? "var(--accent)" : "var(--text3)",
-        fontSize: 10,
-        padding: "0 2px",
-        lineHeight: 1
-      },
-      title: "Filtrar"
-    }, "▼"), isOpen && /*#__PURE__*/React.createElement("div", {
-      style: {
-        position: "absolute",
-        top: "100%",
-        right: 0,
-        zIndex: 500,
-        background: "var(--bg3)",
-        border: "1px solid var(--border2)",
-        borderRadius: "var(--radius)",
-        minWidth: 160,
-        boxShadow: "0 8px 24px rgba(0,0,0,.4)",
-        maxHeight: 200,
-        overflowY: "auto"
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: "6px 8px",
-        cursor: "pointer",
-        color: !hasFilter ? "var(--accent)" : "var(--text2)",
-        fontSize: 12,
-        borderBottom: "1px solid var(--border)"
-      },
-      onClick: () => setColFilter(col.key, "")
-    }, "— Todos —"), uniqueVals.map(v => /*#__PURE__*/React.createElement("div", {
-      key: v,
-      style: {
-        padding: "6px 8px",
-        cursor: "pointer",
-        fontSize: 12,
-        color: colFilters[col.key] === v ? "var(--accent)" : "var(--text2)",
-        background: colFilters[col.key] === v ? "var(--bg4)" : "transparent"
-      },
-      onClick: () => setColFilter(col.key, v)
-    }, v || "(vacío)"))))), hasFilter && /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 9,
-        color: "var(--accent)",
-        fontWeight: 400,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap"
-      }
-    }, "= ", colFilters[col.key]));
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(col => col.filterable === false && col.sortable === false ? /*#__PURE__*/React.createElement("th", {
+    key: col.key,
+    style: { ...col.style, whiteSpace: "nowrap" }
+  }, col.label) : /*#__PURE__*/React.createElement(FilterTh, {
+    key: col.key,
+    col: col,
+    values: col.filterable === false ? [] : valoresCol(col.key),
+    selected: colFilters[col.key],
+    onChangeSel: sel => setColFilter(col.key, sel),
+    sortCol: sortKey,
+    sortDir: sortDir,
+    onSort: sortBy,
+    open: openFilter === col.key,
+    onToggleOpen: k => setOpenFilter(k),
+    sortOnly: col.filterable === false,
+    thStyle: col.style
   }))), /*#__PURE__*/React.createElement("tbody", null, processed.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     colSpan: columns.length,
     style: {
@@ -1548,7 +1430,7 @@ function DataTable({
       textAlign: col.align || "left",
       ...col.tdStyle
     }
-  }, col.render ? col.render(row[col.key], row) : row[col.key] ?? ""))))))));
+    }, col.render ? col.render(row[col.key], row) : row[col.key] ?? "")))))))));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2423,7 +2305,9 @@ function FilterTh({
   onSort,
   open,
   onToggleOpen,
-  sortOnly
+  sortOnly,
+  noSort,
+  thStyle
 }) {
   const [search, setSearch] = useState("");
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -2433,10 +2317,16 @@ function FilterTh({
   function openPop(e) {
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
-    setPos({
-      x: Math.max(8, Math.min(r.left, window.innerWidth - 270)),
-      y: r.bottom + 4
-    });
+    // RESPONSIVE: ancho acotado al viewport, X clampeada, y si no hay lugar
+    // abajo el popover se abre hacia ARRIBA. El alto se adapta y scrollea.
+    const w = Math.min(250, window.innerWidth - 16);
+    const x = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    const spaceBelow = window.innerHeight - r.bottom - 10;
+    if (spaceBelow >= 200) {
+      setPos({ x, w, top: r.bottom + 4, maxH: Math.min(340, spaceBelow) });
+    } else {
+      setPos({ x, w, bottom: window.innerHeight - r.top + 4, maxH: Math.min(340, Math.max(140, r.top - 12)) });
+    }
     setSearch("");
     onToggleOpen(open ? null : col.key);
   }
@@ -2449,7 +2339,7 @@ function FilterTh({
     onChangeSel(next.length === values.length ? null : next);
   }
   return /*#__PURE__*/React.createElement("th", {
-    style: { whiteSpace: "nowrap" }
+    style: { ...thStyle, whiteSpace: "nowrap" }
   }, /*#__PURE__*/React.createElement("span", {
     style: { display: "inline-flex", alignItems: "center", gap: 3 }
   }, col.label, /*#__PURE__*/React.createElement("button", {
@@ -2471,20 +2361,23 @@ function FilterTh({
     style: {
       position: "fixed",
       left: pos.x,
-      top: pos.y,
+      top: pos.top,
+      bottom: pos.bottom,
       zIndex: 999,
       background: "var(--bg2)",
       border: "1px solid var(--border2)",
       borderRadius: 8,
       boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-      width: 250,
+      width: pos.w || 250,
+      maxHeight: pos.maxH || 340,
+      overflowY: "auto",
       padding: 10,
       textTransform: "none",
       fontWeight: 400,
       letterSpacing: 0,
       textAlign: "left"
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, !noSort && /*#__PURE__*/React.createElement("div", {
     style: { display: "flex", gap: 6, marginBottom: sortOnly ? 0 : 8 }
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-sm " + (sortedHere && sortDir === "asc" ? "btn-primary" : "btn-secondary"),
@@ -2516,9 +2409,7 @@ function FilterTh({
     type: "checkbox",
     checked: !active,
     onChange: () => onChangeSel(null)
-  }), "(Seleccionar todo)"), /*#__PURE__*/React.createElement("div", {
-    style: { maxHeight: 200, overflowY: "auto" }
-  }, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }), "(Seleccionar todo)"), /*#__PURE__*/React.createElement("div", null, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 11, color: "var(--text3)", padding: 4 }
   }, "Sin valores") : list.map(v => /*#__PURE__*/React.createElement("label", {
     key: v,
@@ -8044,9 +7935,11 @@ function Module8({
   }, []);
   const tipoDe = ch => (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[ch]) || "PROPIO";
   const duenoDe = semi => String(dropdowns.SEMIS_DUENO && dropdowns.SEMIS_DUENO[semi] || "").trim().toUpperCase();
+  // CASO A: el dueño del semi es una entidad propia. Match por "contiene" para
+  // tolerar variantes ("JAVIER COSTA", "JAVIER COSTA E HIJOS SA", "J. COSTA S.A.").
   const esCasoA = semi => {
     const d = duenoDe(semi);
-    return d === "JAVIER COSTA" || d === "SOCELPA";
+    return d.includes("JAVIER COSTA") || d.includes("SOCELPA");
   };
 
   // Tramos ya liquidados en FLETEROS_LIQ
