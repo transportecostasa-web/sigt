@@ -1438,7 +1438,7 @@ function DataTable({
     onToggleOpen: k => setOpenFilter(k),
     sortOnly: col.filterable === false,
     thStyle: col.style
-  }))), /*#__PURE__*/React.createElement("tbody", null, processed.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+  })))), /*#__PURE__*/React.createElement("tbody", null, processed.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     colSpan: columns.length,
     style: {
       textAlign: "center",
@@ -1453,7 +1453,7 @@ function DataTable({
       textAlign: col.align || "left",
       ...col.tdStyle
     }
-    }, col.render ? col.render(row[col.key], row) : row[col.key] ?? "")))))))));
+    }, col.render ? col.render(row[col.key], row) : row[col.key] ?? ""))))))));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
