@@ -4048,7 +4048,10 @@ function Module2({
         };
         grouped.push(seen[key]);
       }
-      seen[key][e.moneda] = e.monto;
+      // SUMAR por divisa (no pisar): si la BD tuviera dos registros de la misma
+      // moneda en el grupo, la pantalla muestra el total real — igual que lo
+      // que suman Rendición y RRHH sobre las filas crudas.
+      seen[key][e.moneda] = (Number(seen[key][e.moneda]) || 0) + Number(e.monto || 0);
       seen[key]._items.push(e);
     });
     const cols = [{
@@ -4202,6 +4205,16 @@ function EntregaForm({
     if (!responsable) e.responsable = "Requerido";
     if (!formaPago) e.formaPago = "Requerido";
     if (!montosConValor.length) e.montos = "Ingresá al menos un monto";
+    // Divisas repetidas: dos renglones con la misma moneda generan registros
+    // duplicados en la BD (y la tabla los enmascara). Un renglón por divisa.
+    const vistas = {};
+    for (const m of montosConValor) {
+      if (vistas[m.moneda]) {
+        e.montos = `Hay más de un renglón en ${m.moneda}. Sumalos en uno solo.`;
+        break;
+      }
+      vistas[m.moneda] = true;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
