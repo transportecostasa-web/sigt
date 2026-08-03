@@ -599,8 +599,12 @@ function getKmPrevistos(desde, hasta, kmTable) {
 const _cache = {
   trips: null,
   entregas: null,
+  caja: null,
   rendiciones: null,
-  facturacion: null
+  facturacion: null,
+  rrhh: null,
+  gastosGenerales: null,
+  fleterosLiq: null
 };
 
 // Invalida una o varias claves del caché para forzar recarga en la próxima consulta.
@@ -1615,94 +1619,83 @@ const MoneyInput = React.memo(function MoneyInput({
   disabled = false,
   style = {}
 }) {
-  // "display" = lo que ve el usuario (miles con punto, decimal con coma).
-  // "value" = número puro guardado en el estado del formulario.
-  const [display, setDisplay] = useState(() => {
-    if (value === "" || value === null || value === undefined) return "";
-    return fmtMoneyDisplay(Number(value));
-  });
+  // CARGA vs VISUALIZACIÓN, separadas para eliminar ambigüedades:
+  //   · Con foco (editando): texto crudo — dígitos y UN separador decimal.
+  //     El punto tipeado se convierte a coma al vuelo. SIN puntos de miles.
+  //   · Sin foco: formato es-AR con miles y hasta 2 decimales REDONDEADOS.
+  //     "123456.256" cargado → se ve "123.456,26".
+  const [display, setDisplay] = useState(() => prettyOf(value));
+  const focusedRef = useRef(false);
 
-  // Sincroniza el display si el valor cambia desde afuera (ej: reset del form).
-  useEffect(() => {
-    if (value === "" || value === null || value === undefined) {
-      setDisplay("");
-      return;
-    }
-    const current = parseRaw(display);
-    if (current !== Number(value)) {
-      setDisplay(fmtMoneyDisplay(Number(value)));
-    }
-  }, [value]);
-
-  // Número → display es-AR con hasta 2 decimales (sin ceros de relleno).
-  function fmtMoneyDisplay(n) {
-    if (isNaN(n)) return "";
+  // Número → display bonito es-AR (máx 2 decimales, redondeados).
+  function prettyOf(v) {
+    if (v === "" || v === null || v === undefined || isNaN(Number(v))) return "";
+    const n = Math.round(Number(v) * 100) / 100;
     return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
-
-  // Texto del usuario → número puro. Regla de separadores:
-  //   · Si hay coma → la coma es decimal y los puntos son de miles.
-  //   · Sin coma: un solo punto = decimal; varios puntos = todos de miles.
-  //   · Máximo 2 decimales.
-  // "1.234,56"→1234.56 | "1234.56"→1234.56 | "1.234.567"→1234567 | "1.234"→1.23
-  function parseRaw(str) {
-    let s = String(str).trim().replace(/[^\d.,]/g, "");
+  // Número → texto de edición (sin miles, coma decimal): 123456.26 → "123456,26"
+  function editOf(v) {
+    if (v === "" || v === null || v === undefined || isNaN(Number(v))) return "";
+    return String(Math.round(Number(v) * 100) / 100).replace(".", ",");
+  }
+  // Texto de edición → número (redondeado a 2 decimales).
+  // La coma es el decimal; los puntos que pudieran venir de un pegado son miles.
+  function parseEdit(str) {
+    const s = String(str).replace(/[^\d.,]/g, "");
     if (!s) return NaN;
-    if (s.includes(",")) {
-      const lastComma = s.lastIndexOf(",");
-      const intPart = s.slice(0, lastComma).replace(/[.,]/g, "");
-      const decPart = s.slice(lastComma + 1).replace(/[.,]/g, "").slice(0, 2);
-      const num = parseFloat((intPart || "0") + "." + (decPart || "0"));
-      return isNaN(num) ? NaN : num;
-    }
-    const dots = (s.match(/\./g) || []).length;
-    if (dots === 0) return parseFloat(s);
-    if (dots === 1) {
-      const parts = s.split(".");
-      return parseFloat((parts[0] || "0") + "." + (parts[1].slice(0, 2) || "0"));
-    }
-    return parseFloat(s.replace(/\./g, "")); // varios puntos → miles
+    const ci = s.indexOf(",");
+    const intPart = (ci === -1 ? s : s.slice(0, ci)).replace(/[.,]/g, "");
+    const decPart = ci === -1 ? "" : s.slice(ci + 1).replace(/[.,]/g, "");
+    const n = parseFloat((intPart || "0") + (decPart ? "." + decPart : ""));
+    return isNaN(n) ? NaN : Math.round(n * 100) / 100;
   }
 
-  // Al tipear: los puntos que insertamos son SIEMPRE de miles; la coma es el
-  // único separador decimal mientras se escribe. Así el auto-formato de miles
-  // no se confunde con decimales. Máximo 2 decimales.
+  // Sincronizar desde afuera (reset del form, valor externo) — sólo sin foco,
+  // para no pisar lo que el usuario está tipeando.
+  useEffect(() => {
+    if (!focusedRef.current) setDisplay(prettyOf(value));
+  }, [value]);
+
+  function handleFocus() {
+    focusedRef.current = true;
+    setDisplay(editOf(value));
+  }
+
   function handleChange(e) {
-    let filtered = e.target.value.replace(/[^\d.,]/g, "");
-    // Si el usuario escribió punto como decimal (sin coma aún y un solo punto
-    // seguido de 1-2 dígitos al final), lo convertimos a coma.
-    if (!filtered.includes(",")) {
-      const m = filtered.match(/^(\d+)\.(\d{1,2})$/);
-      if (m) filtered = m[1] + "," + m[2];
-    }
-    const commaIdx = filtered.indexOf(",");
-    let intStr, decStr, hasDec;
-    if (commaIdx === -1) {
-      intStr = filtered.replace(/\./g, ""); decStr = ""; hasDec = false;
+    let s = e.target.value.replace(/[^\d.,]/g, "");
+    if (!s.includes(",")) {
+      const dots = (s.match(/\./g) || []).length;
+      if (dots === 1) {
+        // Un solo punto sin coma → es el decimal que tipeó/pegó el usuario
+        s = s.replace(".", ",");
+      } else if (dots > 1) {
+        // Varios puntos sin coma → texto pegado con miles ("1.234.567")
+        s = s.replace(/\./g, "");
+      }
     } else {
-      intStr = filtered.slice(0, commaIdx).replace(/[.,]/g, "");
-      decStr = filtered.slice(commaIdx + 1).replace(/[.,]/g, "").slice(0, 2);
-      hasDec = true;
+      // Hay coma (decimal) → cualquier punto es de miles: fuera
+      s = s.replace(/\./g, "");
+      // Una sola coma: si pegaron varias, conservar la primera
+      const first = s.indexOf(",");
+      s = s.slice(0, first + 1) + s.slice(first + 1).replace(/,/g, "");
     }
-    const intFmt = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    const result = hasDec ? intFmt + "," + decStr : intFmt;
-    setDisplay(result);
-    const numeric = parseRaw(result);
-    onChange(isNaN(numeric) ? "" : numeric);
+    setDisplay(s);
+    const n = parseEdit(s);
+    onChange(isNaN(n) ? "" : n);
   }
 
-  // Al salir del campo: normaliza el formato.
   function handleBlur() {
-    const numeric = parseRaw(display);
-    if (!isNaN(numeric) && display !== "") {
-      setDisplay(fmtMoneyDisplay(numeric));
-    }
+    focusedRef.current = false;
+    const n = parseEdit(display);
+    setDisplay(isNaN(n) || display === "" ? "" : prettyOf(n));
   }
+
   return /*#__PURE__*/React.createElement("input", {
     className: "form-input",
     type: "text",
     inputMode: "decimal",
     value: display,
+    onFocus: handleFocus,
     onChange: handleChange,
     onBlur: handleBlur,
     placeholder: placeholder,
@@ -1750,7 +1743,26 @@ function App() {
   // Si el servidor devuelve listas vacías, usa datos de ejemplo como fallback.
   useEffect(() => {
     if (!session) return;
-    gasCall("getDropdowns").then(r => {
+    // VELOCIDAD — bootstrap: UNA sola llamada trae dropdowns + todos los datasets
+    // y precarga el caché de todos los módulos. Cambiar de módulo pasa a ser
+    // instantáneo. Si el backend no tiene la ruta (versión vieja), cae al
+    // getDropdowns clásico y los módulos cargan como antes.
+    (async () => {
+      let r = await gasCall("getBootstrap");
+      if (r.ok && r.data && r.data.dropdowns) {
+        const b = r.data;
+        if (b.trips)           _cache.trips = b.trips;
+        if (b.entregas)        _cache.entregas = b.entregas;
+        if (b.caja)            _cache.caja = b.caja;
+        if (b.rendiciones)     _cache.rendiciones = b.rendiciones;
+        if (b.facturacion)     _cache.facturacion = b.facturacion;
+        if (b.rrhh)            _cache.rrhh = b.rrhh;
+        if (b.gastosGenerales) _cache.gastosGenerales = b.gastosGenerales;
+        if (b.fleterosLiq)     _cache.fleterosLiq = b.fleterosLiq;
+        r = { ok: true, data: b.dropdowns };
+      } else {
+        r = await gasCall("getDropdowns");
+      }
       if (!r.ok) return;
       const d = r.data || {};
 
@@ -1826,7 +1838,7 @@ function App() {
         TC_USD: d.TC_USD || 1200,
         TC_CLP: d.TC_CLP || 160
       });
-    });
+    })();
   }, [session]);
 
   // Se llama cuando el login es exitoso: guarda la sesión en localStorage y en el estado.
@@ -7078,7 +7090,7 @@ function Module6({
   useEffect(() => {
     Promise.all([
       cachedGet("getRendiciones", "rendiciones"),
-      gasCall("getRRHH"),
+      cachedGet("getRRHH", "rrhh"),
       cachedGet("getEntregas", "entregas")
     ]).then(([r, l, e]) => {
       if (r.ok) setRendiciones(r.data);
@@ -7210,7 +7222,8 @@ function Module6({
     setSaving(false);
     if (r.ok) {
       notif.add(`Liquidación guardada. PDF: ${r.pdfUrl ? "✓" : "sin PDF"}`);
-      const l = await gasCall("getRRHH");
+      invalidateCache("rrhh");
+      const l = await cachedGet("getRRHH", "rrhh");
       if (l.ok) setLiquidaciones(l.data);
     } else notif.add(r.error || "Error", "error");
   }
@@ -7669,7 +7682,7 @@ function Module7({
   }, []);
   async function loadGastos() {
     setLoading(true);
-    const r = await gasCall("getGastosGenerales");
+    const r = await cachedGet("getGastosGenerales", "gastosGenerales");
     if (r.ok) setGastos(r.data);
     setLoading(false);
   }
@@ -7680,6 +7693,7 @@ function Module7({
     });
     if (r.ok) {
       notif.add("Gasto registrado");
+      invalidateCache("gastosGenerales");
       loadGastos();
       setView("list");
     } else notif.add(r.error || "Error", "error");
@@ -7974,7 +7988,7 @@ function Module8({
   const dragIdxRef = useRef(null);
   const patentesPrevRef = useRef("");
   useEffect(() => {
-    Promise.all([cachedGet("getTrips", "trips"), gasCall("getFleterosLiq")]).then(([t, l]) => {
+    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getFleterosLiq", "fleterosLiq")]).then(([t, l]) => {
       if (t.ok) setTrips(t.data);
       if (l.ok) setLiqs(l.data);
       setLoading(false);
@@ -8206,7 +8220,8 @@ function Module8({
       setDescuentos([]);
       setTcUsd("");
       setTcClp("");
-      const l = await gasCall("getFleterosLiq");
+      invalidateCache("fleterosLiq", "trips");
+      const l = await cachedGet("getFleterosLiq", "fleterosLiq");
       if (l.ok) setLiqs(l.data);
     } else notif.add(r.error || "Error al guardar", "error");
   }
