@@ -214,15 +214,15 @@ const MODULES = [{
   label: "Plata a choferes",
   short: "Plata choferes"
 }, {
-  id: 4,
-  icon: "🏦",
-  label: "Caja",
-  short: "Caja"
-}, {
   id: 3,
   icon: "📊",
   label: "Rendición Viajes",
   short: "Rendición"
+}, {
+  id: 4,
+  icon: "🏦",
+  label: "Caja",
+  short: "Caja"
 }, {
   id: 5,
   icon: "🧾",
@@ -266,19 +266,19 @@ const PERMISSIONS = {
     edit: [1, 2, 4, 3, 5, 6, 7, 8]
   },
   SEBASTIAN: {
-    role: "Editor global",
-    mods: [1, 2, 4, 3, 5, 6, 7, 8],
-    edit: [1, 2, 4, 3, 5, 6, 7, 8]
+    role: "Editor parcial",
+    mods: [1, 2, 5, 7],
+    edit: [1, 2, 5, 7]
   },
   ROLANDO: {
-    role: "Editor global",
-    mods: [1, 2, 4, 3, 5, 6, 7, 8],
-    edit: [1, 2, 4, 3, 5, 6, 7, 8]
+    role: "Editor parcial",
+    mods: [1, 2, 3, 5, 6, 7, 8],
+    edit: [2, 3, 6, 7, 8]
   },
   AUGUSTO: {
-    role: "Editor global",
-    mods: [1, 2, 4, 3, 5, 6, 7, 8],
-    edit: [1, 2, 4, 3, 5, 6, 7, 8]
+    role: "Editor parcial",
+    mods: [1, 2, 3, 5, 7],
+    edit: [2, 3, 5, 7]
   }
 };
 
@@ -855,6 +855,8 @@ function mockApi(action, payload) {
           createdAt: new Date().toISOString(),
           createdBy: payload.user,
           cantTramos: (payload.liq.tramos || []).length,
+          tcUsd: payload.liq.tcUsd || 0,
+          tcClp: payload.liq.tcClp || 0,
           pdfUrl: ""
         });
         lsSet("sigt_db", db);
@@ -1069,7 +1071,7 @@ function exportToCSV(filename, headers, rows) {
 //   - Llama a onChange con "YYYY-MM-DD" solo cuando la fecha es válida
 //   - Si el campo se borra completamente, llama a onChange("")
 // ═══════════════════════════════════════════════════════════════════════════════
-function DateInput({
+const DateInput = React.memo(function DateInput({
   value = "",
   onChange,
   disabled = false,
@@ -1081,6 +1083,18 @@ function DateInput({
   const [display, setDisplay] = useState(() => value ? fmtDate(value) : "");
   const [error, setError] = useState("");
   const inputRef = useRef(null);
+  const nativeRef = useRef(null);
+  // El <input type="date"> nativo es pesado de instanciar; se monta sólo al
+  // pedir el calendario (evita renderizar decenas de pickers a la vez).
+  const [showNative, setShowNative] = useState(false);
+  useEffect(() => {
+    if (showNative && nativeRef.current) {
+      try {
+        if (nativeRef.current.showPicker) nativeRef.current.showPicker();
+        else nativeRef.current.focus();
+      } catch (e) { nativeRef.current.focus(); }
+    }
+  }, [showNative]);
 
   // Sincronizar cuando el valor externo cambia (ej: al resetear el formulario)
   useEffect(() => {
@@ -1158,6 +1172,7 @@ function DateInput({
     setDisplay(fmtDate(iso));
     setError("");
     onChange(iso);
+    setShowNative(false);
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1191,36 +1206,40 @@ function DateInput({
       width: 36,
       flexShrink: 0
     }
-  }, /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    disabled: disabled,
+    onClick: () => !disabled && setShowNative(true),
+    title: "Abrir calendario",
+    style: {
+      height: "100%",
+      width: "100%",
+      background: "var(--bg3)",
+      border: "1px solid var(--border2)",
+      borderRadius: "0 var(--radius) var(--radius) 0",
+      color: "var(--text3)",
+      fontSize: 14,
+      cursor: disabled ? "not-allowed" : "pointer",
+      padding: 0
+    }
+  }, "📅"), showNative && /*#__PURE__*/React.createElement("input", {
+    ref: nativeRef,
     type: "date",
     value: value || "",
     onChange: handleNativePick,
+    onBlur: () => setShowNative(false),
     disabled: disabled,
     style: {
       position: "absolute",
       inset: 0,
       opacity: 0,
-      cursor: disabled ? "not-allowed" : "pointer",
       width: "100%",
       height: "100%",
-      zIndex: 2
+      zIndex: 2,
+      pointerEvents: "none"
     },
     tabIndex: -1
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      height: "100%",
-      background: "var(--bg3)",
-      border: "1px solid var(--border2)",
-      borderRadius: "0 var(--radius) var(--radius) 0",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      color: "var(--text3)",
-      fontSize: 14,
-      cursor: disabled ? "not-allowed" : "pointer",
-      pointerEvents: "none"
-    }
-  }, "📅"))), error && /*#__PURE__*/React.createElement("div", {
+  }))), error && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: "var(--danger)",
@@ -1228,7 +1247,7 @@ function DateInput({
       lineHeight: 1.2
     }
   }, error));
-}
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DATA TABLE — Tabla reutilizable con sort, filtro por columna y búsqueda global
@@ -1589,23 +1608,21 @@ function SearchableSelect({
 //   disabled    — si es true, el campo queda bloqueado (modo lectura)
 //   style       — estilos CSS adicionales opcionales
 // ═══════════════════════════════════════════════════════════════════════════════
-function MoneyInput({
+const MoneyInput = React.memo(function MoneyInput({
   value,
   onChange,
   placeholder = "0",
   disabled = false,
   style = {}
 }) {
-  // "display" es lo que el usuario ve en pantalla (con puntos de miles).
-  // "value" es el número puro que se guarda en el estado del formulario.
-  // Son dos cosas separadas: el display puede ser "1.234.567" mientras value es 1234567.
+  // "display" = lo que ve el usuario (miles con punto, decimal con coma).
+  // "value" = número puro guardado en el estado del formulario.
   const [display, setDisplay] = useState(() => {
     if (value === "" || value === null || value === undefined) return "";
-    return Number(value).toLocaleString("es-AR");
+    return fmtMoneyDisplay(Number(value));
   });
 
-  // Si el valor cambia desde afuera (ej: cuando se resetea el formulario),
-  // actualiza el display para que coincida con el nuevo valor.
+  // Sincroniza el display si el valor cambia desde afuera (ej: reset del form).
   useEffect(() => {
     if (value === "" || value === null || value === undefined) {
       setDisplay("");
@@ -1613,44 +1630,72 @@ function MoneyInput({
     }
     const current = parseRaw(display);
     if (current !== Number(value)) {
-      setDisplay(Number(value).toLocaleString("es-AR"));
+      setDisplay(fmtMoneyDisplay(Number(value)));
     }
   }, [value]);
 
-  // Convierte el texto que ve el usuario al número puro interno.
-  // "1.234.567" → 1234567  |  "1.234,56" → 1234.56
-  function parseRaw(str) {
-    const s = String(str).trim();
-    if (!s) return NaN;
-    if (s.includes(",")) {
-      return parseFloat(s.replace(/\./g, "").replace(",", "."));
-    }
-    return parseFloat(s.replace(/\./g, ""));
+  // Número → display es-AR con hasta 2 decimales (sin ceros de relleno).
+  function fmtMoneyDisplay(n) {
+    if (isNaN(n)) return "";
+    return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
 
-  // Cada vez que el usuario escribe un caracter:
-  // 1. Descarta cualquier caracter que no sea dígito, punto o coma
-  // 2. Agrega puntos de miles automáticamente a la parte entera
-  // 3. Actualiza el display con el formato y llama a onChange con el número puro
+  // Texto del usuario → número puro. Regla de separadores:
+  //   · Si hay coma → la coma es decimal y los puntos son de miles.
+  //   · Sin coma: un solo punto = decimal; varios puntos = todos de miles.
+  //   · Máximo 2 decimales.
+  // "1.234,56"→1234.56 | "1234.56"→1234.56 | "1.234.567"→1234567 | "1.234"→1.23
+  function parseRaw(str) {
+    let s = String(str).trim().replace(/[^\d.,]/g, "");
+    if (!s) return NaN;
+    if (s.includes(",")) {
+      const lastComma = s.lastIndexOf(",");
+      const intPart = s.slice(0, lastComma).replace(/[.,]/g, "");
+      const decPart = s.slice(lastComma + 1).replace(/[.,]/g, "").slice(0, 2);
+      const num = parseFloat((intPart || "0") + "." + (decPart || "0"));
+      return isNaN(num) ? NaN : num;
+    }
+    const dots = (s.match(/\./g) || []).length;
+    if (dots === 0) return parseFloat(s);
+    if (dots === 1) {
+      const parts = s.split(".");
+      return parseFloat((parts[0] || "0") + "." + (parts[1].slice(0, 2) || "0"));
+    }
+    return parseFloat(s.replace(/\./g, "")); // varios puntos → miles
+  }
+
+  // Al tipear: los puntos que insertamos son SIEMPRE de miles; la coma es el
+  // único separador decimal mientras se escribe. Así el auto-formato de miles
+  // no se confunde con decimales. Máximo 2 decimales.
   function handleChange(e) {
-    const raw = e.target.value;
-    const filtered = raw.replace(/[^\d.,]/g, "");
-    const parts = filtered.split(/[,]/);
-    if (parts.length > 2) return; // más de una coma → ignorar
-    const intStr = parts[0].replace(/\./g, "");
-    const formatted = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    const result = parts.length === 2 ? formatted + "," + parts[1] : formatted;
+    let filtered = e.target.value.replace(/[^\d.,]/g, "");
+    // Si el usuario escribió punto como decimal (sin coma aún y un solo punto
+    // seguido de 1-2 dígitos al final), lo convertimos a coma.
+    if (!filtered.includes(",")) {
+      const m = filtered.match(/^(\d+)\.(\d{1,2})$/);
+      if (m) filtered = m[1] + "," + m[2];
+    }
+    const commaIdx = filtered.indexOf(",");
+    let intStr, decStr, hasDec;
+    if (commaIdx === -1) {
+      intStr = filtered.replace(/\./g, ""); decStr = ""; hasDec = false;
+    } else {
+      intStr = filtered.slice(0, commaIdx).replace(/[.,]/g, "");
+      decStr = filtered.slice(commaIdx + 1).replace(/[.,]/g, "").slice(0, 2);
+      hasDec = true;
+    }
+    const intFmt = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    const result = hasDec ? intFmt + "," + decStr : intFmt;
     setDisplay(result);
     const numeric = parseRaw(result);
     onChange(isNaN(numeric) ? "" : numeric);
   }
 
-  // Cuando el usuario sale del campo: limpia el formato para que quede prolijo.
-  // Ej: si escribió "1.234." (con punto al final), lo deja como "1.234"
+  // Al salir del campo: normaliza el formato.
   function handleBlur() {
     const numeric = parseRaw(display);
     if (!isNaN(numeric) && display !== "") {
-      setDisplay(numeric.toLocaleString("es-AR"));
+      setDisplay(fmtMoneyDisplay(numeric));
     }
   }
   return /*#__PURE__*/React.createElement("input", {
@@ -1664,7 +1709,7 @@ function MoneyInput({
     disabled: disabled,
     style: style
   });
-}
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP ROOT
@@ -7922,7 +7967,9 @@ function Module8({
   const [histView, setHistView] = useState(false);
   const [selSegIds, setSelSegIds] = useState([]);
   const [datos, setDatos] = useState({}); // { segId: { monto, divisa, comision } }
-  const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, monto, divisa }]
+  const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, chofer, semi, monto, divisa }]
+  const [tcUsd, setTcUsd] = useState(""); // TC USD→ARS (pedido si hay montos en USD)
+  const [tcClp, setTcClp] = useState(""); // TC CLP→ARS (pedido si hay montos en CLP)
   const [saving, setSaving] = useState(false);
   const dragIdxRef = useRef(null);
   const patentesPrevRef = useRef("");
@@ -7976,6 +8023,9 @@ function Module8({
   }, [patentes]);
   const tramosPatente = useMemo(() => pendientes.filter(s => s.tractor === selPatente), [pendientes, selPatente]);
   const selSegs = tramosPatente.filter(s => selSegIds.includes(s.segId));
+  // Choferes y semis disponibles = los de los tramos seleccionados (para los descuentos)
+  const choferesDisp = [...new Set(selSegs.map(s => s.chofer).filter(Boolean))];
+  const semisDisp = [...new Set(selSegs.map(s => s.semi).filter(Boolean))];
   function toggleSeg(segId) {
     setSelSegIds(p => p.includes(segId) ? p.filter(x => x !== segId) : [...p, segId]);
   }
@@ -7997,28 +8047,49 @@ function Module8({
     if (esCasoA(sg.semi)) return m * 0.85;
     return m * (1 - 0.039) - Number(d.comision || 0);
   };
+  // Conversión a ARS con los TC ingresados (ARS = 1; USD/CLP según cotización)
+  const tcDe = div => div === "USD" ? Number(tcUsd || 0) : div === "CLP" ? Number(tcClp || 0) : 1;
+  const aARS = (monto, div) => Number(monto || 0) * tcDe(div);
+  // ¿Qué divisas extranjeras están en juego? (para pedir sólo los TC necesarios)
+  const divisasEnJuego = useMemo(() => {
+    const s = new Set();
+    selSegs.forEach(sg => {
+      if (Number((datos[sg.segId] || {}).monto || 0)) s.add((datos[sg.segId] || {}).divisa || "USD");
+    });
+    descuentos.forEach(ds => {
+      if (Number(ds.monto || 0)) s.add(ds.divisa || "ARS");
+    });
+    return s;
+  }, [selSegs, datos, descuentos]);
+  const necesitaUsd = divisasEnJuego.has("USD");
+  const necesitaClp = divisasEnJuego.has("CLP");
+  const tcFaltante = (necesitaUsd && !Number(tcUsd)) || (necesitaClp && !Number(tcClp));
 
-  // Totales por divisa — cada divisa se liquida en su propia moneda, sin conversión
+  // Totales: saldos y descuentos por divisa (referencia) + todo convertido a ARS.
+  // El NETO A PAGAR de la liquidación es en ARS = Σ ingresos ARS − Σ descuentos ARS.
   const totales = useMemo(() => {
     const t = {
       saldos: { ARS: 0, CLP: 0, USD: 0 },
       descuentos: { ARS: 0, CLP: 0, USD: 0 },
-      neto: { ARS: 0, CLP: 0, USD: 0 }
+      ingresosARS: 0,
+      descuentosARS: 0,
+      netoARS: 0
     };
     selSegs.forEach(sg => {
       const d = datos[sg.segId] || {};
       const div = d.divisa || "USD";
-      t.saldos[div] += saldoTramo(sg);
+      const s = saldoTramo(sg);
+      t.saldos[div] += s;
+      t.ingresosARS += aARS(s, div);
     });
     descuentos.forEach(ds => {
       const div = ds.divisa || "ARS";
       t.descuentos[div] += Number(ds.monto || 0);
+      t.descuentosARS += aARS(ds.monto, div);
     });
-    CURRENCIES.forEach(dv => {
-      t.neto[dv] = (t.saldos[dv] || 0) - (t.descuentos[dv] || 0);
-    });
+    t.netoARS = t.ingresosARS - t.descuentosARS;
     return t;
-  }, [selSegs, datos, descuentos]);
+  }, [selSegs, datos, descuentos, tcUsd, tcClp]);
 
   // Descuentos estilo planilla: alta, edición, borrado, reordenado por arrastre
   function addDescuento() {
@@ -8026,6 +8097,8 @@ function Module8({
       fecha: "",
       tipo: "",
       detalle: "",
+      chofer: "",
+      semi: "",
       monto: "",
       divisa: "ARS"
     }]);
@@ -8078,10 +8151,15 @@ function Module8({
       if (!ds.tipo)  { alert(`Descuento ${di + 1}: falta TIPO.`);  return; }
       if (!ds.monto) { alert(`Descuento ${di + 1}: falta MONTO.`); return; }
     }
+    // Cotizaciones obligatorias si hay montos en divisa extranjera
+    if (necesitaUsd && !Number(tcUsd)) { alert("Ingresá la cotización del DÓLAR (USD → ARS) para liquidar."); return; }
+    if (necesitaClp && !Number(tcClp)) { alert("Ingresá la cotización del PESO CHILENO (CLP → ARS) para liquidar."); return; }
     setSaving(true);
     const tramosPayload = selSegs.map(sg => {
       const d = datos[sg.segId] || {};
       const casoA = esCasoA(sg.semi);
+      const divisa = d.divisa || "USD";
+      const saldo = saldoTramo(sg);
       return {
         segId: sg.segId,
         tripId: sg.tripId,
@@ -8093,16 +8171,29 @@ function Module8({
         duenoSemi: duenoDe(sg.semi),
         caso: casoA ? "A" : "B",
         monto: Number(d.monto || 0),
-        divisa: d.divisa || "USD",
+        divisa,
         comision: casoA ? 0 : Number(d.comision || 0),
-        saldo: saldoTramo(sg)
+        saldo,
+        saldoARS: aARS(saldo, divisa)
       };
     });
+    const descPayload = descLimpios.map(ds => ({
+      fecha: ds.fecha,
+      tipo: ds.tipo,
+      detalle: ds.detalle || "",
+      chofer: ds.chofer || "",
+      semi: ds.semi || "",
+      monto: Number(ds.monto || 0),
+      divisa: ds.divisa || "ARS",
+      montoARS: aARS(ds.monto, ds.divisa || "ARS")
+    }));
     const r = await gasCall("saveFleteroLiq", {
       liq: {
         patente: selPatente,
         tramos: tramosPayload,
-        descuentos: descLimpios,
+        descuentos: descPayload,
+        tcUsd: Number(tcUsd || 0),
+        tcClp: Number(tcClp || 0),
         totales
       },
       user: session.username
@@ -8113,6 +8204,8 @@ function Module8({
       setSelSegIds([]);
       setDatos({});
       setDescuentos([]);
+      setTcUsd("");
+      setTcClp("");
       const l = await gasCall("getFleterosLiq");
       if (l.ok) setLiqs(l.data);
     } else notif.add(r.error || "Error al guardar", "error");
@@ -8139,11 +8232,17 @@ function Module8({
     sortable: false,
     filterable: false,
     render: (v, row) => {
-      const n = row.totales && row.totales.neto || {};
-      const parts = CURRENCIES.filter(d => n[d]).map(d => `${fmtNum(n[d])} ${d}`);
+      const t = row.totales || {};
+      // Compatibilidad: liquidaciones nuevas traen netoARS; las viejas, neto por divisa
+      const netoARS = typeof t.netoARS === "number" ? t.netoARS : null;
+      const txt = netoARS !== null ? `${fmtNum(netoARS)} ARS` : (() => {
+        const n = t.neto || {};
+        const parts = CURRENCIES.filter(d => n[d]).map(d => `${fmtNum(n[d])} ${d}`);
+        return parts.join(" · ") || "—";
+      })();
       return /*#__PURE__*/React.createElement("span", {
-        style: { fontFamily: "var(--mono)", fontSize: 12 }
-      }, parts.join(" · ") || "—");
+        style: { fontFamily: "var(--mono)", fontSize: 12, fontWeight: 600, color: "var(--success)" }
+      }, txt);
     }
   }, {
     key: "pdfUrl",
@@ -8217,7 +8316,9 @@ function Module8({
     className: "table-wrap"
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Ruta"), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Semi / dueño"), /*#__PURE__*/React.createElement("th", null, "Caso"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Comisión"), /*#__PURE__*/React.createElement("th", {
     style: { textAlign: "right" }
-  }, "Saldo"))), /*#__PURE__*/React.createElement("tbody", null, tramosPatente.map(sg => {
+  }, "Saldo"), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "Saldo ARS"))), /*#__PURE__*/React.createElement("tbody", null, tramosPatente.map(sg => {
     const casoA = esCasoA(sg.semi);
     const sel = selSegIds.includes(sg.segId);
     const d = datos[sg.segId] || {};
@@ -8278,7 +8379,9 @@ function Module8({
       style: { fontSize: 12, padding: "5px 8px" }
     })), /*#__PURE__*/React.createElement("td", {
       style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 600, color: saldoTramo(sg) > 0 ? "var(--success)" : "var(--text3)" }
-    }, sel && d.monto ? fmtNum(saldoTramo(sg)) + " " + (d.divisa || "USD") : "—"));
+    }, sel && d.monto ? fmtNum(saldoTramo(sg)) + " " + (d.divisa || "USD") : "—"), /*#__PURE__*/React.createElement("td", {
+      style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 600, color: "var(--text2)" }
+    }, sel && d.monto ? (tcDe(d.divisa || "USD") ? fmtNum(aARS(saldoTramo(sg), d.divisa || "USD")) + " ARS" : "TC?") : "—"));
   })))))), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: { marginBottom: 16 }
@@ -8299,7 +8402,7 @@ function Module8({
     className: "table-wrap"
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     style: { width: 30 }
-  }), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Detalle"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", {
+  }), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Tipo"), /*#__PURE__*/React.createElement("th", null, "Detalle"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Semi"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", {
     style: { width: 40 }
   }))), /*#__PURE__*/React.createElement("tbody", null, descuentos.map((ds, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
@@ -8340,6 +8443,28 @@ function Module8({
     disabled: !canEdit,
     onChange: e => updDescuento(i, "detalle", e.target.value)
   })), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 130 }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    style: { fontSize: 12 },
+    value: ds.chofer || "",
+    disabled: !canEdit,
+    onChange: e => updDescuento(i, "chofer", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", { value: "" }, "—"), choferesDisp.map(ch => /*#__PURE__*/React.createElement("option", {
+    key: ch,
+    value: ch
+  }, ch)))), /*#__PURE__*/React.createElement("td", {
+    style: { minWidth: 110 }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "form-select",
+    style: { fontSize: 12, fontFamily: "var(--mono)" },
+    value: ds.semi || "",
+    disabled: !canEdit,
+    onChange: e => updDescuento(i, "semi", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", { value: "" }, "—"), semisDisp.map(sm => /*#__PURE__*/React.createElement("option", {
+    key: sm,
+    value: sm
+  }, sm)))), /*#__PURE__*/React.createElement("td", {
     style: { minWidth: 180 }
   }, /*#__PURE__*/React.createElement("div", {
     className: "input-with-currency"
@@ -8368,37 +8493,62 @@ function Module8({
     className: "card-header"
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-title"
-  }, "💰 Totales por divisa")), /*#__PURE__*/React.createElement("div", {
+  }, "💰 Totales")), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
+  },
+  // Cotizaciones — sólo se piden las divisas presentes en la liquidación
+  (necesitaUsd || necesitaClp) && /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: tcFaltante ? "1px solid var(--warning)" : "1px solid var(--border)" }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Divisa"), /*#__PURE__*/React.createElement("th", {
-    style: { textAlign: "right" }
-  }, "Saldos tramos"), /*#__PURE__*/React.createElement("th", {
-    style: { textAlign: "right" }
-  }, "Descuentos"), /*#__PURE__*/React.createElement("th", {
-    style: { textAlign: "right" }
-  }, "NETO A PAGAR"))), /*#__PURE__*/React.createElement("tbody", null, CURRENCIES.filter(dv => totales.saldos[dv] || totales.descuentos[dv]).map(dv => /*#__PURE__*/React.createElement("tr", {
-    key: dv
-  }, /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", fontWeight: 600 }
-  }, dv), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--success)" }
-  }, fmtNum(totales.saldos[dv])), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)" }
-  }, "− ", fmtNum(totales.descuentos[dv])), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 700, fontSize: 14, color: totales.neto[dv] >= 0 ? "var(--success)" : "var(--danger)" }
-  }, fmtNum(totales.neto[dv]), " ", dv))), CURRENCIES.every(dv => !totales.saldos[dv] && !totales.descuentos[dv]) && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-    colSpan: 4,
-    style: { color: "var(--text3)", textAlign: "center" }
-  }, "Seleccioná tramos e ingresá montos para ver los totales."))))))), canEdit && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text2)", alignSelf: "center" }
+  }, "Cotización para liquidar en ARS:"), necesitaUsd && /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 6 }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: { fontSize: 12, fontWeight: 600 }
+  }, "USD → ARS"), /*#__PURE__*/React.createElement(MoneyInput, {
+    value: tcUsd,
+    onChange: setTcUsd,
+    placeholder: "0",
+    disabled: !canEdit,
+    style: { fontSize: 12, padding: "5px 8px", width: 120 }
+  })), necesitaClp && /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 6 }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: { fontSize: 12, fontWeight: 600 }
+  }, "CLP → ARS"), /*#__PURE__*/React.createElement(MoneyInput, {
+    value: tcClp,
+    onChange: setTcClp,
+    placeholder: "0",
+    disabled: !canEdit,
+    style: { fontSize: 12, padding: "5px 8px", width: 120 }
+  })), tcFaltante && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: "var(--warning)", alignSelf: "center" }
+  }, "⚠ Ingresá la cotización para poder guardar")),
+  // Resumen en ARS
+  /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", flexDirection: "column", gap: 8, maxWidth: 420 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", justifyContent: "space-between", fontSize: 13 }
+  }, /*#__PURE__*/React.createElement("span", { style: { color: "var(--text2)" } }, "Ingresos (saldos)"), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", color: "var(--success)" }
+  }, fmtNum(totales.ingresosARS), " ARS")), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", justifyContent: "space-between", fontSize: 13 }
+  }, /*#__PURE__*/React.createElement("span", { style: { color: "var(--text2)" } }, "Descuentos"), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", color: "var(--danger)" }
+  }, "− ", fmtNum(totales.descuentosARS), " ARS")), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, borderTop: "1px solid var(--border2)", paddingTop: 8, marginTop: 4 }
+  }, /*#__PURE__*/React.createElement("span", null, "NETO A PAGAR"), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", color: totales.netoARS >= 0 ? "var(--success)" : "var(--danger)" }
+  }, fmtNum(totales.netoARS), " ARS"))), selSegs.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: { color: "var(--text3)", fontSize: 12, marginTop: 8 }
+  }, "Seleccioná tramos e ingresá montos para ver los totales."))), canEdit && /*#__PURE__*/React.createElement("div", {
     className: "save-bar"
   }, /*#__PURE__*/React.createElement("span", {
     style: { color: "var(--text2)", fontSize: 13, marginRight: "auto" }
   }, selSegs.length, " tramo(s) seleccionado(s)"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: handleGuardar,
-    disabled: saving || selSegs.length === 0
+    disabled: saving || selSegs.length === 0 || tcFaltante
   }, saving ? "Generando PDF..." : "🖨 Guardar liquidación"))));
 }
 
