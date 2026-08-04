@@ -278,7 +278,7 @@ const PERMISSIONS = {
   AUGUSTO: {
     role: "Editor parcial",
     mods: [1, 2, 3, 5, 7],
-    edit: [2, 3, 5, 7]
+    edit: [1, 2, 3, 5, 7]
   }
 };
 
@@ -444,6 +444,26 @@ function parseMoneyInput(raw) {
   const clean = String(raw).replace(/\./g, "").replace(",", ".");
   const n = parseFloat(clean);
   return isNaN(n) ? "" : n;
+}
+// Convierte a número el valor de un campo de dinero, tolerando ambos formatos:
+//   · número puro que ya guarda MoneyInput (2186.22)  → 2186.22
+//   · string formateado es-AR legacy ("2.186,22")     → 2186.22
+// Regla del punto: si viene con coma, la coma es decimal y los puntos son miles;
+// si viene sólo con punto y 1-2 decimales, ese punto es decimal.
+function moneyNum(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  let s = String(v).trim().replace(/[^\d.,-]/g, "");
+  if (!s) return 0;
+  if (s.includes(",")) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else {
+    const dots = (s.match(/\./g) || []).length;
+    if (dots > 1) s = s.replace(/\./g, "");
+    else if (dots === 1 && s.split(".")[1].length === 3) s = s.replace(".", ""); // punto de miles
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
 }
 function formatMoneyDisplay(raw) {
   const digits = String(raw).replace(/[^\d,]/g, "");
@@ -1312,8 +1332,8 @@ function DataTable({
         const av = a[sk] ?? "";
         const bv = b[sk] ?? "";
         // Intentar comparación numérica si ambos son números
-        const an = parseFloat(String(av).replace(/\./g, "").replace(",", "."));
-        const bn = parseFloat(String(bv).replace(/\./g, "").replace(",", "."));
+        const an = moneyNum(av);
+        const bn = moneyNum(bv);
         let cmp;
         if (!isNaN(an) && !isNaN(bn)) {
           cmp = an - bn;
@@ -1638,15 +1658,31 @@ const MoneyInput = React.memo(function MoneyInput({
     if (v === "" || v === null || v === undefined || isNaN(Number(v))) return "";
     return String(Math.round(Number(v) * 100) / 100).replace(".", ",");
   }
-  // Texto de edición → número (redondeado a 2 decimales).
-  // La coma es el decimal; los puntos que pudieran venir de un pegado son miles.
+  // Texto de edición → número (redondeado a 2 decimales). Reglas:
+  //   · Hay coma → la coma es el decimal; todos los puntos son de miles.
+  //     "2.186,22" → 2186.22 | "50.000,25" → 50000.25
+  //   · Sin coma, un solo punto: decimal si le siguen 1-2 dígitos ("999.5",
+  //     "2186.22"); de miles si le siguen 3 ("2.186" → 2186).
+  //   · Sin coma, varios puntos: todos de miles ("1.234.567" → 1234567).
   function parseEdit(str) {
     const s = String(str).replace(/[^\d.,]/g, "");
     if (!s) return NaN;
-    const ci = s.indexOf(",");
-    const intPart = (ci === -1 ? s : s.slice(0, ci)).replace(/[.,]/g, "");
-    const decPart = ci === -1 ? "" : s.slice(ci + 1).replace(/[.,]/g, "");
-    const n = parseFloat((intPart || "0") + (decPart ? "." + decPart : ""));
+    let n;
+    if (s.includes(",")) {
+      const ci = s.lastIndexOf(",");
+      const intPart = s.slice(0, ci).replace(/[.,]/g, "");
+      const decPart = s.slice(ci + 1).replace(/[.,]/g, "");
+      n = parseFloat((intPart || "0") + (decPart ? "." + decPart : ""));
+    } else {
+      const dots = (s.match(/\./g) || []).length;
+      if (dots === 0) n = parseFloat(s);
+      else if (dots === 1) {
+        const p = s.split(".");
+        n = (p[1].length >= 1 && p[1].length <= 2)
+          ? parseFloat((p[0] || "0") + "." + p[1])
+          : parseFloat(p[0] + p[1]);
+      } else n = parseFloat(s.replace(/\./g, ""));
+    }
     return isNaN(n) ? NaN : Math.round(n * 100) / 100;
   }
 
@@ -1662,23 +1698,10 @@ const MoneyInput = React.memo(function MoneyInput({
   }
 
   function handleChange(e) {
-    let s = e.target.value.replace(/[^\d.,]/g, "");
-    if (!s.includes(",")) {
-      const dots = (s.match(/\./g) || []).length;
-      if (dots === 1) {
-        // Un solo punto sin coma → es el decimal que tipeó/pegó el usuario
-        s = s.replace(".", ",");
-      } else if (dots > 1) {
-        // Varios puntos sin coma → texto pegado con miles ("1.234.567")
-        s = s.replace(/\./g, "");
-      }
-    } else {
-      // Hay coma (decimal) → cualquier punto es de miles: fuera
-      s = s.replace(/\./g, "");
-      // Una sola coma: si pegaron varias, conservar la primera
-      const first = s.indexOf(",");
-      s = s.slice(0, first + 1) + s.slice(first + 1).replace(/,/g, "");
-    }
+    // NO reescribir lo que el usuario está tipeando (eso rompía "2.186,22"):
+    // sólo filtrar caracteres inválidos. La interpretación la hace parseEdit
+    // y el formato prolijo se aplica recién al salir del campo (blur).
+    const s = e.target.value.replace(/[^\d.,]/g, "");
     setDisplay(s);
     const n = parseEdit(s);
     onChange(isNaN(n) ? "" : n);
@@ -3094,8 +3117,11 @@ function TripForm({
       // flag: tramo ida y vuelta (km duplicados)
       kmManual: kmAuto === null,
       // true = el usuario debe ingresar manualmente
+      odometro: "",
+      // lectura del odómetro del tractor en ese tramo
       status: "stand by",
-      observaciones: ""
+      observaciones: "",
+      vacio: false
     };
   }
   function addSegment() {
@@ -3210,10 +3236,6 @@ function TripForm({
       }
       if (!s.semi) {
         alert(`Tramo ${i + 1}: falta "Semi".`);
-        return false;
-      }
-      if (!s.fechaLlegadaReal) {
-        alert(`Tramo ${i + 1}: falta "Fecha real llegada".`);
         return false;
       }
       if (!s.kmPrevistos && s.kmPrevistos !== 0) {
@@ -3817,7 +3839,7 @@ function SegmentCard({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Fecha prevista llegada ", /*#__PURE__*/React.createElement(Fin, {
+  }, "Fecha llegada ", /*#__PURE__*/React.createElement(Fin, {
     show: !readonly
   })), /*#__PURE__*/React.createElement(DateInput, {
     value: toInputDate(seg.fechaLlegadaPrevista),
@@ -3865,9 +3887,7 @@ function SegmentCard({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Fecha real llegada ", /*#__PURE__*/React.createElement(Fin, {
-    show: !readonly
-  })), /*#__PURE__*/React.createElement(DateInput, {
+  }, "Fecha carga/descarga"), /*#__PURE__*/React.createElement(DateInput, {
     value: toInputDate(seg.fechaLlegadaReal),
     onChange: v => onChange("fechaLlegadaReal", v),
     disabled: readonly
@@ -3915,6 +3935,21 @@ function SegmentCard({
       color: "var(--success)"
     }
   }, fmtKm(seg.kmPrevistos)))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      maxWidth: 160
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Odómetro"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    value: seg.odometro ?? "",
+    placeholder: "km",
+    disabled: readonly,
+    onChange: e => onChange("odometro", e.target.value === "" ? "" : Number(e.target.value))
+  })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
@@ -3939,7 +3974,30 @@ function SegmentCard({
     onChange: e => onChange("observaciones", e.target.value),
     disabled: readonly,
     placeholder: "Opcional"
-  })))));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: {
+      maxWidth: 120,
+      justifyContent: "flex-end"
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Va vacío"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      height: 38,
+      cursor: readonly ? "default" : "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!seg.vacio,
+    disabled: readonly,
+    onChange: e => onChange("vacio", e.target.checked)
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 12, color: "var(--text2)" }
+  }, seg.vacio ? "Sí" : "No"))))));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -6337,7 +6395,7 @@ function FacturaForm({
     ARS: 1
   };
   function toUSD(monto, divisa) {
-    const n = parseFloat(String(monto || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const n = moneyNum(monto);
     if (divisa === "USD") return n;
     if (divisa === "ARS") return n / TC.USD;
     if (divisa === "CLP") return n * TC.CLP / 100 / TC.USD;
@@ -6351,14 +6409,14 @@ function FacturaForm({
 
   // Diferencia cancelación
   const diferencia = useMemo(() => {
-    const mc = parseFloat(String(montoFcCliente || "").replace(/\./g, "").replace(",", ".")) || 0;
-    const ca = parseFloat(String(cancelacion || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const mc = moneyNum(montoFcCliente);
+    const ca = moneyNum(cancelacion);
     return mc - ca;
   }, [montoFcCliente, cancelacion]);
 
   // Alerta diferencia monto viaje vs factura
-  const montoViajeNum = parseFloat(String(cotizacionInicial || "").replace(/\./g, "").replace(",", ".")) || 0;
-  const montoFcNum = parseFloat(String(montoFcCliente || "").replace(/\./g, "").replace(",", ".")) || 0;
+  const montoViajeNum = moneyNum(cotizacionInicial);
+  const montoFcNum = moneyNum(montoFcCliente);
   const hayDifMonto = montoViajeNum > 0 && montoFcNum > 0 && (montoFcNum !== montoViajeNum || divisaCliente !== cotizacionDivisa);
   function addExtraCosto() {
     setExtraCostos(p => [...p, {
@@ -7191,7 +7249,7 @@ function Module6({
   // Total de anticipos (en ARS equivalente, usando TC global del sistema)
   const totalAnticipos = anticiposPeriodo.reduce((s, e) => s + toARS(e.monto, e.moneda || "ARS"), 0);
 
-  const total = subtotal + (parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0) - totalAnticipos;
+  const total = subtotal + (moneyNum(basicoMensual)) - totalAnticipos;
 
   async function handleGuardarLiquidacion() {
     if (!selChofer || !selPeriodo) {
@@ -7219,7 +7277,7 @@ function Module6({
         chofer: selChofer,
         periodo: selPeriodo,
         tipoChofer: "PROPIO",
-        basicoMensual: parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0,
+        basicoMensual: moneyNum(basicoMensual),
         subtotalRendiciones: subtotal,
         totalAnticipos: totalAnticipos,
         total: total,
@@ -7423,7 +7481,7 @@ function Module6({
       fontFamily: "var(--mono)",
       textAlign: "right"
     }
-  }, fmtNum(parseFloat(String(basicoMensual || "").replace(/\./g, "").replace(",", ".")) || 0)), /*#__PURE__*/React.createElement("td", null)),
+  }, fmtNum(moneyNum(basicoMensual))), /*#__PURE__*/React.createElement("td", null)),
   // FIX 3 — Filas de anticipos de sueldo (entregas huérfanas), sólo choferes propios
   ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
     key: "ant-header",
