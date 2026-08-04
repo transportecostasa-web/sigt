@@ -294,7 +294,7 @@ const SEGMENT_STATUSES = ["stand by", "en curso", "completado"];
 
 // Lista de países limítrofes que NO son Argentina.
 // Se usa para detectar si un viaje cruza la frontera y debe llevar prefijo INT en el ID.
-const PAISES_EXTRANJEROS = ["PARAGUAY", "CHINA", "BRASIL", "CHILE", "URUGUAY", "BOLIVIA", "PERÚ", "COLOMBIA", "ARGENTINA NO"];
+const PAISES_EXTRANJEROS = ["PARAGUAY", "BRASIL", "CHILE", "URUGUAY", "BOLIVIA", "PERÚ", "COLOMBIA", "ARGENTINA NO"];
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
@@ -330,6 +330,11 @@ function lsGet(k, def = null) {
 function lsSet(k, v) {
   try {
     localStorage.setItem(k, JSON.stringify(v));
+  } catch {}
+}
+function lsRemove(k) {
+  try {
+    localStorage.removeItem(k);
   } catch {}
 }
 
@@ -692,7 +697,14 @@ async function gasCall(action, payload = {}) {
       };
     }
     try {
-      return JSON.parse(text);
+      const parsed = JSON.parse(text);
+      // Sesión vencida/ inválida: limpiar la sesión y avisar a la App para que
+      // muestre el login SIN error 404/genérico. El backend marca sessionExpired.
+      if (parsed && parsed.sessionExpired) {
+        lsRemove("sigt_session");
+        window.dispatchEvent(new CustomEvent("sigt-session-expired"));
+      }
+      return parsed;
     } catch {
       return {
         ok: false,
@@ -1890,14 +1902,23 @@ function App() {
     setMustChangePw(false);
   }
 
-  // Cierra sesión automáticamente cuando se cierra la pestaña o el navegador
+  // Sesión vencida: gasCall dispara "sigt-session-expired" cuando el backend
+  // rechaza el token. En vez de mostrar un 404/error, volvemos limpio al login
+  // con un aviso suave. Así el usuario simplemente vuelve a ingresar.
   useEffect(() => {
-    function onUnload() {
-      lsSet("sigt_session", null);
+    function onExpired() {
+      setSession(null);
+      setMustChangePw(false);
+      if (notif && notif.add) notif.add("Tu sesión expiró. Ingresá de nuevo.", "warn");
     }
-    window.addEventListener("beforeunload", onUnload);
-    return () => window.removeEventListener("beforeunload", onUnload);
-  }, []);
+    window.addEventListener("sigt-session-expired", onExpired);
+    return () => window.removeEventListener("sigt-session-expired", onExpired);
+  }, [notif]);
+
+  // La sesión persiste entre recargas (F5) mientras el token siga válido en el
+  // backend. Al recargar, el bootstrap vuelve a pedir todos los datos frescos,
+  // así que lo que ves siempre refleja la BD del momento. Si el token venció,
+  // la primera llamada dispara "sigt-session-expired" y se va limpio al login.
 
   // Verifica cada 5 minutos si el token expiró en el servidor (8hs desde el login).
   // Si el servidor rechaza la solicitud, cierra la sesión automáticamente.
