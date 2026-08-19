@@ -103,6 +103,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .card-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
 .card-body{padding:20px;}
 .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+tr.row-clickable:hover td{background:var(--bg3);}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 thead tr{background:var(--bg3);}
 th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
@@ -284,6 +285,72 @@ const PERMISSIONS = {
 
 // Divisas disponibles en todos los campos de dinero del sistema.
 const CURRENCIES = ["USD", "ARS", "CLP"];
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TIPO DE CAMBIO - UNO SOLO PARA TODO EL SISTEMA
+// Sale de las hojas de config "USD/ARS CHOFERES" y "CLP/ARS CHOFERES" (celda A2).
+//   TC_USD = cuantos ARS vale 1 USD      (ej: 1200)
+//   TC_CLP = cuantos ARS valen 100 CLP   (ej: 160 -> 1 CLP = 1,6 ARS)
+// OJO con el /100 del CLP: es la unidad en la que se carga en el Sheet.
+// Para cambiar la cotizacion de todo el sistema se toca el Sheet, no el codigo.
+// ══════════════════════════════════════════════════════════════════════════════
+const TC_DEFAULTS = { USD: 1200, CLP: 160 };
+
+function tcDeDropdowns(dropdowns) {
+  return {
+    USD: Number(dropdowns && dropdowns.TC_USD) || TC_DEFAULTS.USD,
+    CLP: Number(dropdowns && dropdowns.TC_CLP) || TC_DEFAULTS.CLP,
+    ARS: 1
+  };
+}
+
+// Convierte un monto de cualquier divisa a ARS con las tasas tc = {USD, CLP}.
+function convARS(tc, monto, cur) {
+  const n = Number(monto || 0);
+  if (cur === "USD") return n * (Number(tc.USD) || 0);
+  if (cur === "CLP") return n * (Number(tc.CLP) || 0) / 100;
+  return n;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FLETEROS - se identifican por el DUENO DEL TRACTOR, no por el nombre del chofer
+// Hoja CAMIONES: col A = patente, col G = TRANSPORTE (dueno).
+// Si el dueno no es una empresa del grupo, el tramo es de un fletero y se liquida
+// en el modulo 8. Un chofer propio manejando un camion de un tercero cuenta como
+// fletero, que es justamente el caso que la regla vieja (por chofer) no veia.
+// ══════════════════════════════════════════════════════════════════════════════
+const EMPRESAS_PROPIAS = ["JAVIER COSTA", "SOCELPA"];
+
+// Las patentes se comparan sin guiones ni espacios: "NSE981" == "NSE-981".
+const normPatente = p => String(p || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+function duenoTractor(dropdowns, patente) {
+  const mapa = (dropdowns && dropdowns.CAMIONES_DUENO) || {};
+  return String(mapa[normPatente(patente)] || "").trim().toUpperCase();
+}
+
+function esEmpresaPropia(dueno) {
+  const d = String(dueno || "").toUpperCase();
+  return EMPRESAS_PROPIAS.some(e => d.includes(e));
+}
+
+// Tramo de fletero = el tractor tiene dueno cargado y no es del grupo.
+// Si la patente no esta en CAMIONES o no tiene dueno, se trata como propio:
+// preferimos no liquidarle plata a un tercero por un dato mal cargado.
+// Devuelve la patente tal como esta escrita en la hoja CAMIONES ("NSE-981"),
+// venga como venga cargada en el tramo ("NSE981"). Asi un mismo camion no se
+// parte en dos grupos distintos a la hora de liquidar.
+function patenteCanonica(dropdowns, patente) {
+  const nn = normPatente(patente);
+  const lista = (dropdowns && dropdowns.CAMIONES) || [];
+  return lista.find(c => normPatente(c) === nn) || patente;
+}
+
+function esTramoFletero(dropdowns, seg) {
+  const d = duenoTractor(dropdowns, seg && seg.tractor);
+  if (!d) return false;
+  return !esEmpresaPropia(d);
+}
 
 // Categorías de gastos disponibles en la Rendición de Gastos (Módulo 3).
 // El orden aquí es el orden que aparece en el desplegable.
@@ -1301,7 +1368,8 @@ function DataTable({
   searchPlaceholder = "Buscar...",
   emptyText = "Sin registros.",
   stickyHeader = false,
-  exportFilename = null
+  exportFilename = null,
+  onRowClick = null
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc"); // "asc" | "desc"
@@ -1478,7 +1546,10 @@ function DataTable({
       color: "var(--text3)"
     }
   }, emptyText)) : processed.map((row, i) => /*#__PURE__*/React.createElement("tr", {
-    key: row.id || row._key || i
+    key: row.id || row._key || i,
+    onClick: onRowClick ? () => onRowClick(row) : undefined,
+    className: onRowClick ? "row-clickable" : undefined,
+    style: onRowClick ? { cursor: "pointer" } : undefined
   }, columns.map(col => /*#__PURE__*/React.createElement("td", {
     key: col.key,
     style: {
@@ -1859,6 +1930,8 @@ function App() {
         CHOFERES_TIPO: d.CHOFERES_TIPO || {},
         // Mapa patente semi→dueño (col G de SEMIS) — CASO A/B del módulo FLETEROS
         SEMIS_DUENO: d.SEMIS_DUENO || {},
+        // Mapa patente tractor -> dueno (col G de CAMIONES): define quien es FLETERO
+        CAMIONES_DUENO: d.CAMIONES_DUENO || {},
         CAMIONES: withFallback(d.CAMIONES, ["TRA-001 VOLVO", "TRA-002 SCANIA", "TRA-003 MERCEDES", "TRA-004 MAN"]),
         SEMIS: withFallback(d.SEMIS, ["SEMI-001", "SEMI-002", "SEMI-003", "SEMI-004"]),
         COLABORADORES: withFallback(d.COLABORADORES, ["RODRIGUEZ JUAN", "GARCIA PEDRO", "PEREZ ANA", "GOMEZ SOFIA"]),
@@ -2509,7 +2582,9 @@ function FilterTh({
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: !active,
-    onChange: () => onChangeSel(null)
+    // Tildado (sin filtro) -> destildar deselecciona TODO ([] = ningun valor).
+    // Destildado (filtro parcial) -> tildar vuelve a "todos" (null = sin filtro).
+    onChange: () => onChangeSel(active ? null : [])
   }), "(Seleccionar todo)"), /*#__PURE__*/React.createElement("div", null, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 11, color: "var(--text3)", padding: 4 }
   }, "Sin valores") : list.map(v => /*#__PURE__*/React.createElement("label", {
@@ -4024,6 +4099,176 @@ function SegmentCard({
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE 2 — ENTREGA DE PLATA
 // ═══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// CAJA — DETALLE DE UNA ENTREGA (a dónde se fue esa plata)
+//
+// Se abre al hacer click en una fila de Caja. La pregunta que responde es:
+// "Javier le dio X a Rolando el 10/8, ¿qué hizo Rolando con esa plata?".
+//
+// PERÍODO: desde la fecha de esta entrega hasta la fecha de la SIGUIENTE
+// entrega de caja a la misma persona (sin incluirla). Si no hay una posterior,
+// el período sigue abierto hasta hoy.
+//
+// QUÉ CUENTA COMO GASTADO, en ese período:
+//   • Módulo 2 (Plata a choferes): entregas donde el RESPONSABLE es esa persona
+//   • Módulo 7 (Gastos generales): gastos donde el RESPONSABLE DE PAGO es esa persona
+// Cada divisa se sigue por separado (la plata en ARS no paga gastos en CLP);
+// abajo se muestra igual el equivalente en ARS con el TC del sistema.
+// ══════════════════════════════════════════════════════════════════════════════
+function CajaDetalle({
+  mov,
+  movimientos,
+  entregas,
+  gastos,
+  dropdowns,
+  onClose
+}) {
+  const persona = mov.chofer || "";
+  const isoDe = f => {
+    const dt = parseDate(f);
+    if (!dt) return "";
+    return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  };
+  const desde = isoDe(mov.fecha);
+
+  // Fecha de la siguiente entrega de caja a la misma persona (cierra el período)
+  const hasta = useMemo(() => {
+    const posteriores = (movimientos || []).filter(m => (m.chofer || "") === persona).map(m => isoDe(m.fecha)).filter(f => f && f > desde).sort();
+    return posteriores.length ? posteriores[0] : "";
+  }, [movimientos, persona, desde]);
+  const enRango = f => {
+    const iso = isoDe(f);
+    if (!iso || !desde) return false;
+    if (iso < desde) return false;
+    if (hasta && iso >= hasta) return false;
+    return true;
+  };
+  const entregasPeriodo = useMemo(() => (entregas || []).filter(e => (e.responsable || "") === persona && enRango(e.fecha)), [entregas, persona, desde, hasta]);
+  const gastosPeriodo = useMemo(() => (gastos || []).filter(g => (g.responsablePago || "") === persona && enRango(g.fechaGasto)), [gastos, persona, desde, hasta]);
+
+  const TC = tcDeDropdowns(dropdowns);
+  const sumaPorDivisa = (arr, campoMonto, campoDivisa) => {
+    const t = { ARS: 0, CLP: 0, USD: 0 };
+    arr.forEach(x => {
+      const d = x[campoDivisa] || "ARS";
+      if (t[d] !== undefined) t[d] += Number(x[campoMonto] || 0);
+    });
+    return t;
+  };
+  const totEnt = sumaPorDivisa(entregasPeriodo, "monto", "moneda");
+  const totGas = sumaPorDivisa(gastosPeriodo, "monto", "divisa");
+  const recibido = { ARS: Number(mov.ARS || 0), CLP: Number(mov.CLP || 0), USD: Number(mov.USD || 0) };
+  const saldo = {};
+  CURRENCIES.forEach(c => { saldo[c] = recibido[c] - totEnt[c] - totGas[c]; });
+  const totalARS = o => CURRENCIES.reduce((s, c) => s + convARS(TC, o[c], c), 0);
+  // Divisas a mostrar: las que tuvieron algo (entregado o gastado)
+  const divisas = CURRENCIES.filter(c => recibido[c] || totEnt[c] || totGas[c]);
+  const mono = { fontFamily: "var(--mono)" };
+
+  const filaResumen = (etiqueta, obj, color) => /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    style: { fontWeight: 500 }
+  }, etiqueta), divisas.map(c => /*#__PURE__*/React.createElement("td", {
+    key: c,
+    style: { ...mono, textAlign: "right", color: color || undefined }
+  }, obj[c] ? fmtNum(obj[c]) : "—")), /*#__PURE__*/React.createElement("td", {
+    style: { ...mono, textAlign: "right", color: color || "var(--text3)" }
+  }, fmtNum(Math.round(totalARS(obj)))));
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-box",
+    style: { width: 940, maxWidth: "96vw", maxHeight: "90vh", display: "flex", flexDirection: "column" },
+    onClick: ev => ev.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-header"
+  }, /*#__PURE__*/React.createElement("span", null, "🔎 Destino del dinero — ", persona || "—"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm btn-icon",
+    onClick: onClose,
+    title: "Cerrar"
+  }, "✕")), /*#__PURE__*/React.createElement("div", {
+    className: "modal-body",
+    style: { overflowY: "auto" }
+  },
+  // Encabezado del período
+  /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text2)", marginBottom: 14 }
+  }, "Entrega del ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), mov.responsable ? " de " + mov.responsable : "", " — período analizado: ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), hasta ? /*#__PURE__*/React.createElement(React.Fragment, null, " hasta ", /*#__PURE__*/React.createElement("strong", null, fmtDate(hasta)), " (siguiente entrega en Caja, no incluida)") : " en adelante (no hay una entrega posterior)"),
+
+  // Resumen por divisa
+  /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap",
+    style: { marginBottom: 18 }
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Concepto"), divisas.map(c => /*#__PURE__*/React.createElement("th", {
+    key: c,
+    style: { textAlign: "right" }
+  }, c)), /*#__PURE__*/React.createElement("th", {
+    style: { textAlign: "right" }
+  }, "≈ ARS"))), /*#__PURE__*/React.createElement("tbody", null, filaResumen("Recibido en Caja", recibido), filaResumen("Entregado a choferes", totEnt), filaResumen("Gastos generales", totGas), /*#__PURE__*/React.createElement("tr", {
+    style: { borderTop: "2px solid var(--border2)" }
+  }, /*#__PURE__*/React.createElement("td", {
+    style: { fontWeight: 700 }
+  }, "Saldo sin rendir"), divisas.map(c => /*#__PURE__*/React.createElement("td", {
+    key: c,
+    style: { ...mono, textAlign: "right", fontWeight: 700, color: saldo[c] < 0 ? "var(--danger)" : saldo[c] > 0 ? "var(--warning)" : "var(--success)" }
+  }, fmtNum(saldo[c]))), /*#__PURE__*/React.createElement("td", {
+    style: { ...mono, textAlign: "right", fontWeight: 700 }
+  }, fmtNum(Math.round(totalARS(saldo)))))))),
+
+  // Entregas a choferes
+  /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 13, fontWeight: 600, marginBottom: 8 }
+  }, "💵 Entregas a choferes (", entregasPeriodo.length, ")"), entregasPeriodo.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text3)", marginBottom: 18 }
+  }, "Sin entregas cargadas en el período.") : /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap",
+    style: { marginBottom: 18 }
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Fecha", "Chofer", "Forma de pago", "Obs.", "Monto", "Divisa"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+    key: h,
+    style: { textAlign: i >= 4 ? "right" : "left" }
+  }, h)))), /*#__PURE__*/React.createElement("tbody", null, entregasPeriodo.map(e => /*#__PURE__*/React.createElement("tr", {
+    key: e.id
+  }, /*#__PURE__*/React.createElement("td", null, fmtDate(e.fecha)), /*#__PURE__*/React.createElement("td", null, e.chofer || "—"), /*#__PURE__*/React.createElement("td", {
+    style: { fontSize: 12 }
+  }, e.formaPago || "—"), /*#__PURE__*/React.createElement("td", {
+    style: { fontSize: 11, color: "var(--text3)" }
+  }, e.obs || ""), /*#__PURE__*/React.createElement("td", {
+    style: { ...mono, textAlign: "right" }
+  }, fmtNum(e.monto)), /*#__PURE__*/React.createElement("td", {
+    style: { textAlign: "right", fontSize: 12 }
+  }, e.moneda)))))),
+
+  // Gastos generales
+  /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 13, fontWeight: 600, marginBottom: 8 }
+  }, "🛒 Gastos generales (", gastosPeriodo.length, ")"), gastosPeriodo.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text3)" }
+  }, "Sin gastos cargados en el período.") : /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Fecha", "Tipo", "Patente", "Chofer", "Obs.", "Monto", "Divisa"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+    key: h,
+    style: { textAlign: i >= 5 ? "right" : "left" }
+  }, h)))), /*#__PURE__*/React.createElement("tbody", null, gastosPeriodo.map(g => /*#__PURE__*/React.createElement("tr", {
+    key: g.id
+  }, /*#__PURE__*/React.createElement("td", null, fmtDate(g.fechaGasto)), /*#__PURE__*/React.createElement("td", null, g.tipoGasto || "—"), /*#__PURE__*/React.createElement("td", {
+    style: mono
+  }, g.patente || "—"), /*#__PURE__*/React.createElement("td", null, g.chofer || "—"), /*#__PURE__*/React.createElement("td", {
+    style: { fontSize: 11, color: "var(--text3)" }
+  }, g.observaciones || ""), /*#__PURE__*/React.createElement("td", {
+    style: { ...mono, textAlign: "right" }
+  }, fmtNum(g.monto)), /*#__PURE__*/React.createElement("td", {
+    style: { textAlign: "right", fontSize: 12 }
+  }, g.divisa)))))), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: "var(--text3)", marginTop: 16 }
+  }, "Se listan los movimientos donde ", persona || "esta persona", " figura como responsable, con fecha dentro del período. Equivalente en ARS calculado con el TC del sistema (1 USD = ", fmtNum(TC.USD), " ARS · 100 CLP = ", fmtNum(TC.CLP), " ARS).")), /*#__PURE__*/React.createElement("div", {
+    className: "modal-footer"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary",
+    onClick: onClose
+  }, "Cerrar"))));
+}
+
 function Module2({
   session,
   canEdit,
@@ -4047,9 +4292,22 @@ function Module2({
   const [editItem, setEditItem] = useState(null);
   const [entregas, setEntregas] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Detalle de una entrega de caja: fila clickeada + datos de los módulos 2 y 7
+  const [detalle, setDetalle] = useState(null);
+  const [entregasChoferes, setEntregasChoferes] = useState([]);
+  const [gastosGenerales, setGastosGenerales] = useState([]);
   useEffect(() => {
     loadEntregas();
   }, [mode]);
+  // Solo en Caja: traer entregas a choferes y gastos generales para poder
+  // mostrar a dónde se fue la plata de cada entrega.
+  useEffect(() => {
+    if (!isCaja) return;
+    Promise.all([cachedGet("getEntregas", "entregas"), cachedGet("getGastosGenerales", "gastosGenerales")]).then(([e, g]) => {
+      if (e.ok) setEntregasChoferes(e.data);
+      if (g.ok) setGastosGenerales(g.data);
+    });
+  }, [isCaja]);
   async function loadEntregas() {
     setLoading(true);
     setEntregas([]); // limpiar datos del módulo anterior antes de cargar
@@ -4088,7 +4346,7 @@ function Module2({
     className: "module-title"
   }, isCaja ? "🏦 Caja" : "💵 Plata a choferes"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
-  }, entregas.length, isCaja ? " movimiento(s) registrado(s)" : " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
+  }, entregas.length, isCaja ? " movimiento(s) registrado(s) — clic en una fila para ver el destino del dinero" : " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
     onClick: () => { setEditItem(null); setView("form"); }
   }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega")), loading ? /*#__PURE__*/React.createElement("div", {
@@ -4212,7 +4470,8 @@ function Module2({
         render: (v, row) => /*#__PURE__*/React.createElement("button", {
           className: "btn btn-secondary btn-sm btn-icon",
           title: "Editar movimiento",
-          onClick: () => {
+          onClick: ev => {
+            ev.stopPropagation(); // el click en la fila abre el detalle
             // Pasar el grupo completo: tiene _baseId, ARS/CLP/USD y _items con cada registro original
             setEditItem(row);
             setView("form");
@@ -4225,9 +4484,18 @@ function Module2({
       data: grouped,
       searchPlaceholder: isCaja ? "Buscar movimientos..." : "Buscar entregas...",
       emptyText: isCaja ? "No hay movimientos de caja." : "No hay entregas.",
-      exportFilename: isCaja ? "caja" : "entregas"
+      exportFilename: isCaja ? "caja" : "entregas",
+      // En Caja, click en la fila = ver a dónde se fue esa plata
+      onRowClick: isCaja ? row => setDetalle(row) : null
     });
-  })());
+  })(), isCaja && detalle && /*#__PURE__*/React.createElement(CajaDetalle, {
+    mov: detalle,
+    movimientos: entregas,
+    entregas: entregasChoferes,
+    gastos: gastosGenerales,
+    dropdowns: dropdowns,
+    onClose: () => setDetalle(null)
+  }));
 }
 function EntregaForm({
   dropdowns,
@@ -4510,7 +4778,8 @@ function Module3({
       if (trip.status === "finalizado" || trip.status === "activo") {
         (trip.segments || []).forEach(seg => {
           // Los tramos de choferes FLETEROS se liquidan en el módulo FLETEROS (8)
-          if ((dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[seg.chofer]) === "FLETEROS") return;
+          // Fletero = el tractor del tramo no es de una empresa del grupo.
+          if (esTramoFletero(dropdowns, seg)) return;
           if (!settledIds.has(seg.segId)) segs.push({
             ...seg,
             tripId: trip.id,
@@ -4887,21 +5156,10 @@ function RendicionForm({
     USD: entBruto.USD - Number(devolucion.USD || 0)
   };
 
-  // Tasas negociadas con el chofer — vienen de Sheets vía dropdowns
-  // TC_USD: cuántos ARS vale 1 USD → multiplicar  (ej: 1200)
-  // TC_CLP: cuántos CLP vale 1 ARS → 100/TC_CLP   (ej: 160 = 1 ARS son 160 CLP)
-  const TC = {
-    USD: dropdowns?.TC_USD || 1200,
-    CLP: dropdowns?.TC_CLP || 160,
-    ARS: 1
-  };
-  // TC_CLP = ARS por 100 CLP (ej: 160 = 100 CLP valen 160 ARS → 1 CLP = 1.6 ARS)
-  const toARS = (monto, cur) => {
-    if (cur === "ARS") return Number(monto || 0);
-    if (cur === "USD") return Number(monto || 0) * TC.USD;
-    if (cur === "CLP") return Number(monto || 0) * TC.CLP / 100;
-    return Number(monto || 0);
-  };
+  // Tasas del sistema (hojas USD/ARS CHOFERES y CLP/ARS CHOFERES).
+  // Helper compartido: el mismo que usan Facturacion, RRHH y Fleteros.
+  const TC = tcDeDropdowns(dropdowns);
+  const toARS = (monto, cur) => convARS(TC, monto, cur);
   const entTotalARS = entNeto.ARS + toARS(entNeto.CLP, "CLP") + toARS(entNeto.USD, "USD");
 
   // Total montos tramo
@@ -6410,11 +6668,7 @@ function FacturaForm({
   }, [tipoCanc, fechaCobro]);
 
   // R13: Alerta suma fleteros + extra costos vs FC cliente (en USD)
-  const TC = {
-    USD: dropdowns?.TC_USD || 1200,
-    CLP: dropdowns?.TC_CLP || 160,
-    ARS: 1
-  };
+  const TC = tcDeDropdowns(dropdowns);
   function toUSD(monto, divisa) {
     const n = moneyNum(monto);
     if (divisa === "USD") return n;
@@ -7168,6 +7422,11 @@ function Module6({
   dropdowns,
   notif
 }) {
+  // TC del sistema. Este modulo llamaba a toARS() sin tenerlo definido en su
+  // scope (la funcion vive dentro de RendicionForm), asi que rompia al calcular
+  // los anticipos del periodo.
+  const TC = tcDeDropdowns(dropdowns);
+  const toARS = (monto, cur) => convARS(TC, monto, cur);
   const [rendiciones, setRendiciones] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -7901,6 +8160,9 @@ function GastoGeneralForm({
     const e = {};
     if (!fechaGasto) e.fechaGasto = "Requerido";
     if (!monto) e.monto = "Requerido";
+    // Sin responsable de pago el gasto queda huérfano: no se puede saber de
+    // qué caja salió la plata y no aparece en el detalle de Caja.
+    if (!responsablePago) e.responsablePago = "Requerido";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -8014,7 +8276,9 @@ function GastoGeneralForm({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Responsable del pago"), /*#__PURE__*/React.createElement(SearchableSelect, {
+  }, "Responsable del pago ", /*#__PURE__*/React.createElement(Req, null), " ", errors.responsablePago && /*#__PURE__*/React.createElement("span", {
+    className: "form-error"
+  }, errors.responsablePago)), /*#__PURE__*/React.createElement(SearchableSelect, {
     options: dropdowns.COLABORADORES || [],
     value: responsablePago,
     onChange: setResponsablePago,
@@ -8074,8 +8338,15 @@ function Module8({
   const [selSegIds, setSelSegIds] = useState([]);
   const [datos, setDatos] = useState({}); // { segId: { monto, divisa, comision } }
   const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, chofer, semi, monto, divisa }]
-  const [tcUsd, setTcUsd] = useState(""); // TC USD→ARS (pedido si hay montos en USD)
-  const [tcClp, setTcClp] = useState(""); // TC CLP→ARS (pedido si hay montos en CLP)
+  // Cotizaciones para liquidar en ARS. Arrancan con el TC del sistema (hojas
+  // USD/ARS y CLP/ARS CHOFERES) y se pueden pisar si con este fletero se nego-
+  // cio otra. MISMA UNIDAD QUE EL RESTO DEL SISTEMA:
+  //   tcUsd = ARS por 1 USD   |   tcClp = ARS por 100 CLP
+  // Antes el CLP se multiplicaba directo (sin el /100), asi que cargar 160 -el
+  // valor del Sheet- inflaba los montos en pesos chilenos 100 veces.
+  const TC_SISTEMA = tcDeDropdowns(dropdowns);
+  const [tcUsd, setTcUsd] = useState(String(TC_SISTEMA.USD));
+  const [tcClp, setTcClp] = useState(String(TC_SISTEMA.CLP));
   const [saving, setSaving] = useState(false);
   const dragIdxRef = useRef(null);
   const patentesPrevRef = useRef("");
@@ -8086,14 +8357,10 @@ function Module8({
       setLoading(false);
     });
   }, []);
-  const tipoDe = ch => (dropdowns.CHOFERES_TIPO && dropdowns.CHOFERES_TIPO[ch]) || "PROPIO";
   const duenoDe = semi => String(dropdowns.SEMIS_DUENO && dropdowns.SEMIS_DUENO[semi] || "").trim().toUpperCase();
   // CASO A: el dueño del semi es una entidad propia. Match por "contiene" para
   // tolerar variantes ("JAVIER COSTA", "JAVIER COSTA E HIJOS SA", "J. COSTA S.A.").
-  const esCasoA = semi => {
-    const d = duenoDe(semi);
-    return d.includes("JAVIER COSTA") || d.includes("SOCELPA");
-  };
+  const esCasoA = semi => esEmpresaPropia(duenoDe(semi));
 
   // Tramos ya liquidados en FLETEROS_LIQ
   const settledIds = useMemo(() => {
@@ -8102,12 +8369,12 @@ function Module8({
     return s;
   }, [liqs]);
 
-  // Tramos pendientes de fleteros: chofer FLETEROS y no liquidados
+  // Tramos pendientes de fleteros: tractor de un tercero y no liquidados
   const pendientes = useMemo(() => {
     const out = [];
     trips.forEach(tr => {
       (tr.segments || []).forEach(sg => {
-        if (tipoDe(sg.chofer) !== "FLETEROS") return;
+        if (!esTramoFletero(dropdowns, sg)) return;
         if (settledIds.has(sg.segId)) return;
         out.push({
           ...sg,
@@ -8119,7 +8386,8 @@ function Module8({
   }, [trips, settledIds, dropdowns]);
 
   // Patentes de CAMIONES con tramos pendientes → sub-ítems del sidebar
-  const patentes = useMemo(() => [...new Set(pendientes.map(s => s.tractor).filter(Boolean))].sort(), [pendientes]);
+  // Agrupadas por patente canonica: "NSE981" y "NSE-981" son el mismo camion.
+  const patentes = useMemo(() => [...new Set(pendientes.map(s => patenteCanonica(dropdowns, s.tractor)).filter(Boolean))].sort(), [pendientes, dropdowns]);
   useEffect(() => {
     const key = patentes.join("|");
     if (key !== patentesPrevRef.current) {
@@ -8127,7 +8395,7 @@ function Module8({
       onPatentesChange && onPatentesChange(patentes);
     }
   }, [patentes]);
-  const tramosPatente = useMemo(() => pendientes.filter(s => s.tractor === selPatente), [pendientes, selPatente]);
+  const tramosPatente = useMemo(() => pendientes.filter(s => normPatente(s.tractor) === normPatente(selPatente)), [pendientes, selPatente]);
   const selSegs = tramosPatente.filter(s => selSegIds.includes(s.segId));
   // Choferes y semis disponibles = los de los tramos seleccionados (para los descuentos)
   const choferesDisp = [...new Set(selSegs.map(s => s.chofer).filter(Boolean))];
@@ -8154,7 +8422,7 @@ function Module8({
     return m * (1 - 0.039) - Number(d.comision || 0);
   };
   // Conversión a ARS con los TC ingresados (ARS = 1; USD/CLP según cotización)
-  const tcDe = div => div === "USD" ? Number(tcUsd || 0) : div === "CLP" ? Number(tcClp || 0) : 1;
+  const tcDe = div => div === "USD" ? Number(tcUsd || 0) : div === "CLP" ? Number(tcClp || 0) / 100 : 1;
   const aARS = (monto, div) => Number(monto || 0) * tcDe(div);
   // ¿Qué divisas extranjeras están en juego? (para pedir sólo los TC necesarios)
   const divisasEnJuego = useMemo(() => {
@@ -8259,7 +8527,7 @@ function Module8({
     }
     // Cotizaciones obligatorias si hay montos en divisa extranjera
     if (necesitaUsd && !Number(tcUsd)) { alert("Ingresá la cotización del DÓLAR (USD → ARS) para liquidar."); return; }
-    if (necesitaClp && !Number(tcClp)) { alert("Ingresá la cotización del PESO CHILENO (CLP → ARS) para liquidar."); return; }
+    if (necesitaClp && !Number(tcClp)) { alert("Ingresá la cotización del PESO CHILENO (ARS por 100 CLP) para liquidar."); return; }
     setSaving(true);
     const tramosPayload = selSegs.map(sg => {
       const d = datos[sg.segId] || {};
@@ -8608,7 +8876,7 @@ function Module8({
     style: { display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16, padding: 12, background: "var(--bg2)", borderRadius: 8, border: tcFaltante ? "1px solid var(--warning)" : "1px solid var(--border)" }
   }, /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 12, color: "var(--text2)", alignSelf: "center" }
-  }, "Cotización para liquidar en ARS:"), necesitaUsd && /*#__PURE__*/React.createElement("div", {
+  }, "Cotización para liquidar en ARS (viene del Sheet, editable):"), necesitaUsd && /*#__PURE__*/React.createElement("div", {
     style: { display: "flex", alignItems: "center", gap: 6 }
   }, /*#__PURE__*/React.createElement("label", {
     style: { fontSize: 12, fontWeight: 600 }
@@ -8628,7 +8896,9 @@ function Module8({
     placeholder: "0",
     disabled: !canEdit,
     style: { fontSize: 12, padding: "5px 8px", width: 120 }
-  })), tcFaltante && /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 11, color: "var(--text3)" }
+  }, "c/100 CLP", Number(tcClp) ? " · 1 CLP = " + (Number(tcClp) / 100).toLocaleString("es-AR", { maximumFractionDigits: 4 }) + " ARS" : "")), tcFaltante && /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 11, color: "var(--warning)", alignSelf: "center" }
   }, "⚠ Ingresá la cotización para poder guardar")),
   // Resumen en ARS
