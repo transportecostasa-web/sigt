@@ -346,6 +346,10 @@ function patenteCanonica(dropdowns, patente) {
   return lista.find(c => normPatente(c) === nn) || patente;
 }
 
+// "Otros" es la ultima fila de la hoja ENTREGA_PLATA: al elegirla, el usuario
+// escribe el nombre a mano en vez de tomarlo de la lista.
+const esOtros = v => /^otros?$/i.test(String(v || "").trim());
+
 function esTramoFletero(dropdowns, seg) {
   const d = duenoTractor(dropdowns, seg && seg.tractor);
   if (!d) return false;
@@ -1934,6 +1938,8 @@ function App() {
         CAMIONES_DUENO: d.CAMIONES_DUENO || {},
         CAMIONES: withFallback(d.CAMIONES, ["TRA-001 VOLVO", "TRA-002 SCANIA", "TRA-003 MERCEDES", "TRA-004 MAN"]),
         SEMIS: withFallback(d.SEMIS, ["SEMI-001", "SEMI-002", "SEMI-003", "SEMI-004"]),
+        // Responsables de entrega de plata (hoja ENTREGA_PLATA, col A)
+        ENTREGA_PLATA: toStrArr(d.ENTREGA_PLATA),
         COLABORADORES: withFallback(d.COLABORADORES, ["RODRIGUEZ JUAN", "GARCIA PEDRO", "PEREZ ANA", "GOMEZ SOFIA"]),
         // Categorías de gastos desde hoja "CATEGORIA_GASTOS" col A
         CATEGORIA_GASTOS: withFallback(d.CATEGORIA_GASTOS, ["GAS-OIL", "PEAJES Y DESINFECCIÓN", "ADUANA", "LASTRE", "GOMERÍA", "TELÉFONO", "LAVADERO", "COIMAS", "ESTADÍA", "REVISIÓN TÉCNICA", "PARQUEADERO", "OTRO"]),
@@ -4509,9 +4515,25 @@ function EntregaForm({
   // En Caja el destinatario son COLABORADORES; en Entregas son CHOFERES.
   const destOptions = isCaja ? (dropdowns.COLABORADORES || []) : (dropdowns.CHOFERES || []);
   const destLabel   = isCaja ? "Destinatario" : "Chofer (destinatario)";
+  // Responsable de la entrega: sale de la hoja ENTREGA_PLATA (no de COLABORADORES).
+  // Si el backend todavia no la manda, se cae a COLABORADORES para no romper.
+  // Se garantiza que exista la opcion "Otros" para poder escribir a mano.
+  const respOptions = useMemo(() => {
+    const base = (dropdowns.ENTREGA_PLATA && dropdowns.ENTREGA_PLATA.length) ? dropdowns.ENTREGA_PLATA : (dropdowns.COLABORADORES || []);
+    return base.some(esOtros) ? base : [...base, "Otros"];
+  }, [dropdowns]);
   const [fecha, setFecha] = useState(entregaInicial?.fecha ? toInputDate(entregaInicial.fecha) : nowISO());
   const [chofer, setChofer] = useState(entregaInicial?.chofer || "");
   const [responsable, setResponsable] = useState(entregaInicial?.responsable || "");
+  // Un responsable guardado que no esta en la lista es un nombre escrito a mano:
+  // al editar se vuelve a mostrar como "Otros" + el texto.
+  const respFueraDeLista = !!(entregaInicial?.responsable) && !respOptions.includes(entregaInicial.responsable);
+  const [respOtro, setRespOtro] = useState(respFueraDeLista);
+  const [respLibre, setRespLibre] = useState(respFueraDeLista ? entregaInicial.responsable : "");
+  function elegirResponsable(v) {
+    if (esOtros(v)) { setRespOtro(true); setResponsable(respLibre); }
+    else { setRespOtro(false); setRespLibre(""); setResponsable(v); }
+  }
   const [formaPago, setFormaPago] = useState(entregaInicial?.formaPago || "");
   const [obs, setObs] = useState(entregaInicial?.obs || "");
   // Montos: una fila por divisa, el usuario activa las que necesita
@@ -4549,7 +4571,7 @@ function EntregaForm({
     const e = {};
     if (!fecha) e.fecha = "Requerido";
     if (!chofer) e.chofer = "Requerido";
-    if (!responsable) e.responsable = "Requerido";
+    if (!responsable) e.responsable = respOtro ? "Escribí el nombre" : "Requerido";
     if (!formaPago) e.formaPago = "Requerido";
     if (!montosConValor.length) e.montos = "Ingresá al menos un monto";
     // Divisas repetidas: dos renglones con la misma moneda generan registros
@@ -4643,10 +4665,17 @@ function EntregaForm({
   }, "Responsable de la entrega ", /*#__PURE__*/React.createElement(Req, null), " ", errors.responsable && /*#__PURE__*/React.createElement("span", {
     className: "form-error"
   }, errors.responsable)), /*#__PURE__*/React.createElement(SearchableSelect, {
-    options: dropdowns.COLABORADORES || [],
-    value: responsable,
-    onChange: setResponsable,
+    options: respOptions,
+    value: respOtro ? "Otros" : responsable,
+    onChange: elegirResponsable,
     placeholder: "Quién entrega el dinero..."
+  }), respOtro && /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: respLibre,
+    onChange: e => { setRespLibre(e.target.value); setResponsable(e.target.value); },
+    placeholder: "Escribí el nombre...",
+    autoFocus: true,
+    style: { marginTop: 6 }
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
