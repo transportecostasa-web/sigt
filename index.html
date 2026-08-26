@@ -532,6 +532,30 @@ function fmtKm(n) {
 // Formatea un número como dinero con separador de miles y dos decimales.
 // Ej: fmtNum(1234567.5) → "1.234.567,50" | fmtNum("") → "—"
 // Se usa para mostrar montos en tablas y resúmenes (no en campos de entrada).
+// ¿El valor es un numero de verdad? moneyNum() devuelve 0 para cualquier
+// texto, asi que no sirve para decidirlo: hay que mirar la forma del dato.
+// Acepta "1.234,50", "-12", "3.5" y numeros nativos; rechaza "Costa, Javier",
+// "TR-001-00025" o "03/08/2026".
+function pareceNumero(v) {
+  if (typeof v === "number") return !isNaN(v);
+  const s = String(v === null || v === undefined ? "" : v).trim();
+  if (!s) return false;
+  return /^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s) || /^-?\d+([.,]\d+)?$/.test(s);
+}
+
+// Comparador de columnas: numeros por valor, fechas por fecha real y el resto
+// alfabetico con reglas del castellano (acentos y ñ en su lugar).
+// El orden importa: "2300" es un monto, no el año 2300, asi que los numeros
+// se resuelven ANTES de intentar interpretarlos como fecha.
+function compararValores(av, bv) {
+  if (pareceNumero(av) && pareceNumero(bv)) return moneyNum(av) - moneyNum(bv);
+  const da = parseDate(av), db = parseDate(bv);
+  if (da && db) return da.getTime() - db.getTime();
+  const sa = String(av === null || av === undefined ? "" : av);
+  const sb = String(bv === null || bv === undefined ? "" : bv);
+  return sa.localeCompare(sb, "es-AR", { numeric: true, sensitivity: "base" });
+}
+
 function fmtNum(n) {
   if (n === null || n === undefined || n === "") return "—";
   return Number(n).toLocaleString("es-AR", {
@@ -1439,18 +1463,11 @@ function DataTable({
     if (sortKey) {
       const activeCol = columns.find(cl => cl.key === sortKey);
       const sk = activeCol?.sortKey || sortKey;
+      // Antes esto comparaba moneyNum(a) - moneyNum(b) creyendo que devolvia
+      // NaN para el texto. Devuelve 0: TODA columna de texto quedaba "empatada"
+      // y el A->Z / Z->A no movia nada.
       rows.sort((a, b) => {
-        const av = a[sk] ?? "";
-        const bv = b[sk] ?? "";
-        // Intentar comparación numérica si ambos son números
-        const an = moneyNum(av);
-        const bn = moneyNum(bv);
-        let cmp;
-        if (!isNaN(an) && !isNaN(bn)) {
-          cmp = an - bn;
-        } else {
-          cmp = String(av).localeCompare(String(bv), "es-AR");
-        }
+        const cmp = compararValores(a[sk] ?? "", b[sk] ?? "");
         return sortDir === "asc" ? cmp : -cmp;
       });
     }
@@ -2809,7 +2826,7 @@ function Module1({
       shown = [...shown].sort((a, b) => (((diasDeViaje(a) ?? -1) - (diasDeViaje(b) ?? -1)) || 0) * dir);
     } else {
       const col = M1COLS.find(cl => cl.key === sortCol);
-      if (col) shown = [...shown].sort((a, b) => String(col.get(a)).localeCompare(String(col.get(b)), "es", { numeric: true }) * dir);
+      if (col) shown = [...shown].sort((a, b) => compararValores(col.get(a), col.get(b)) * dir);
     }
   }
   return /*#__PURE__*/React.createElement("div", {
