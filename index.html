@@ -294,6 +294,33 @@ const CURRENCIES = ["USD", "ARS", "CLP"];
 // OJO con el /100 del CLP: es la unidad en la que se carga en el Sheet.
 // Para cambiar la cotizacion de todo el sistema se toca el Sheet, no el codigo.
 // ══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+// GUARDADOS: UN CLICK, UN REGISTRO
+//
+// Deshabilitar el boton con estado de React no alcanza: setSaving(true) recien
+// se ve en el siguiente render, asi que dos clicks en el mismo frame (o el
+// doble click sin querer) entraban los dos y creaban registros duplicados.
+// El ref, en cambio, cambia en el acto.
+//
+// Uso en cada formulario:
+//   const [saving, setSaving, savingRef] = useGuardando();
+//   async function handleSave() {
+//     if (savingRef.current) return;   // <- descarta el segundo click
+//     ...
+//     setSaving(true);  ...  setSaving(false);   // el ref lo maneja setSaving
+//   }
+// El boton sigue usando `disabled: saving` para el feedback visual.
+// ══════════════════════════════════════════════════════════════════════════════
+function useGuardando(inicial = false) {
+  const [enCurso, setEnCursoState] = useState(inicial);
+  const ref = useRef(inicial);
+  const setEnCurso = valor => {
+    ref.current = !!valor;
+    setEnCursoState(!!valor);
+  };
+  return [enCurso, setEnCurso, ref];
+}
+
 const TC_DEFAULTS = { USD: 1200, CLP: 160 };
 
 function tcDeDropdowns(dropdowns) {
@@ -2234,9 +2261,10 @@ function LoginScreen({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading, loadingRef] = useGuardando();
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loadingRef.current) return; // ya hay un intento en curso
     if (!username || !password) return setError("Completá usuario y contraseña.");
     setLoading(true);
     setError("");
@@ -2332,11 +2360,12 @@ function ChangePasswordScreen({
   const [nw, setNw] = useState(""); // nueva contraseña
   const [rep, setRep] = useState(""); // repetición de la nueva contraseña
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading, loadingRef] = useGuardando();
   const str = pwStrength(nw); // calcula la fortaleza de la nueva contraseña en tiempo real
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loadingRef.current) return; // ya hay un intento en curso
     setError("");
     if (!old) return setError("Ingresá la contraseña anterior.");
     if (nw.length < 6) return setError("Mínimo 6 caracteres.");
@@ -3059,7 +3088,7 @@ function TripForm({
   const [obsDoc, setObsDoc] = useState(trip?.obsDoc || "");
   const [reserva, setReserva] = useState(trip?.reserva || "");
   const [numContenedor, setNumContenedor] = useState(trip?.numContenedor || "");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
   const [errors, setErrors] = useState({});
 
   // ─── BORRADOR AUTOMÁTICO ──────────────────────────────────────────────────
@@ -3385,6 +3414,7 @@ function TripForm({
     onBack();
   }
   async function handleSave() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!validate()) {
       alert("Hay campos obligatorios incompletos (marcados en rojo).");
       return;
@@ -3395,6 +3425,7 @@ function TripForm({
     setSaving(false);
   }
   async function handleFinalize() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!validate(true)) {
       alert("Faltan campos obligatorios para finalizar (incluida la documentación, marcados en rojo).");
       return;
@@ -3812,7 +3843,7 @@ function TripForm({
     className: "btn btn-success",
     onClick: handleFinalize,
     disabled: saving
-  }, "🏁 Finalizar Viaje"), /*#__PURE__*/React.createElement("button", {
+  }, saving ? "Guardando..." : "🏁 Finalizar Viaje"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: handleSave,
     disabled: saving
@@ -4553,7 +4584,7 @@ function EntregaForm({
     ];
   });
   const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
   function updateMonto(idx, val) {
     setMontos(p => {
       const n = [...p];
@@ -4588,6 +4619,7 @@ function EntregaForm({
     return Object.keys(e).length === 0;
   }
   async function handleSave() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!validate()) return;
     setSaving(true);
     // FIX 2 — al editar, reusar el _baseId del grupo; al crear, generar uno nuevo
@@ -5111,7 +5143,7 @@ function RendicionForm({
     CLP: "",
     USD: ""
   });
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
 
   // FIX: normalizar fechas de tramos a ISO antes de ordenar,
   // porque pueden venir en formato argentino ("17/03/2025") desde TRIP_SEGMENTS.
@@ -5268,6 +5300,7 @@ function RendicionForm({
   // estado: "abierta" (stand by) o "cerrada" (rendición finalizada).
   // Al cerrar exigimos que el combustible cargado esté completo; en stand by se permite vacío/parcial.
   async function handleSave(estado) {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (estado === "cerrada") {
       for (var fi = 0; fi < fuelRows.length; fi++) {
         const f = fuelRows[fi];
@@ -6026,6 +6059,8 @@ function Module5({
   const [view, setView] = useState("list");
   const [loading, setLoading] = useState(true);
   const [updatingField, setUpdatingField] = useState(null);
+  // Candado por campo: el `disabled` del select llega un render tarde.
+  const estadosEnVueloRef = useRef(new Set());
 
   // R10: Filtro por fecha relativa
   const [filtTipoFecha, setFiltTipoFecha] = useState("fcCliente"); // "fcCliente"|"fcFletero1"
@@ -6059,6 +6094,8 @@ function Module5({
   }
   async function handleEstadoChange(facId, field, newVal, flIdx) {
     const key = `${facId}:${field}`;
+    if (estadosEnVueloRef.current.has(key)) return; // ya se esta actualizando
+    estadosEnVueloRef.current.add(key);
     setUpdatingField(key);
     const r = await gasCall("updateEstadoFac", {
       id: facId,
@@ -6068,6 +6105,7 @@ function Module5({
       user: session.username
     });
     setUpdatingField(null);
+    estadosEnVueloRef.current.delete(key);
     if (r.ok) {
       invalidateCache("facturacion");
       setFacturas(prev => prev.map(f => {
@@ -6680,7 +6718,7 @@ function FacturaForm({
   // Extra costos
   const [extraCostos, setExtraCostos] = useState(factura?.extraCostos?.length > 0 ? factura.extraCostos : []);
   const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
 
   // FIX 1 — modal de justificación de diferencia de monto
   const [showJustifModal, setShowJustifModal] = useState(false);
@@ -6780,6 +6818,7 @@ function FacturaForm({
 
   // Guardado real — recibe la justificación (vacía si no hubo diferencia de monto)
   async function doSave(justificacion) {
+    if (savingRef.current) return; // ya hay un guardado en curso
     setSaving(true);
     await onSave({
       id: factura?.id || "FAC-" + Date.now(),
@@ -7462,7 +7501,7 @@ function Module6({
   const [selChofer, setSelChofer] = useState("");
   const [selPeriodo, setSelPeriodo] = useState(""); // "MARZO 2026"
   const [basicoMensual, setBasicoMensual] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
   const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view, setView] = useState("list"); // "list"|"liq"
   const [entregas, setEntregas] = useState([]); // FIX 3 — para anticipos de sueldo
@@ -7561,6 +7600,7 @@ function Module6({
   const total = subtotal + (moneyNum(basicoMensual)) - totalAnticipos;
 
   async function handleGuardarLiquidacion() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!selChofer || !selPeriodo) {
       notif.add("Seleccioná chofer y período", "warn");
       return;
@@ -8184,7 +8224,7 @@ function GastoGeneralForm({
   const [chofer, setChofer] = useState("");
   const [responsablePago, setResponsablePago] = useState("");
   const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
   function validate() {
     const e = {};
     if (!fechaGasto) e.fechaGasto = "Requerido";
@@ -8196,6 +8236,7 @@ function GastoGeneralForm({
     return Object.keys(e).length === 0;
   }
   async function handleSave() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!validate()) return;
     setSaving(true);
     await onSave({
@@ -8376,7 +8417,7 @@ function Module8({
   const TC_SISTEMA = tcDeDropdowns(dropdowns);
   const [tcUsd, setTcUsd] = useState(String(TC_SISTEMA.USD));
   const [tcClp, setTcClp] = useState(String(TC_SISTEMA.CLP));
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving, savingRef] = useGuardando();
   const dragIdxRef = useRef(null);
   const patentesPrevRef = useRef("");
   useEffect(() => {
@@ -8535,6 +8576,7 @@ function Module8({
     dragIdxRef.current = i;
   }
   async function handleGuardar() {
+    if (savingRef.current) return; // ya hay un guardado en curso
     if (!selSegs.length) {
       notif.add("Seleccioná al menos un tramo", "warn");
       return;
