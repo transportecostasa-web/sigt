@@ -36,9 +36,13 @@ body.light .form-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='h
 .switch-track.on .switch-thumb{left:16px;background:#fff;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden;font-size:14px;}
-::-webkit-scrollbar{width:5px;height:5px;}
-::-webkit-scrollbar-track{background:transparent;}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+/* Barras de scroll anchas y con contraste: se agarran sin punteria. */
+::-webkit-scrollbar{width:14px;height:14px;}
+::-webkit-scrollbar-track{background:var(--bg3);}
+::-webkit-scrollbar-thumb{background:var(--text3);border-radius:8px;border:3px solid var(--bg3);min-height:40px;min-width:40px;}
+::-webkit-scrollbar-thumb:hover{background:var(--text2);}
+::-webkit-scrollbar-corner{background:var(--bg3);}
+@supports (-moz-appearance:none){*{scrollbar-width:auto;scrollbar-color:var(--text3) var(--bg3);}}
 .app{display:flex;flex-direction:column;height:100vh;}
 .topbar{height:var(--topbar-h);background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;z-index:100;}
 .topbar-title{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--text);display:flex;align-items:center;gap:8px;}
@@ -65,8 +69,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .user-info{min-width:0;}
 .user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .user-role{font-size:10px;color:var(--text3);}
-.main{flex:1;overflow-y:auto;background:var(--bg);}
-.module-container{padding:24px;max-width:1400px;}
+.main{flex:1;min-width:0;overflow-y:auto;background:var(--bg);}
+/* Sin max-width: los listados usan todo el ancho disponible. */
+.module-container{padding:24px;}
 .auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);}
 .auth-card{width:380px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;position:relative;overflow:hidden;}
 .auth-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),#a78bfa);}
@@ -103,6 +108,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .card-title{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;}
 .card-body{padding:20px;}
 .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);}
+/* Listados largos: la tabla scrollea DENTRO de su caja, cuyo alto llega hasta el
+   pie de la ventana (lo calcula useAltoHastaElPie). Asi la barra horizontal queda
+   siempre visible abajo y la vertical a la derecha, con el encabezado fijo.
+   El sticky va en el thead y no en cada th: si cada th fuera su propio contexto
+   de apilamiento, el popover de filtro de una columna quedaria tapado por los
+   encabezados de las columnas siguientes. */
+.tabla-scroll{overflow:auto;}
+.tabla-scroll > table > thead{position:sticky;top:0;z-index:3;}
+.tabla-scroll > table > thead th{background:var(--bg3);box-shadow:inset 0 -1px 0 var(--border);}
 tr.row-clickable:hover td{background:var(--bg3);}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 thead tr{background:var(--bg3);}
@@ -311,6 +325,30 @@ const CURRENCIES = ["USD", "ARS", "CLP"];
 //   }
 // El boton sigue usando `disabled: saving` para el feedback visual.
 // ══════════════════════════════════════════════════════════════════════════════
+// Alto disponible desde el borde superior de un elemento hasta el pie de la
+// ventana. Se recalcula en cada render y al redimensionar, asi acompana los
+// cambios del encabezado (filtros que aparecen, sidebar que se pliega).
+// El margen cubre el padding inferior del contenedor: sin eso el panel
+// principal tambien scrolleaba unos pixeles y aparecia una segunda barra.
+function useAltoHastaElPie(activo = true, margen = 32) {
+  const ref = useRef(null);
+  const [alto, setAlto] = useState(null);
+  React.useLayoutEffect(() => {
+    if (!activo) return;
+    const calcular = () => {
+      const el = ref.current;
+      if (!el) return;
+      const top = Math.max(0, el.getBoundingClientRect().top);
+      const h = Math.max(260, Math.floor(window.innerHeight - top - margen));
+      setAlto(prev => prev === h ? prev : h);
+    };
+    calcular();
+    window.addEventListener("resize", calcular);
+    return () => window.removeEventListener("resize", calcular);
+  });
+  return [ref, activo ? alto : null];
+}
+
 function useGuardando(inicial = false) {
   const [enCurso, setEnCursoState] = useState(inicial);
   const ref = useRef(inicial);
@@ -1424,10 +1462,14 @@ function DataTable({
   emptyText = "Sin registros.",
   stickyHeader = false,
   exportFilename = null,
-  onRowClick = null
+  onRowClick = null,
+  // Por defecto el listado scrollea dentro de una caja que llega al pie de la
+  // ventana. Pasar false cuando la tabla va debajo de otro contenido (RRHH).
+  llenarPantalla = true
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc"); // "asc" | "desc"
+  const [tablaRef, tablaAlto] = useAltoHastaElPie(llenarPantalla);
   // Filtros de columna estilo Excel: { key: [valores] }; null/ausente = sin filtro
   const [colFilters, setColFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
@@ -1569,7 +1611,9 @@ function DataTable({
       e.currentTarget.style.borderColor = "var(--border2)";
     }
   }, "📥")), /*#__PURE__*/React.createElement("div", {
-    className: "table-wrap"
+    ref: tablaRef,
+    className: llenarPantalla ? "table-wrap tabla-scroll" : "table-wrap",
+    style: llenarPantalla && tablaAlto ? { maxHeight: tablaAlto } : undefined
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(col => col.filterable === false && col.sortable === false ? /*#__PURE__*/React.createElement("th", {
     key: col.key,
     style: { ...col.style, whiteSpace: "nowrap" }
@@ -2664,6 +2708,260 @@ function FilterTh({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEGUIMIENTO (Módulo 1)
+//
+// Línea de tiempo de un chofer, un tractor o un semi, armada con TODOS los
+// tramos cargados: viajes activos y del historial por igual.
+//
+//  • Cada tramo se ubica por su FECHA DE INICIO; el período filtra por esa fecha.
+//  • Por defecto el período va desde el primer tramo de la base hasta hoy.
+//  • Entre un tramo y el siguiente se marca el hueco de días sin tramos cargados
+//    (desde la llegada del anterior) y, si el siguiente arranca antes de esa
+//    llegada, la superposición: un mismo camión o chofer no puede estar en dos
+//    tramos a la vez, así que suele ser un dato mal cargado.
+//  • Tractor y semi se agrupan por patente normalizada ("NSE981" = "NSE-981");
+//    los choferes, sin distinguir mayúsculas.
+// ═══════════════════════════════════════════════════════════════════════════════
+const SEGUIMIENTO_TIPOS = [
+  { key: "chofer",  label: "Chofer",  icon: "\u{1F464}" },
+  { key: "tractor", label: "Tractor", icon: "\u{1F69B}" },
+  { key: "semi",    label: "Semi",    icon: "\u{1F6DE}" }
+];
+
+function diasEntreISO(a, b) {
+  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+}
+
+function SeguimientoModal({
+  trips,
+  dropdowns,
+  onClose
+}) {
+  // Todos los tramos de la base, aplanados y con los datos de su viaje
+  const tramos = useMemo(() => {
+    const out = [];
+    (trips || []).forEach(t => (t.segments || []).forEach((sg, i) => {
+      const real = toInputDate(sg.fechaLlegadaReal);
+      out.push({
+        ...sg,
+        _viaje: t.id,
+        _finalizado: t.status === "finalizado",
+        _carga: t.carga || "",
+        _cliente: t.cliente || "",
+        _orden: Number(sg.orden) || i + 1,
+        _ini: toInputDate(sg.fechaInicio),
+        _fin: real || toInputDate(sg.fechaLlegadaPrevista),
+        _finReal: !!real
+      });
+    }));
+    return out;
+  }, [trips]);
+  const hoy = toInputDate(new Date());
+  const primeraFecha = useMemo(() => tramos.map(x => x._ini).filter(Boolean).sort()[0] || hoy, [tramos]);
+  const [tipo, setTipo] = useState("chofer");
+  const [clave, setClave] = useState("");
+  const [desde, setDesde] = useState(primeraFecha);
+  const [hasta, setHasta] = useState(hoy);
+
+  // Cerrar con Escape
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const claveDe = (tp, v) => tp === "chofer" ? String(v || "").trim().toUpperCase() : normPatente(v);
+  const etiquetaDe = (tp, v) => {
+    const txt = String(v || "").trim();
+    if (tp === "chofer") return txt;
+    const lista = (tp === "tractor" ? dropdowns.CAMIONES : dropdowns.SEMIS) || [];
+    return lista.find(c => normPatente(c) === normPatente(txt)) || txt;
+  };
+
+  // Opciones del selector: lo que realmente aparece en los tramos cargados
+  const opciones = useMemo(() => {
+    const m = new Map();
+    tramos.forEach(x => {
+      const k = claveDe(tipo, x[tipo]);
+      if (k && !m.has(k)) m.set(k, etiquetaDe(tipo, x[tipo]));
+    });
+    return [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => compararValores(a.label, b.label));
+  }, [tramos, tipo, dropdowns]);
+  const seleccion = opciones.find(o => o.value === clave);
+
+  const delSujeto = useMemo(() => clave ? tramos.filter(x => claveDe(tipo, x[tipo]) === clave) : [], [tramos, tipo, clave]);
+  const sinFecha = delSujeto.filter(x => !x._ini).length;
+  const rangoInvalido = desde && hasta && desde > hasta;
+  const resultado = useMemo(() => rangoInvalido ? [] : delSujeto
+    .filter(x => x._ini && (!desde || x._ini >= desde) && (!hasta || x._ini <= hasta))
+    .sort((a, b) => (a._ini < b._ini ? -1 : a._ini > b._ini ? 1 : 0) || compararValores(a._viaje, b._viaje) || a._orden - b._orden),
+    [delSujeto, desde, hasta, rangoInvalido]);
+
+  const kmTotal = resultado.reduce((acc, x) => acc + (Number(x.kmPrevistos) || 0), 0);
+  const nViajes = new Set(resultado.map(x => x._viaje)).size;
+  const superposiciones = resultado.filter((x, i) => i > 0 && resultado[i - 1]._fin && x._ini < resultado[i - 1]._fin).length;
+
+  // Las otras dos dimensiones (la elegida es constante en toda la lista)
+  const otras = SEGUIMIENTO_TIPOS.filter(tp => tp.key !== tipo);
+  const tipoActual = SEGUIMIENTO_TIPOS.find(tp => tp.key === tipo);
+
+  function exportar() {
+    const headers = ["Inicio", "Llegada", "Llegada real", "Días", "Viaje", "Estado viaje", "Desde", "Hasta", ...otras.map(o => o.label), "Carga", "Cliente", "KM previstos", "Estado tramo", "ID tramo"];
+    const rows = resultado.map(x => [
+      fmtDate(x._ini), x._fin ? fmtDate(x._fin) : "", x._finReal ? "SI" : "NO",
+      x._fin ? diasEntreISO(x._ini, x._fin) : "", x._viaje, x._finalizado ? "Finalizado" : "Activo",
+      x.desde || "", x.hasta || "", ...otras.map(o => x[o.key] || ""),
+      x._carga, x._cliente, Number(x.kmPrevistos) || "", x.status || "", x.segId || ""
+    ]);
+    exportToCSV(`seguimiento_${tipo}_${(seleccion ? seleccion.label : "").replace(/[^\w-]+/g, "_")}`, headers, rows);
+  }
+
+  const celda = { padding: "7px 10px", verticalAlign: "top" };
+  const mono = { fontFamily: "var(--mono)", fontSize: 12 };
+  const chip = (titulo, valor, color) => /*#__PURE__*/React.createElement("div", {
+    style: { background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 14px", minWidth: 110 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 10, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text3)" }
+  }, titulo), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 17, fontWeight: 600, fontFamily: "var(--mono)", color: color || "var(--text)" }
+  }, valor));
+
+  // Filas: tramos intercalados con huecos y superposiciones
+  const filas = [];
+  resultado.forEach((x, i) => {
+    const prev = i > 0 ? resultado[i - 1] : null;
+    if (prev && prev._fin) {
+      const gap = diasEntreISO(prev._fin, x._ini);
+      if (gap >= 2 || gap < 0) {
+        filas.push(/*#__PURE__*/React.createElement("tr", { key: "gap-" + i }, /*#__PURE__*/React.createElement("td", {
+          colSpan: 9 + otras.length,
+          style: {
+            padding: "4px 10px", fontSize: 11, fontStyle: "italic",
+            color: gap < 0 ? "var(--danger)" : "var(--text3)",
+            background: gap < 0 ? "rgba(229,72,77,.08)" : "transparent"
+          }
+        }, gap < 0
+          ? `\u26A0 Se superpone ${-gap} día${-gap === 1 ? "" : "s"} con el tramo anterior (arranca antes de su llegada)`
+          : `\u23F8 ${gap} días sin tramos cargados`)));
+      }
+    }
+    filas.push(/*#__PURE__*/React.createElement("tr", { key: (x.segId || "t") + "-" + i }, /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, whiteSpace: "nowrap", fontWeight: 600, color: "var(--text)" }
+    }, fmtDate(x._ini)), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, whiteSpace: "nowrap" }
+    }, x._fin ? fmtDate(x._fin) : "\u2014", x._fin && !x._finReal && /*#__PURE__*/React.createElement("span", {
+      style: { fontSize: 10, color: "var(--text3)", marginLeft: 4 },
+      title: "Todavía no tiene fecha de llegada real: se muestra la prevista"
+    }, "(prev.)")), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, ...mono, textAlign: "right" }
+    }, x._fin ? diasEntreISO(x._ini, x._fin) : "\u2014"), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, whiteSpace: "nowrap" }
+    }, /*#__PURE__*/React.createElement("span", { style: mono }, x._viaje), " ", /*#__PURE__*/React.createElement("span", {
+      className: x._finalizado ? "badge badge-green" : "badge badge-blue",
+      style: { marginLeft: 4 }
+    }, x._finalizado ? "Finalizado" : "Activo")), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, whiteSpace: "normal", minWidth: 260 }
+    }, x.desde || "?", " \u2192 ", x.hasta || "?"), otras.map(o => /*#__PURE__*/React.createElement("td", {
+      key: o.key,
+      style: { ...celda, ...(o.key === "chofer" ? {} : mono), whiteSpace: "nowrap" }
+    }, x[o.key] || "\u2014")), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, whiteSpace: "normal", minWidth: 160 }
+    }, x._carga || "\u2014", x._cliente && /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 11, color: "var(--text3)" }
+    }, x._cliente)), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, ...mono, textAlign: "right" }
+    }, Number(x.kmPrevistos) > 0 ? Number(x.kmPrevistos).toLocaleString("es-AR") : "\u2014"), /*#__PURE__*/React.createElement("td", {
+      style: celda
+    }, /*#__PURE__*/React.createElement(StatusBadge, { status: x.status || "stand by" })), /*#__PURE__*/React.createElement("td", {
+      style: { ...celda, ...mono, color: "var(--text3)" }
+    }, x.segId || "\u2014")));
+  });
+
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-box",
+    // overflow visible: si no, el desplegable del selector queda recortado
+    style: { width: 1280, maxWidth: "96vw", height: "90vh", display: "flex", flexDirection: "column", overflow: "visible" },
+    onClick: ev => ev.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal-header"
+  }, /*#__PURE__*/React.createElement("span", null, "\u{1F9ED} Seguimiento", seleccion && ` \u2014 ${tipoActual.label}: ${seleccion.label}`), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm btn-icon",
+    onClick: onClose,
+    title: "Cerrar (Esc)"
+  }, "\u2715")),
+
+  // Controles
+  /*#__PURE__*/React.createElement("div", {
+    style: { padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end" }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "form-label"
+  }, "Seguir por"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 6 }
+  }, SEGUIMIENTO_TIPOS.map(tp => /*#__PURE__*/React.createElement("button", {
+    key: tp.key,
+    className: "btn btn-sm " + (tipo === tp.key ? "btn-primary" : "btn-secondary"),
+    onClick: () => { if (tipo !== tp.key) { setTipo(tp.key); setClave(""); } }
+  }, tp.icon, " ", tp.label)))), /*#__PURE__*/React.createElement("div", {
+    style: { width: 320 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-label"
+  }, tipoActual.label, " (", opciones.length, ")"), /*#__PURE__*/React.createElement(SearchableSelect, {
+    options: opciones,
+    value: clave,
+    onChange: setClave,
+    placeholder: `Elegí un ${tipoActual.label.toLowerCase()}...`
+  })), /*#__PURE__*/React.createElement("div", {
+    style: { width: 160 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-label"
+  }, "Desde"), /*#__PURE__*/React.createElement(DateInput, {
+    value: desde,
+    onChange: setDesde
+  })), /*#__PURE__*/React.createElement("div", {
+    style: { width: 160 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-label"
+  }, "Hasta"), /*#__PURE__*/React.createElement(DateInput, {
+    value: hasta,
+    onChange: setHasta
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: () => { setDesde(primeraFecha); setHasta(hoy); },
+    title: "Desde el primer tramo cargado hasta hoy"
+  }, "Todo el período"), resultado.length > 0 && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: exportar,
+    title: "Exportar a Excel"
+  }, "\u{1F4E5} Exportar")),
+
+  // Resultado
+  /*#__PURE__*/React.createElement("div", {
+    className: "modal-body",
+    style: { flex: 1, minHeight: 0, overflow: "auto", paddingTop: 14 }
+  }, !clave ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty-icon"
+  }, "\u{1F9ED}"), /*#__PURE__*/React.createElement("p", null, "Elegí qué seguir y a quién. Se listan en orden cronológico todos sus tramos, de viajes activos y del historial.")) : rangoInvalido ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("p", null, "La fecha \"Desde\" es posterior a \"Hasta\".")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }
+  }, chip("Tramos", resultado.length), chip("Viajes", nViajes), chip("KM previstos", kmTotal > 0 ? kmTotal.toLocaleString("es-AR") : "\u2014"), resultado.length > 0 && chip("Del", fmtDate(resultado[0]._ini)), resultado.length > 0 && chip("Al", fmtDate(resultado[resultado.length - 1]._fin || resultado[resultado.length - 1]._ini)), superposiciones > 0 && chip("Superposiciones", superposiciones, "var(--danger)")), sinFecha > 0 && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--warning)", marginBottom: 10 }
+  }, "\u26A0 ", sinFecha, " tramo", sinFecha === 1 ? "" : "s", " de ", seleccion ? seleccion.label : "", " no tiene", sinFecha === 1 ? "" : "n", " fecha de inicio y no se puede", sinFecha === 1 ? "" : "n", " ubicar en la línea de tiempo."), resultado.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("p", null, "Sin tramos en el período elegido.")) : /*#__PURE__*/React.createElement("div", {
+    className: "table-wrap"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Inicio", "Llegada", "Días", "Viaje", "Tramo", ...otras.map(o => o.label), "Carga / Cliente", "KM", "Estado", "ID tramo"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+    key: i,
+    style: { textAlign: h === "Días" || h === "KM" ? "right" : "left" }
+  }, h)))), /*#__PURE__*/React.createElement("tbody", null, filas)))))));
+}
+
 function Module1({
   session,
   canEdit,
@@ -2681,6 +2979,8 @@ function Module1({
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
   const [openFilter, setOpenFilter] = useState(null);
+  const [seguimiento, setSeguimiento] = useState(false);
+  const [tablaRef, tablaAlto] = useAltoHastaElPie();
   useEffect(() => {
     loadTrips();
   }, []);
@@ -2864,7 +3164,18 @@ function Module1({
       setOpenFilter(null);
       setSortCol(null);
     }
-  }, histView ? "← Activos" : "Ver Historial"),
+  }, histView ? "← Activos" : "Ver Historial"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: () => setSeguimiento(true),
+    disabled: loading,
+    title: "Línea de tiempo de un chofer, tractor o semi, con viajes activos e historial"
+  }, "🧭 Seguimiento"),
+  // El modal es position:fixed, asi que da igual en que parte del arbol se monte
+  seguimiento && /*#__PURE__*/React.createElement(SeguimientoModal, {
+    trips: trips,
+    dropdowns: dropdowns,
+    onClose: () => setSeguimiento(false)
+  }),
   // Botón global para limpiar todos los filtros de columna activos
   hayFiltros && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
@@ -2892,7 +3203,9 @@ function Module1({
   }, /*#__PURE__*/React.createElement("div", {
     className: "empty-icon"
   }, histView ? "📂" : "🚚"), /*#__PURE__*/React.createElement("p", null, histView ? "No hay viajes finalizados." : "No hay viajes activos.")) : /*#__PURE__*/React.createElement("div", {
-    className: "table-wrap"
+    ref: tablaRef,
+    className: "table-wrap tabla-scroll",
+    style: tablaAlto ? { maxHeight: tablaAlto } : undefined
   }, /*#__PURE__*/React.createElement("table", { className: "tabla-compacta" }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), M1COLS.map(col => /*#__PURE__*/React.createElement(FilterTh, {
     key: col.key,
     col: col,
@@ -7910,6 +8223,7 @@ function Module6({
       margin: "0 auto"
     }
   })) : /*#__PURE__*/React.createElement(DataTable, {
+    llenarPantalla: false, // va debajo del formulario: una caja al pie quedaria chica
     columns: liqCols,
     data: liquidaciones,
     searchPlaceholder: "Buscar liquidaciones...",
