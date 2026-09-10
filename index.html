@@ -2858,7 +2858,7 @@ function SeguimientoModal({
 
   // ── Piezas de UI ──
   const mono = { fontFamily: "var(--mono)", fontSize: 12 };
-  const celda = { padding: "9px 12px", verticalAlign: "top" };
+  const celda = { padding: "8px 10px", verticalAlign: "top" };
   const etiqueta = texto => el("div", { className: "form-label" }, texto);
   const boton = (props, contenido) => el("button", {
     type: "button",
@@ -2888,27 +2888,27 @@ function SeguimientoModal({
     ...otras.map(o => ({ t: o.label })),
     { t: "Carga / Cliente" }, { t: "KM", der: true }, { t: "Estado" }, { t: "ID tramo" }
   ];
-  const estiloTh = { position: "sticky", top: 0, zIndex: 2, background: "var(--bg3)", padding: "9px 12px", boxShadow: "inset 0 -1px 0 var(--border)" };
+  const estiloTh = { position: "sticky", top: 0, zIndex: 2, background: "var(--bg3)", padding: "8px 10px", boxShadow: "inset 0 -1px 0 var(--border)" };
 
   const filaTramo = (x, key) => el("tr", { key },
-    el("td", { style: { ...celda, whiteSpace: "nowrap" } },
+    el("td", { style: { ...celda, minWidth: 96 } },
       x._ini
-        ? el("span", { style: { fontWeight: 600, color: "var(--text)" } }, fmtDate(x._ini))
+        ? el("span", { style: { fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" } }, fmtDate(x._ini))
         : el("span", { style: { color: "var(--text3)" } }, "Sin fecha"),
       !x._ini && x._ubicacion && el("div", { style: { fontSize: 10.5, fontStyle: "italic", color: "var(--text3)", marginTop: 2 } }, x._ubicacion)),
     el("td", { style: { ...celda, whiteSpace: "nowrap" } },
       x._fin ? fmtDate(x._fin) : "\u2014",
       x._fin && !x._finReal && el("span", {
-        style: { fontSize: 10, color: "var(--text3)", marginLeft: 5 },
+        style: { display: "block", fontSize: 10, color: "var(--text3)", marginTop: 1 },
         title: "Todavía no tiene llegada real: se muestra la prevista"
       }, "prev.")),
     el("td", { style: { ...celda, ...mono, textAlign: "right" } }, x._ini && x._fin ? diasEntreISO(x._ini, x._fin) : "\u2014"),
     el("td", { style: { ...celda, whiteSpace: "nowrap" } },
       el("div", { style: mono }, x._viaje),
       el("span", { className: x._finalizado ? "badge badge-green" : "badge badge-blue", style: { marginTop: 4 } }, x._finalizado ? "Finalizado" : "Activo")),
-    el("td", { style: { ...celda, whiteSpace: "normal", minWidth: 280 } }, x.desde || "?", " \u2192 ", x.hasta || "?"),
-    ...otras.map(o => el("td", { key: o.key, style: { ...celda, ...(o.key === "chofer" ? {} : mono), whiteSpace: "nowrap" } }, x[o.key] || "\u2014")),
-    el("td", { style: { ...celda, whiteSpace: "normal", minWidth: 180 } },
+    el("td", { style: { ...celda, whiteSpace: "normal", minWidth: 180 } }, x.desde || "?", " \u2192 ", x.hasta || "?"),
+    ...otras.map(o => el("td", { key: o.key, style: { ...celda, ...(o.key === "chofer" ? { minWidth: 110 } : mono), whiteSpace: o.key === "chofer" ? "normal" : "nowrap" } }, x[o.key] || "\u2014")),
+    el("td", { style: { ...celda, whiteSpace: "normal", minWidth: 120 } },
       x._carga || "\u2014",
       x._cliente && el("div", { style: { fontSize: 11, color: "var(--text3)", marginTop: 2 } }, x._cliente)),
     el("td", { style: { ...celda, ...mono, textAlign: "right" } }, Number(x.kmPrevistos) > 0 ? Number(x.kmPrevistos).toLocaleString("es-AR") : "\u2014"),
@@ -2972,7 +2972,7 @@ function SeguimientoModal({
       "aria-label": "Seguimiento",
       // Alto según el contenido, con tope. overflow visible para que el
       // desplegable del selector no quede recortado por la caja.
-      style: { width: "min(1280px, 96vw)", maxWidth: "96vw", maxHeight: "90vh", minHeight: 360, display: "flex", flexDirection: "column", overflow: "visible" }
+      style: { width: "96vw", maxWidth: "96vw", maxHeight: "90vh", minHeight: 360, display: "flex", flexDirection: "column", overflow: "visible" }
     },
       el("div", { className: "modal-header", style: { justifyContent: "space-between", padding: "12px 20px" } },
         el("div", { style: { display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 } },
@@ -3006,7 +3006,7 @@ function SeguimientoModal({
         el("div", { style: { display: "flex", gap: 8, marginLeft: "auto" } },
           boton({ onClick: () => { setDesde(primeraFecha); setHasta(hoy); }, title: "Desde el primer tramo cargado hasta hoy" }, "\u21BA Todo el período"),
           boton({ onClick: exportar, disabled: todos.length === 0, title: "Exportar a Excel" }, "\u{1F4E5} Exportar"))),
-      el("div", { style: { flex: "1 1 auto", minHeight: 0, overflow: "auto", padding: "16px 20px 20px" } }, cuerpo)));
+      el("div", { style: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "auto", padding: "16px 20px 20px" } }, cuerpo)));
 }
 
 function Module1({
