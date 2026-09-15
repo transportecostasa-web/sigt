@@ -5314,7 +5314,7 @@ function Module3({
   }, "Seleccioná tramos para liquidar")), selDriver && filtered.length > 0 && /*#__PURE__*/React.createElement("button", {
     title: "Exportar tramos a Excel",
     onClick: () => {
-      const headers = ["Tramo", "Viaje", "Chofer", "Desde", "Hasta", "Fecha inicio", "Estado"];
+      const headers = ["Tramo", "Viaje", "Chofer", "Desde", "Hasta", "Fecha inicio viaje", "Estado"];
       const rows = filtered.map(s => [s.segId, s.tripId, s.chofer || "", s.desde || "", s.hasta || "", fmtDate(s.fechaInicio), s.status || ""]);
       exportToCSV(`tramos_${selDriver}`, headers, rows);
     },
@@ -5429,7 +5429,7 @@ function Module3({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Desde"), /*#__PURE__*/React.createElement("th", null, "Hasta"), /*#__PURE__*/React.createElement("th", null, "Fecha inicio"), /*#__PURE__*/React.createElement("th", null, "Estado"))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(s => /*#__PURE__*/React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Desde"), /*#__PURE__*/React.createElement("th", null, "Hasta"), /*#__PURE__*/React.createElement("th", null, "Fecha inicio viaje"), /*#__PURE__*/React.createElement("th", null, "Estado"))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(s => /*#__PURE__*/React.createElement("tr", {
     key: s.segId
   }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -5606,42 +5606,49 @@ function RendicionForm({
     if (!m?.monto) return s;
     return s + toARS(m.monto, m.moneda);
   }, 0);
-  // Divisa del viaje (la que usamos como referencia para todas las comparaciones)
-  const tripDivisa = segs[0]?.tripMoneda || "USD";
-  const tripTotal  = segs[0]?.tripMonto  ? Number(segs[0].tripMonto) : Infinity;
-
-  // Convertir cualquier monto a la divisa del viaje (pasando por ARS como pivote)
-  function toTripDivisa(monto, divisa) {
-    if (!monto) return 0;
-    const n = Number(monto) || 0;
-    if (divisa === tripDivisa) return n;
-    // pivote ARS
-    const enARS = toARS(n, divisa);
-    if (tripDivisa === "USD") return enARS / TC.USD;
-    if (tripDivisa === "CLP") return enARS / (TC.CLP / 100);
-    return enARS; // fallback: ARS
+  // ── Control contra lo cotizado: POR VIAJE ──
+  // Una rendicion puede traer tramos de varios viajes. Cada viaje se compara
+  // solo con SUS tramos (los de esta rendicion y los de otras rendiciones), en
+  // la divisa del viaje. Antes se sumaban todos los tramos de la rendicion
+  // contra el cotizado del primer viaje.
+  function aDivisa(monto, desde, hacia) {
+    const n = moneyNum(monto);
+    if (!n) return 0;
+    if (desde === hacia) return n;
+    const enARS = toARS(n, desde); // pivote ARS
+    if (hacia === "USD") return enARS / TC.USD;
+    if (hacia === "CLP") return enARS / (TC.CLP / 100);
+    return enARS;
   }
-
-  // Sumatoria de montos ya asignados en OTRAS rendiciones del mismo viaje (en divisa del viaje).
-  const montoYaAsignado = (todasRendiciones || []).reduce((total, r) => {
-    if (rendicion && r.id === rendicion.id) return total;
-    const mismoViaje = (r.segments || []).some(sg => sg.tripId === tripId);
-    if (!mismoViaje) return total;
+  const controlViajes = {};
+  segs.forEach(sg => {
+    const id = sg.tripId || "";
+    if (!controlViajes[id]) {
+      const cotizado = moneyNum(sg.tripMonto);
+      controlViajes[id] = { tripId: id, divisa: sg.tripMoneda || "USD", total: cotizado > 0 ? cotizado : Infinity, segIds: [], estaRend: 0, yaAsignado: 0 };
+    }
+    const v = controlViajes[id];
+    v.segIds.push(sg.segId);
+    const sm = segMonto[sg.segId];
+    if (sm && sm.monto) v.estaRend += aDivisa(sm.monto, sm.moneda || "USD", v.divisa);
+  });
+  // Lo ya asignado en OTRAS rendiciones se toma tramo por tramo, del mismo viaje
+  (todasRendiciones || []).forEach(r => {
+    if (rendicion && r.id === rendicion.id) return;
     const segM = r.segMonto || {};
-    return total + Object.values(segM).reduce((s, m) => {
-      return s + (m && m.monto ? toTripDivisa(m.monto, m.moneda || "USD") : 0);
-    }, 0);
-  }, 0);
-
-  // Monto de esta rendición en divisa del viaje
-  const totalSegViaje = Object.values(segMonto).reduce((s, m) => {
-    return s + (m && m.monto ? toTripDivisa(m.monto, m.moneda || "USD") : 0);
-  }, 0);
-
-  // Comparaciones en divisa del viaje
-  const montoDisponible = tripTotal - montoYaAsignado;
-  const superaDisponible  = tripTotal < Infinity && totalSegViaje > montoDisponible;
-  const superaTotalViaje  = tripTotal < Infinity && (totalSegViaje + montoYaAsignado) > tripTotal;
+    (r.segments || []).forEach(sg => {
+      const v = sg.tripId ? controlViajes[sg.tripId] : null;
+      if (!v || v.segIds.includes(sg.segId)) return; // el mismo tramo no cuenta dos veces
+      const sm = segM[sg.segId];
+      if (sm && sm.monto) v.yaAsignado += aDivisa(sm.monto, sm.moneda || "USD", v.divisa);
+    });
+  });
+  Object.values(controlViajes).forEach(v => {
+    v.acumulado = v.estaRend + v.yaAsignado;
+    v.excede = v.total < Infinity && v.acumulado > v.total + 0.005;
+  });
+  const viajesExcedidos = Object.values(controlViajes).filter(v => v.excede);
+  const hayExceso = viajesExcedidos.length > 0;
 
   // Gastos — sumar por divisa a través de todas las categorías
   const expTotal = {
@@ -5737,10 +5744,20 @@ function RendicionForm({
       fontFamily: "var(--mono)",
       fontSize: 12
     }
-  }, rendId)), /*#__PURE__*/React.createElement("button", {
+  }, rendId)), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 20 }
+  }, /*#__PURE__*/React.createElement("div", {
+    title: "Tipo de cambio del sistema (hojas USD/ARS CHOFERES y CLP/ARS CHOFERES). CLP/ARS: pesos argentinos cada 100 pesos chilenos.",
+    style: { display: "flex", alignItems: "baseline", gap: 16, fontSize: 12, color: "var(--text3)" }
+  }, [["USD/ARS", TC.USD], ["CLP/ARS", TC.CLP]].map(([etq, val]) => /*#__PURE__*/React.createElement("span", {
+    key: etq,
+    style: { whiteSpace: "nowrap" }
+  }, etq, " ", /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "var(--mono)", fontWeight: 500, color: "var(--text2)" }
+  }, Number(val).toLocaleString("es-AR", { maximumFractionDigits: 2 }))))), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: onBack
-  }, "← Volver")), /*#__PURE__*/React.createElement("div", {
+  }, "← Volver"))), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 16
@@ -5784,7 +5801,7 @@ function RendicionForm({
       gap: 8,
       marginBottom: 8
     }
-  }, [["ID Viaje", s.tripId], ["Chofer", s.chofer], ["Tractor", s.tractor], ["Semi", s.semi], ["Fecha inicio", fmtDate(s.fechaInicio)], ["Fecha prev. llegada", fmtDate(s.fechaLlegadaPrevista)], ["Fecha real llegada", fmtDate(s.fechaLlegadaReal)], ["Km previstos", fmtKm(s.kmPrevistos)]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+  }, [["ID Viaje", s.tripId], ["Chofer", s.chofer], ["Tractor", s.tractor], ["Semi", s.semi], ["Fecha inicio viaje", fmtDate(s.fechaInicio)], ["Fecha llegada", fmtDate(s.fechaLlegadaPrevista)], ["Fecha carga/descarga", fmtDate(s.fechaLlegadaReal)], ["Km previstos", fmtKm(s.kmPrevistos)]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
     key: l,
     style: {
       minWidth: 130
@@ -5846,18 +5863,25 @@ function RendicionForm({
       ...p,
       [s.segId]: e.target.value
     }))
-  }))), (superaTotalViaje || superaDisponible) && /*#__PURE__*/React.createElement("div", {
-    className: "alert alert-danger",
-    style: {
-      marginTop: 8
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: { fontWeight: 600, marginBottom: 4 }
-  }, "⚠️ El monto asignado supera el monto cotizado del viaje"), /*#__PURE__*/React.createElement("div", {
-    style: { fontSize: 12, lineHeight: 1.6 }
-  }, /*#__PURE__*/React.createElement("div", null, "Cotizado total del viaje: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(tripTotal), " ", tripDivisa)), montoYaAsignado > 0 && /*#__PURE__*/React.createElement("div", null, "Ya asignado en otros tramos: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(montoYaAsignado), " ", tripDivisa)), /*#__PURE__*/React.createElement("div", null, "Este tramo: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje), " ", tripDivisa)), /*#__PURE__*/React.createElement("div", {
-    style: { color: "var(--danger)", marginTop: 4 }
-  }, "Total acumulado: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje + montoYaAsignado), " ", tripDivisa), " — excede el cotizado en ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalSegViaje + montoYaAsignado - tripTotal), " ", tripDivisa)))))), /*#__PURE__*/React.createElement("div", {
+  }))), (() => {
+    // Un solo aviso por viaje, debajo de su ultimo tramo
+    const v = controlViajes[s.tripId || ""];
+    if (!v || !v.excede || v.segIds[v.segIds.length - 1] !== s.segId) return null;
+    const f = x => fmtNum(x) + " " + v.divisa;
+    const fuerte = x => /*#__PURE__*/React.createElement("strong", null, f(x));
+    return /*#__PURE__*/React.createElement("div", {
+      className: "alert alert-danger",
+      style: { marginTop: 8 }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { fontWeight: 600, marginBottom: 4 }
+    }, "⚠️ Los tramos del viaje ", /*#__PURE__*/React.createElement("span", {
+      style: { fontFamily: "var(--mono)" }
+    }, v.tripId), " superan su monto cotizado"), /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 12, lineHeight: 1.6 }
+    }, /*#__PURE__*/React.createElement("div", null, "Cotizado del viaje: ", fuerte(v.total)), /*#__PURE__*/React.createElement("div", null, v.segIds.length === 1 ? "Tramo " : "Tramos ", v.segIds.join(" + "), " en esta rendición: ", fuerte(v.estaRend)), v.yaAsignado > 0 && /*#__PURE__*/React.createElement("div", null, "Ya asignado en otras rendiciones: ", fuerte(v.yaAsignado)), /*#__PURE__*/React.createElement("div", {
+      style: { color: "var(--danger)", marginTop: 4 }
+    }, "Total acumulado: ", fuerte(v.acumulado), " — excede el cotizado en ", fuerte(v.acumulado - v.total))));
+  })())), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 20,
@@ -6341,8 +6365,8 @@ function RendicionForm({
   }, saving ? "Guardando..." : "⏸ Guardar en stand by"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: () => handleSave("cerrada"),
-    disabled: saving || superaTotalViaje || superaDisponible,
-    title: (superaTotalViaje || superaDisponible) ? "El monto asignado supera el cotizado del viaje" : undefined
+    disabled: saving || hayExceso,
+    title: hayExceso ? "Superan el monto cotizado: " + viajesExcedidos.map(v => v.tripId).join(", ") : undefined
   }, saving ? "Guardando..." : "💾 Cerrar rendición")));
 }
 
