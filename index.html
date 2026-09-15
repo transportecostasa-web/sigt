@@ -585,6 +585,37 @@ function pareceNumero(v) {
 // alfabetico con reglas del castellano (acentos y ñ en su lugar).
 // El orden importa: "2300" es un monto, no el año 2300, asi que los numeros
 // se resuelven ANTES de intentar interpretarlos como fecha.
+// Orden cronologico de tramos (Rendicion). Clave = fecha de inicio; si el tramo
+// no la tiene, se ubica por el orden de su viaje: a continuacion del tramo
+// anterior con fecha, o antes del siguiente. Sin ninguna fecha en su viaje, al final.
+function ordenarTramosPorFecha(lista) {
+  const iso = d => (d ? toInputDate(d) : "") || "";
+  const porViaje = new Map();
+  (lista || []).forEach((sg, i) => {
+    const k = sg.tripId || "";
+    if (!porViaje.has(k)) porViaje.set(k, []);
+    porViaje.get(k).push({ sg, i, orden: Number(sg.orden) || 0, ini: iso(sg.fechaInicio) });
+  });
+  const items = [];
+  porViaje.forEach(arr => {
+    arr.sort((a, b) => a.orden - b.orden || a.i - b.i);
+    arr.forEach((x, k) => {
+      if (x.ini) { x.clave = x.ini; return; }
+      const ant = arr.slice(0, k).reverse().find(y => y.ini);
+      const sig = arr.slice(k + 1).find(y => y.ini);
+      x.clave = ant ? ant.ini : sig ? sig.ini : "";
+      items.push(x);
+    });
+    arr.filter(x => x.ini).forEach(x => items.push(x));
+  });
+  return items.sort((a, b) =>
+    (!a.clave) - (!b.clave) ||
+    (a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0) ||
+    compararValores(a.sg.tripId || "", b.sg.tripId || "") ||
+    a.orden - b.orden || a.i - b.i
+  ).map(x => x.sg);
+}
+
 function compararValores(av, bv) {
   if (pareceNumero(av) && pareceNumero(bv)) return moneyNum(av) - moneyNum(bv);
   const da = parseDate(av), db = parseDate(bv);
@@ -5227,7 +5258,7 @@ function Module3({
         });
       }
     });
-    return segs;
+    return ordenarTramosPorFecha(segs);
   }, [trips, settledIds, dropdowns]);
   const filtered = selDriver ? unsettled.filter(s => s.chofer === selDriver) : unsettled;
   const allDrivers = [...new Set(unsettled.map(s => s.chofer).filter(Boolean))];
@@ -5282,6 +5313,8 @@ function Module3({
         return full;
       });
     }
+    // Mismo orden cronologico que la tabla principal
+    formSegs = ordenarTramosPorFecha(formSegs);
     // tripId del primer seg (todos los del mismo viaje comparten tripId)
     const formTripId = formSegs[0]?.tripId || null;
     return /*#__PURE__*/React.createElement(RendicionForm, {
