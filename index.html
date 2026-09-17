@@ -151,6 +151,20 @@ tr:hover td{background:var(--bg3);}
 .input-with-currency{display:flex;gap:0;}
 .input-with-currency .form-input{border-radius:var(--radius) 0 0 var(--radius);border-right:none;}
 .input-with-currency .form-select{width:80px;flex-shrink:0;border-radius:0 var(--radius) var(--radius) 0;}
+/* Resumen de rendicion cerrada: se ve en pantalla como la hoja que se imprime */
+.hoja-a4{background:#fff;color:#111;width:210mm;max-width:100%;margin:0 auto;padding:14mm;border-radius:4px;box-shadow:0 2px 16px rgba(0,0,0,.25);}
+.hoja-a4 *{color:#111;}
+.hoja-a4 table{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:8px;}
+.hoja-a4 th,.hoja-a4 td{border:1px solid #9aa0a6;padding:3px 5px;text-align:left;}
+.hoja-a4 th{background:#eceff1;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;}
+.hoja-a4 .num{text-align:right;font-variant-numeric:tabular-nums;}
+.hoja-a4 h1{font-size:15px;margin:0 0 2px;}
+.hoja-a4 h2{font-size:11px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #9aa0a6;padding-bottom:2px;}
+.hoja-a4 .sub{font-size:10px;color:#444;}
+.hoja-a4 .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;}
+.hoja-a4 .saldo{border:2px solid #111;padding:6px 10px;font-size:13px;font-weight:bold;display:flex;justify-content:space-between;margin-top:8px;}
+.hoja-a4 .firmas{display:flex;gap:40px;margin-top:22px;font-size:10px;}
+.hoja-a4 .firmas div{flex:1;border-top:1px solid #111;padding-top:3px;text-align:center;}
 .field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
 .status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
 .status-en-curso{background:rgba(245,166,35,.15);color:var(--warning);}
@@ -588,6 +602,112 @@ function pareceNumero(v) {
 // Orden cronologico de tramos (Rendicion). Clave = fecha de inicio; si el tramo
 // no la tiene, se ubica por el orden de su viaje: a continuacion del tramo
 // anterior con fecha, o antes del siguiente. Sin ninguna fecha en su viaje, al final.
+// ══════════════════════════════════════════════════════════════════════════════
+// RESUMEN DE RENDICION CERRADA (hoja A4)
+//
+// Una rendicion cerrada es un documento: al cerrarla se guarda una copia fija
+// de TODO (tramos con sus fechas, entregas del periodo, TC usados, gastos,
+// combustible y totales) en `cierre`. La pantalla y la impresion salen de esa
+// copia, nunca de los datos vivos: si despues cambia un viaje, la rendicion
+// cerrada sigue mostrando lo mismo.
+// ══════════════════════════════════════════════════════════════════════════════
+function escHtml(v) {
+  return String(v === null || v === undefined ? "" : v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function htmlResumenRendicion(c) {
+  const t = c.totales || {};
+  const fila = cels => "<tr>" + cels.join("") + "</tr>";
+  const td = (v, num) => '<td' + (num ? ' class="num"' : '') + '>' + escHtml(v) + '</td>';
+  const th = (v, num) => '<th' + (num ? ' class="num"' : '') + '>' + escHtml(v) + '</th>';
+  const money = (v, div) => fmtNum(v) + (div ? " " + div : "");
+
+  const tramos = (c.tramos || []).map(x => fila([
+    td(x.tripId), td(x.segId), td((x.desde || "?") + " → " + (x.hasta || "?")),
+    td(fmtDate(x.fechaInicio)), td(fmtDate(x.fechaLlegadaPrevista)), td(fmtDate(x.fechaLlegadaReal)),
+    td(x.kmPrevistos ? fmtNum(x.kmPrevistos) : "—", true), td(x.kmReales ? fmtNum(x.kmReales) : "—", true),
+    td(x.monto ? money(x.monto, x.moneda) : "—", true)
+  ])).join("");
+
+  const entregas = (c.entregas || []).map(e => fila([
+    td(fmtDate(e.fecha)), td(e.responsable), td(e.moneda), td(fmtNum(e.monto), true), td(fmtNum(e.equivARS), true)
+  ])).join("");
+
+  const gastos = (c.gastos || []).filter(g => g.ARS || g.CLP || g.USD).map(g => fila([
+    td(g.cat), td(g.ARS ? fmtNum(g.ARS) : "", true), td(g.CLP ? fmtNum(g.CLP) : "", true), td(g.USD ? fmtNum(g.USD) : "", true)
+  ])).join("");
+
+  const combustible = (c.combustible || []).filter(f => f.fecha || f.litros || f.total).map(f => fila([
+    td(fmtDate(f.fecha)), td(f.proveedor), td(f.litros ? fmtNum(f.litros) : "", true), td(f.total ? fmtNum(f.total) : "", true)
+  ])).join("");
+
+  const devol = CURRENCIES.filter(cur => Number((c.devolucion || {})[cur]) > 0)
+    .map(cur => fmtNum((c.devolucion || {})[cur]) + " " + cur).join(" · ");
+
+  const tcTxt = [
+    "USD/ARS " + fmtNum(c.tcUsado && c.tcUsado.USD) + (c.tcManual && c.tcManual.USD ? " (pactado)" : ""),
+    "CLP/ARS " + fmtNum(c.tcUsado && c.tcUsado.CLP) + (c.tcManual && c.tcManual.CLP ? " (pactado)" : "")
+  ].join(" · ");
+
+  return '' +
+  '<div class="cab"><div><h1>Rendición de viaje — ' + escHtml(c.driver) + '</h1>' +
+  '<div class="sub">' + escHtml(c.id) + ' · Período ' + escHtml(fmtDate(c.periodo && c.periodo.desde)) + ' a ' + escHtml(fmtDate(c.periodo && c.periodo.hasta)) + '</div></div>' +
+  '<div class="sub" style="text-align:right">Cerrada el ' + escHtml(c.cerradaAt) + '<br>por ' + escHtml(c.cerradaPor) + '<br>TC: ' + escHtml(tcTxt) + '</div></div>' +
+
+  '<h2>Tramos</h2><table><thead>' + fila([th("Viaje"), th("Tramo"), th("Recorrido"), th("Inicio"), th("Llegada"), th("Carga/descarga"), th("Km prev.", true), th("Km reales", true), th("Monto", true)]) + '</thead><tbody>' +
+  (tramos || fila([td("Sin tramos")])) + '</tbody></table>' +
+
+  '<h2>Dinero entregado al chofer</h2>' +
+  (entregas
+    ? '<table><thead>' + fila([th("Fecha"), th("Responsable"), th("Divisa"), th("Monto", true), th("Equiv. ARS", true)]) + '</thead><tbody>' + entregas +
+      fila([td(""), td(""), td("Total"), td("", true), td(fmtNum(t.entTotalARS) + " ARS", true)]) + '</tbody></table>'
+    : '<div class="sub">Sin entregas en el período.</div>') +
+  (devol ? '<div class="sub">Devoluciones: ' + escHtml(devol) + '</div>' : '') +
+
+  (gastos ? '<h2>Gastos</h2><table><thead>' + fila([th("Categoría"), th("ARS", true), th("CLP", true), th("USD", true)]) + '</thead><tbody>' + gastos +
+    fila([td("Total en ARS"), td(fmtNum(t.expTotalARS), true), td(""), td("")]) + '</tbody></table>' : '') +
+
+  (combustible ? '<h2>Combustible</h2><table><thead>' + fila([th("Fecha"), th("Proveedor"), th("Litros", true), th("Total factura", true)]) + '</thead><tbody>' + combustible + '</tbody></table>' +
+    '<div class="sub">Litros: ' + escHtml(fmtNum(t.totalLitros)) + ' · Km reales: ' + escHtml(fmtNum(t.totalKmReales)) + ' · Consumo: ' + escHtml(t.consumo) + ' L/100km</div>' : '') +
+
+  '<h2>Liquidación</h2><table><tbody>' +
+  fila([td("Total montos de tramo (ARS)"), td(fmtNum(t.totalSegARS), true)]) +
+  fila([td("Porcentaje chofer (13%)"), td(fmtNum(t.porcChofer), true)]) +
+  fila([td("Entregado neto (ARS)"), td(fmtNum(t.entTotalARS), true)]) +
+  fila([td("Gastos rendidos (ARS)"), td(fmtNum(t.expTotalARS), true)]) +
+  fila([td("Anticipo de sueldo (entregado − gastos)"), td(fmtNum(t.anticipoSueldo), true)]) +
+  '</tbody></table>' +
+  '<div class="saldo"><span>Saldo del chofer</span><span>' + escHtml(fmtNum(t.saldoChofer)) + ' ARS</span></div>' +
+  '<div class="firmas"><div>Firma del chofer</div><div>Firma responsable</div></div>';
+}
+
+// Imprime el resumen sin abrir ventanas nuevas (un iframe oculto evita que el
+// bloqueador de pop-ups se lo coma).
+function imprimirA4(titulo, cuerpoHtml) {
+  const marco = document.createElement("iframe");
+  marco.setAttribute("aria-hidden", "true");
+  marco.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(marco);
+  const doc = marco.contentWindow.document;
+  const css = [...document.querySelectorAll("style")].map(e => e.textContent).join("\n");
+  doc.open();
+  doc.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + escHtml(titulo) + '</title>' +
+    '<style>' + css + '</style>' +
+    '<style>@page{size:A4;margin:12mm;} body{margin:0;background:#fff;} ' +
+    '.hoja-a4{width:auto;padding:0;box-shadow:none;border-radius:0;} ' +
+    '.hoja-a4 table{page-break-inside:avoid;}</style></head>' +
+    '<body><div class="hoja-a4">' + cuerpoHtml + '</div></body></html>');
+  doc.close();
+  let limpio = false;
+  const limpiar = () => { if (limpio) return; limpio = true; setTimeout(() => marco.remove(), 500); };
+  marco.contentWindow.onafterprint = limpiar;
+  setTimeout(() => {
+    try { marco.contentWindow.focus(); marco.contentWindow.print(); } catch (e) { limpiar(); }
+    setTimeout(limpiar, 120000);
+  }, 250);
+}
+
 function ordenarTramosPorFecha(lista) {
   const iso = d => (d ? toInputDate(d) : "") || "";
   const porViaje = new Map();
@@ -5217,6 +5337,8 @@ function Module3({
   const [loading, setLoading] = useState(true);
   const [editRend, setEditRend] = useState(null); // rendición abierta que se está editando
   const [histView, setHistView] = useState(false); // ver historial de cerradas
+  const [verCerrada, setVerCerrada] = useState(null); // rendición cerrada abierta como documento
+  const [reabriendo, setReabriendo] = useState(false);
 
   useEffect(() => {
     // Usa caché para las tres colecciones — sin llamadas duplicadas al servidor
@@ -5284,13 +5406,48 @@ function Module3({
         if (r.ok) setRendiciones(r.data);
       });
     } else notif.add(r.error || "Error", "error");
+    return r;
   }
 
-  // Abrir una rendición existente (stand by) para seguir cargándola
+  // Reabrir una cerrada: el backend solo acepta tocarla con `forzar`
+  async function reabrirRendicion(rend) {
+    setReabriendo(true);
+    const r = await gasCall("saveRendicion", {
+      rendicion: { ...rend, estado: "abierta" },
+      forzar: true,
+      user: session.username
+    });
+    setReabriendo(false);
+    if (!r.ok) { notif.add(r.error || "No se pudo reabrir", "error"); return; }
+    invalidateCache("rendiciones");
+    const lista = await cachedGet("getRendiciones", "rendiciones");
+    if (lista.ok) setRendiciones(lista.data);
+    notif.add("Rendición reabierta: corregí lo que haga falta y cerrala de nuevo", "warn");
+    setVerCerrada(null);
+    setSelDriver(rend.driver);
+    setEditRend({ ...rend, estado: "abierta" });
+    setView("form");
+  }
+
+  // Abrir una rendición: las cerradas se ven como documento (no se editan)
   function openRendicion(rend) {
+    if (rend.estado === "cerrada") {
+      setVerCerrada(rend);
+      setView("cerrada");
+      return;
+    }
     setSelDriver(rend.driver);
     setEditRend(rend);
     setView("form");
+  }
+  if (view === "cerrada" && verCerrada) {
+    return /*#__PURE__*/React.createElement(RendicionCerrada, {
+      rend: verCerrada,
+      canEdit: canEdit,
+      reabriendo: reabriendo,
+      onReabrir: reabrirRendicion,
+      onBack: () => { setVerCerrada(null); setView("list"); }
+    });
   }
   if (view === "form") {
     // Si editamos una rendición abierta, sus tramos vienen de la propia rendición
@@ -5498,6 +5655,45 @@ function Module3({
 }
 
 // ─── RENDICION FORM ───────────────────────────────────────────────────────────
+// Rendición cerrada: documento de solo lectura, con el mismo contenido que se
+// imprime. Las cerradas ANTES de este cambio no tienen copia fija (`cierre`):
+// se avisa y se muestra lo que haya quedado guardado.
+function RendicionCerrada({ rend, onBack, canEdit, onReabrir, reabriendo }) {
+  const c = rend.cierre;
+  const html = c ? htmlResumenRendicion(c) : "";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "module-container"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "module-header"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "module-title"
+  }, "📄 Rendición cerrada — ", rend.driver), /*#__PURE__*/React.createElement("div", {
+    className: "module-subtitle",
+    style: { fontFamily: "var(--mono)", fontSize: 12 }
+  }, rend.id)), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8 }
+  }, c && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary btn-sm",
+    onClick: () => imprimirA4("Rendicion " + rend.id, html)
+  }, "🖨 Imprimir resumen A4"), canEdit && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: () => {
+      if (confirm("¿Reabrir esta rendición para corregirla? Vuelve a quedar editable (stand by) y hay que cerrarla de nuevo para que valga como documento.")) onReabrir(rend);
+    },
+    disabled: reabriendo
+  }, reabriendo ? "Reabriendo..." : "🔓 Reabrir"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: onBack
+  }, "← Volver"))), c
+    ? /*#__PURE__*/React.createElement("div", {
+        className: "hoja-a4",
+        dangerouslySetInnerHTML: { __html: html }
+      })
+    : /*#__PURE__*/React.createElement("div", {
+        className: "alert alert-warning"
+      }, "Esta rendición se cerró antes de que se guardara la copia fija, así que no tiene resumen imprimible. Para generarlo hay que reabrirla y volver a cerrarla."));
+}
+
 function RendicionForm({
   segs,
   driver,
@@ -5759,8 +5955,41 @@ function RendicionForm({
       }
     }
     setSaving(true);
+    // Al CERRAR se guarda una copia fija de todo lo que da forma al documento.
+    // Despues, la rendicion se muestra desde esta copia y no vuelve a calcularse.
+    const cierre = estado !== "cerrada" ? null : {
+      id: rendId,
+      driver,
+      cerradaAt: fmtDT(new Date()),
+      cerradaPor: session.username,
+      periodo: { desde: dateFrom, hasta: dateToMinus1 || dateTo },
+      tramos: segs.map(sg => ({
+        segId: sg.segId, tripId: sg.tripId,
+        desde: sg.desde, hasta: sg.hasta,
+        chofer: sg.chofer, tractor: sg.tractor, semi: sg.semi,
+        carga: sg.tripCarga || "", cliente: sg.tripCliente || "",
+        fechaInicio: sg.fechaInicio, fechaLlegadaPrevista: sg.fechaLlegadaPrevista, fechaLlegadaReal: sg.fechaLlegadaReal,
+        kmPrevistos: sg.kmPrevistos, kmReales: kmReales[sg.segId] || "",
+        monto: (segMonto[sg.segId] || {}).monto || "", moneda: (segMonto[sg.segId] || {}).moneda || "USD"
+      })),
+      entregas: driverEntregas.map(e => ({
+        id: e.id, fecha: e.fecha, responsable: e.responsable,
+        monto: e.monto, moneda: e.moneda, equivARS: entAARS(e.monto, e.moneda)
+      })),
+      devolucion,
+      tcManual: { USD: moneyNum(tcEntrega.USD) > 0, CLP: moneyNum(tcEntrega.CLP) > 0 },
+      tcUsado: { USD: tcEntUnitario("USD"), CLP: tcEntUnitario("CLP") * 100 },
+      gastos: expenses,
+      combustible: fuelRows,
+      totales: {
+        totalSegARS, porcChofer, anticipoSueldo, saldoChofer,
+        entBruto, entNeto, entTotalARS, expTotal, expTotalARS,
+        totalLitros, totalKmPrev, totalKmReales, gapKm, consumo
+      }
+    };
     // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
-    await onSave({
+    const respuesta = await onSave({
+      cierre,
       id: rendId,
       driver,
       estado: estado || "abierta",
@@ -5782,6 +6011,10 @@ function RendicionForm({
       }
     });
     setSaving(false);
+    // Cerrada: se abre el resumen para imprimir y encarpetar
+    if (cierre && (!respuesta || respuesta.ok !== false)) {
+      imprimirA4("Rendicion " + rendId, htmlResumenRendicion(cierre));
+    }
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
