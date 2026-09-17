@@ -5253,7 +5253,9 @@ function Module3({
             ...seg,
             tripId: trip.id,
             tripMonto: trip.montoFactura,
-            tripMoneda: trip.moneda
+            tripMoneda: trip.moneda,
+            tripCarga: trip.carga,
+            tripCliente: trip.cliente
           });
         });
       }
@@ -5305,7 +5307,9 @@ function Module3({
               ...found,
               tripId: t.id,
               tripMonto: t.montoFactura,
-              tripMoneda: t.moneda
+              tripMoneda: t.moneda,
+              tripCarga: t.carga,
+              tripCliente: t.cliente
             };
             break;
           }
@@ -5548,6 +5552,7 @@ function RendicionForm({
     [s.segId]: ""
   }), {}));
   // FIX #4 — devoluciones por moneda
+  const [tcEntrega, setTcEntrega] = useState(() => isEdit && rendicion.tcEntrega ? { ...rendicion.tcEntrega } : { USD: "", CLP: "" });
   const [devolucion, setDevolucion] = useState(isEdit && rendicion.devolucion ? rendicion.devolucion : {
     ARS: "",
     CLP: "",
@@ -5631,7 +5636,19 @@ function RendicionForm({
   // Helper compartido: el mismo que usan Facturacion, RRHH y Fleteros.
   const TC = tcDeDropdowns(dropdowns);
   const toARS = (monto, cur) => convARS(TC, monto, cur);
-  const entTotalARS = entNeto.ARS + toARS(entNeto.CLP, "CLP") + toARS(entNeto.USD, "USD");
+
+  // La plata entregada al chofer en USD/CLP se convierte con la cotizacion
+  // PACTADA CON EL CHOFER, que no es la del sistema (esa se usa para los montos
+  // de facturacion). Se carga a mano en la tabla de entregas; vacio = la del
+  // sistema. Unidades: USD = ARS por 1 USD; CLP = ARS cada 100 CLP.
+  const tcEntUnitario = cur => {
+    if (cur === "ARS") return 1;
+    const manual = moneyNum(tcEntrega[cur]);
+    if (manual > 0) return cur === "CLP" ? manual / 100 : manual;
+    return cur === "CLP" ? TC.CLP / 100 : TC.USD;
+  };
+  const entAARS = (monto, cur) => moneyNum(monto) * tcEntUnitario(cur);
+  const entTotalARS = entNeto.ARS + entAARS(entNeto.CLP, "CLP") + entAARS(entNeto.USD, "USD");
 
   // Total montos tramo
   const totalSegARS = segs.reduce((s, seg) => {
@@ -5752,6 +5769,7 @@ function RendicionForm({
       fuelRows,
       kmReales,
       devolucion,
+      tcEntrega,
       segments: segs,
       totals: {
         totalSegARS,
@@ -5834,25 +5852,33 @@ function RendicionForm({
       gap: 8,
       marginBottom: 8
     }
-  }, [["ID Viaje", s.tripId], ["Chofer", s.chofer], ["Tractor", s.tractor], ["Semi", s.semi], ["Fecha inicio viaje", fmtDate(s.fechaInicio)], ["Fecha llegada", fmtDate(s.fechaLlegadaPrevista)], ["Fecha carga/descarga", fmtDate(s.fechaLlegadaReal)], ["Km previstos", fmtKm(s.kmPrevistos)]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
+  }, [["ID Viaje", s.tripId], ["Carga", s.tripCarga], ["Cliente", s.tripCliente], ["Chofer", s.chofer], ["Tractor", s.tractor], ["Semi", s.semi], ["Fecha inicio viaje", fmtDate(s.fechaInicio)], ["Fecha llegada", fmtDate(s.fechaLlegadaPrevista)], ["Fecha carga/descarga", fmtDate(s.fechaLlegadaReal)], ["Km previstos", fmtKm(s.kmPrevistos)]].map(([l, v]) => /*#__PURE__*/React.createElement("div", {
     key: l,
     style: {
-      minWidth: 130
+      flex: l === "Cliente" ? "3 1 170px" : l === "Carga" || l === "Chofer" ? "2 1 130px" : /^Fecha/.test(l) ? "1 1 135px" : l === "ID Viaje" ? "0 0 128px" : "1 1 95px",
+      minWidth: 0
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "form-label"
+    className: "form-label",
+    style: { whiteSpace: "nowrap" }
   }, l), /*#__PURE__*/React.createElement("div", {
-    className: "field-readonly"
+    className: "field-readonly",
+    title: v || "",
+    style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
   }, v || "—")))), s.observaciones && /*#__PURE__*/React.createElement("div", {
     className: "form-hint"
   }, "Obs: ", s.observaciones), /*#__PURE__*/React.createElement("div", {
     className: "form-row",
     style: {
       marginTop: 8,
-      maxWidth: 400
+      display: "flex",
+      gap: 16,
+      flexWrap: "wrap",
+      alignItems: "flex-end"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
+    className: "form-group",
+    style: { flex: "0 0 250px", marginBottom: 0 }
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
   }, "Monto tramo *"), /*#__PURE__*/React.createElement("div", {
@@ -5884,7 +5910,8 @@ function RendicionForm({
     key: c,
     value: c
   }, c))))), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
+    className: "form-group",
+    style: { flex: "0 0 170px", marginBottom: 0 }
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
   }, "Km reales *"), /*#__PURE__*/React.createElement("input", {
@@ -5969,7 +5996,23 @@ function RendicionForm({
     style: {
       marginBottom: 8
     }
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Responsable"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Equiv. ARS"))), /*#__PURE__*/React.createElement("tbody", null, entByCur[cur].map(e => /*#__PURE__*/React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Responsable"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", gap: 8 }
+  }, "Equiv. ARS", cur !== "ARS" && /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 10, color: "var(--text3)", textTransform: "none", letterSpacing: 0 }
+  }, "TC"), cur !== "ARS" && /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    step: "0.01",
+    value: tcEntrega[cur] || "",
+    onChange: ev => setTcEntrega(p => ({ ...p, [cur]: ev.target.value })),
+    placeholder: String(cur === "CLP" ? TC.CLP : TC.USD),
+    title: cur === "CLP"
+      ? "Cotizaci\u00f3n pactada con el chofer: ARS cada 100 CLP. Vac\u00edo = la del sistema."
+      : "Cotizaci\u00f3n pactada con el chofer: ARS por 1 USD. Vac\u00edo = la del sistema.",
+    style: { width: 96, height: 26, padding: "2px 6px", fontSize: 11, textTransform: "none", letterSpacing: 0 }
+  }))))), /*#__PURE__*/React.createElement("tbody", null, entByCur[cur].map(e => /*#__PURE__*/React.createElement("tr", {
     key: e.id
   }, /*#__PURE__*/React.createElement("td", null, fmtDate(e.fecha)), /*#__PURE__*/React.createElement("td", null, e.responsable), /*#__PURE__*/React.createElement("td", {
     style: {
@@ -5980,7 +6023,7 @@ function RendicionForm({
       fontFamily: "var(--mono)",
       color: "var(--text3)"
     }
-  }, fmtNum(toARS(e.monto, cur))))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+  }, fmtNum(entAARS(e.monto, cur))))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     colSpan: 2,
     style: {
       fontWeight: 600,
@@ -5997,7 +6040,7 @@ function RendicionForm({
       fontFamily: "var(--mono)",
       color: "var(--text3)"
     }
-  }, fmtNum(toARS(entBruto[cur], cur))))))))), CURRENCIES.every(cur => entByCur[cur].length === 0) && /*#__PURE__*/React.createElement("div", {
+  }, fmtNum(entAARS(entBruto[cur], cur))))))))), CURRENCIES.every(cur => entByCur[cur].length === 0) && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "var(--text3)",
@@ -6057,7 +6100,7 @@ function RendicionForm({
       color: "var(--success)",
       whiteSpace: "nowrap"
     }
-  }, "= ", fmtNum(toARS(entNeto[cur], cur)), " ARS neto"))))), /*#__PURE__*/React.createElement("div", {
+  }, "= ", fmtNum(entAARS(entNeto[cur], cur)), " ARS neto"))))), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "right",
       fontWeight: 600,
