@@ -155,15 +155,15 @@ tr:hover td{background:var(--bg3);}
 .hoja-a4{background:#fff;color:#111;width:210mm;max-width:100%;margin:0 auto;padding:14mm;border-radius:4px;box-shadow:0 2px 16px rgba(0,0,0,.25);}
 .hoja-a4 *{color:#111;}
 .hoja-a4 table{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:8px;}
-.hoja-a4 th,.hoja-a4 td{border:1px solid #9aa0a6;padding:3px 5px;text-align:left;}
+.hoja-a4 th,.hoja-a4 td{border:1px solid #9aa0a6;padding:3px 5px;text-align:left;white-space:normal;vertical-align:top;}.hoja-a4 .nw{white-space:nowrap;}.hoja-a4 .t-tramos{table-layout:fixed;font-size:9.5px;}
 .hoja-a4 th{background:#eceff1;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;}
-.hoja-a4 .num{text-align:right;font-variant-numeric:tabular-nums;}
+.hoja-a4 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .hoja-a4 h1{font-size:15px;margin:0 0 2px;}
-.hoja-a4 h2{font-size:11px;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #9aa0a6;padding-bottom:2px;}
+.hoja-a4 h2{font-size:11px;margin:8px 0 3px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #9aa0a6;padding-bottom:2px;}
 .hoja-a4 .sub{font-size:10px;color:#444;}
 .hoja-a4 .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;}
 .hoja-a4 .saldo{border:2px solid #111;padding:6px 10px;font-size:13px;font-weight:bold;display:flex;justify-content:space-between;margin-top:8px;}
-.hoja-a4 .firmas{display:flex;gap:40px;margin-top:22px;font-size:10px;}
+.hoja-a4 .firmas{display:flex;gap:40px;margin-top:18px;font-size:10px;}
 .hoja-a4 .firmas div{flex:1;border-top:1px solid #111;padding-top:3px;text-align:center;}
 .field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
 .status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
@@ -620,18 +620,20 @@ function htmlResumenRendicion(c) {
   const t = c.totales || {};
   const fila = cels => "<tr>" + cels.join("") + "</tr>";
   const td = (v, num) => '<td' + (num ? ' class="num"' : '') + '>' + escHtml(v) + '</td>';
+  const tdnw = v => '<td class="nw">' + escHtml(v) + '</td>';  // fechas e IDs: siempre en una linea
   const th = (v, num) => '<th' + (num ? ' class="num"' : '') + '>' + escHtml(v) + '</th>';
   const money = (v, div) => fmtNum(v) + (div ? " " + div : "");
+  const km = v => Number(v || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 }); // los km van sin decimales
 
   const tramos = (c.tramos || []).map(x => fila([
-    td(x.tripId), td(x.segId), td((x.desde || "?") + " → " + (x.hasta || "?")),
-    td(fmtDate(x.fechaInicio)), td(fmtDate(x.fechaLlegadaPrevista)), td(fmtDate(x.fechaLlegadaReal)),
-    td(x.kmPrevistos ? fmtNum(x.kmPrevistos) : "—", true), td(x.kmReales ? fmtNum(x.kmReales) : "—", true),
+    tdnw(x.tripId), tdnw(x.segId), td((x.desde || "?") + " → " + (x.hasta || "?")),
+    tdnw(fmtDate(x.fechaInicio)), tdnw(fmtDate(x.fechaLlegadaPrevista)), tdnw(fmtDate(x.fechaLlegadaReal)),
+    td(x.kmPrevistos ? km(x.kmPrevistos) : "—", true), td(x.kmReales ? km(x.kmReales) : "—", true),
     td(x.monto ? money(x.monto, x.moneda) : "—", true)
   ])).join("");
 
   const entregas = (c.entregas || []).map(e => fila([
-    td(fmtDate(e.fecha)), td(e.responsable), td(e.moneda), td(fmtNum(e.monto), true), td(fmtNum(e.equivARS), true)
+    tdnw(fmtDate(e.fecha)), td(e.responsable), td(e.moneda), td(fmtNum(e.monto), true), td(fmtNum(e.equivARS), true)
   ])).join("");
 
   const gastos = (c.gastos || []).filter(g => g.ARS || g.CLP || g.USD).map(g => fila([
@@ -639,7 +641,7 @@ function htmlResumenRendicion(c) {
   ])).join("");
 
   const combustible = (c.combustible || []).filter(f => f.fecha || f.litros || f.total).map(f => fila([
-    td(fmtDate(f.fecha)), td(f.proveedor), td(f.litros ? fmtNum(f.litros) : "", true), td(f.total ? fmtNum(f.total) : "", true)
+    tdnw(fmtDate(f.fecha)), td(f.proveedor), td(f.litros ? fmtNum(f.litros) : "", true), td(f.total ? fmtNum(f.total) : "", true)
   ])).join("");
 
   const devol = CURRENCIES.filter(cur => Number((c.devolucion || {})[cur]) > 0)
@@ -655,7 +657,10 @@ function htmlResumenRendicion(c) {
   '<div class="sub">' + escHtml(c.id) + ' · Período ' + escHtml(fmtDate(c.periodo && c.periodo.desde)) + ' a ' + escHtml(fmtDate(c.periodo && c.periodo.hasta)) + '</div></div>' +
   '<div class="sub" style="text-align:right">Cerrada el ' + escHtml(c.cerradaAt) + '<br>por ' + escHtml(c.cerradaPor) + '<br>TC: ' + escHtml(tcTxt) + '</div></div>' +
 
-  '<h2>Tramos</h2><table><thead>' + fila([th("Viaje"), th("Tramo"), th("Recorrido"), th("Inicio"), th("Llegada"), th("Carga/descarga"), th("Km prev.", true), th("Km reales", true), th("Monto", true)]) + '</thead><tbody>' +
+  '<h2>Tramos</h2><table class="t-tramos">' +
+  '<colgroup><col style="width:11%"><col style="width:11%"><col style="width:25%">' +
+  '<col style="width:9%"><col style="width:9%"><col style="width:9%">' +
+  '<col style="width:7%"><col style="width:7%"><col style="width:12%"></colgroup><thead>' + fila([th("Viaje"), th("Tramo"), th("Recorrido"), th("Inicio"), th("Llegada"), th("C. descarga"), th("Km prev", true), th("Km real", true), th("Monto", true)]) + '</thead><tbody>' +
   (tramos || fila([td("Sin tramos")])) + '</tbody></table>' +
 
   '<h2>Dinero entregado al chofer</h2>' +
