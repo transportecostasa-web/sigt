@@ -5119,7 +5119,7 @@ function EntregaForm({
     else { setRespOtro(false); setRespLibre(""); setResponsable(v); }
   }
   const [formaPago, setFormaPago] = useState(entregaInicial?.formaPago || "");
-  const [concepto, setConcepto] = useState(esEntregaSueldo(entregaInicial) ? "SUELDO" : "VIAJE");
+  const [concepto, setConcepto] = useState(esEntregaSueldo(entregaInicial) ? "SUELDO" : (entregaInicial?.id ? "VIAJE" : "")); // nueva: sin elegir, es obligatorio
   const [obs, setObs] = useState(entregaInicial?.obs || "");
   // Montos: una fila por divisa, el usuario activa las que necesita
   const [montos, setMontos] = useState(() => {
@@ -5158,6 +5158,7 @@ function EntregaForm({
     if (!chofer) e.chofer = "Requerido";
     if (!responsable) e.responsable = respOtro ? "Escribí el nombre" : "Requerido";
     if (!formaPago) e.formaPago = "Requerido";
+    if (!isCaja && !concepto) e.concepto = "Elegí viaje o sueldo";
     if (!montosConValor.length) e.montos = "Ingresá al menos un monto";
     // Divisas repetidas: dos renglones con la misma moneda generan registros
     // duplicados en la BD (y la tabla los enmascara). Un renglón por divisa.
@@ -5249,17 +5250,21 @@ function EntregaForm({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Concepto ", /*#__PURE__*/React.createElement(Req, null)), /*#__PURE__*/React.createElement("div", {
+  }, "Concepto ", /*#__PURE__*/React.createElement(Req, null), " ", errors.concepto && /*#__PURE__*/React.createElement("span", {
+    className: "form-error"
+  }, errors.concepto)), /*#__PURE__*/React.createElement("div", {
     style: { display: "flex", gap: 8 }
   }, [["VIAJE", "\u{1F69A} Plata para el viaje"], ["SUELDO", "\u{1F4BC} Sueldo / anticipo de sueldo"]].map(([v, etq]) => /*#__PURE__*/React.createElement("button", {
     key: v,
     type: "button",
     className: "btn btn-sm " + (concepto === v ? "btn-primary" : "btn-secondary"),
     style: { flex: 1, justifyContent: "center" },
-    onClick: () => setConcepto(v)
+    onClick: () => { setConcepto(v); setErrors(p => ({ ...p, concepto: undefined })); }
   }, etq))), /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 11, color: "var(--text3)", marginTop: 6 }
-  }, concepto === "SUELDO"
+  }, !concepto
+    ? "Elegí una opción: sin esto no se puede guardar la entrega."
+    : concepto === "SUELDO"
     ? "No entra en las rendiciones de viaje. Se descuenta en la liquidación mensual (RRHH) del mes de esta fecha."
     : "Entra en la rendición del viaje que cubra esta fecha.")), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
