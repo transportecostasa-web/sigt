@@ -1968,7 +1968,8 @@ const MoneyInput = React.memo(function MoneyInput({
   onChange,
   placeholder = "0",
   disabled = false,
-  style = {}
+  style = {},
+  allowNegative = false // acepta un "-" adelante (saldos que pueden ser en contra)
 }) {
   // CARGA vs VISUALIZACIÓN, separadas para eliminar ambigüedades:
   //   · Con foco (editando): texto crudo — dígitos y UN separador decimal.
@@ -1996,6 +1997,11 @@ const MoneyInput = React.memo(function MoneyInput({
   //     "2186.22"); de miles si le siguen 3 ("2.186" → 2186).
   //   · Sin coma, varios puntos: todos de miles ("1.234.567" → 1234567).
   function parseEdit(str) {
+    const neg = allowNegative && String(str).trim().startsWith("-");
+    const abs = parseEditAbs(str);
+    return neg && !isNaN(abs) ? -abs : abs;
+  }
+  function parseEditAbs(str) {
     const s = String(str).replace(/[^\d.,]/g, "");
     if (!s) return NaN;
     let n;
@@ -2032,7 +2038,9 @@ const MoneyInput = React.memo(function MoneyInput({
     // NO reescribir lo que el usuario está tipeando (eso rompía "2.186,22"):
     // sólo filtrar caracteres inválidos. La interpretación la hace parseEdit
     // y el formato prolijo se aplica recién al salir del campo (blur).
-    const s = e.target.value.replace(/[^\d.,]/g, "");
+    const crudo = e.target.value;
+    const signo = allowNegative && crudo.trim().startsWith("-") ? "-" : "";
+    const s = signo + crudo.replace(/[^\d.,]/g, "");
     setDisplay(s);
     const n = parseEdit(s);
     onChange(isNaN(n) ? "" : n);
@@ -2041,13 +2049,13 @@ const MoneyInput = React.memo(function MoneyInput({
   function handleBlur() {
     focusedRef.current = false;
     const n = parseEdit(display);
-    setDisplay(isNaN(n) || display === "" ? "" : prettyOf(n));
+    setDisplay(isNaN(n) || display === "" || display === "-" ? "" : prettyOf(n));
   }
 
   return /*#__PURE__*/React.createElement("input", {
     className: "form-input",
     type: "text",
-    inputMode: "decimal",
+    inputMode: allowNegative ? "text" : "decimal", // el teclado decimal del celular no trae "-"
     value: display,
     onFocus: handleFocus,
     onChange: handleChange,
@@ -8262,7 +8270,10 @@ function Module6({
   const [loading, setLoading] = useState(true);
   const [selChofer, setSelChofer] = useState("");
   const [selPeriodo, setSelPeriodo] = useState(""); // "MARZO 2026"
-  const [basicoMensual, setBasicoMensual] = useState("");
+  // Saldo que arrastra el chofer de la liquidacion anterior. Positivo = a favor
+  // del chofer (se le debe); negativo = en contra (lo debe el chofer). El sueldo
+  // ya no se carga aca: se instrumenta con Entregas de plata (concepto SUELDO).
+  const [saldoAnterior, setSaldoAnterior] = useState("");
   const [saving, setSaving, savingRef] = useGuardando();
   const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view, setView] = useState("list"); // "list"|"liq"
@@ -8364,7 +8375,8 @@ function Module6({
   // Total de anticipos (en ARS equivalente, usando TC global del sistema)
   const totalAnticipos = anticiposPeriodo.reduce((s, e) => s + toARS(e.monto, e.moneda || "ARS"), 0);
 
-  const total = subtotal + (moneyNum(basicoMensual)) - totalAnticipos;
+  const saldoAnt = Number(saldoAnterior) || 0;
+  const total = subtotal + saldoAnt - totalAnticipos;
 
   async function handleGuardarLiquidacion() {
     if (savingRef.current) return; // ya hay un guardado en curso
@@ -8395,7 +8407,7 @@ function Module6({
         chofer: selChofer,
         periodo: selPeriodo,
         tipoChofer: "PROPIO",
-        basicoMensual: moneyNum(basicoMensual),
+        saldoAnterior: saldoAnt,
         subtotalRendiciones: subtotal,
         totalAnticipos: totalAnticipos,
         total: total,
@@ -8444,8 +8456,8 @@ function Module6({
       }
     }, fmtNum(v), " ARS")
   }, {
-    key: "basicoMensual",
-    label: "Básico",
+    key: "saldoAnterior",
+    label: "Saldo anterior",
     align: "right",
     render: v => /*#__PURE__*/React.createElement("span", {
       style: {
@@ -8539,9 +8551,11 @@ function Module6({
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
-  }, "Básico mensual (ARS)"), /*#__PURE__*/React.createElement(MoneyInput, {
-    value: basicoMensual,
-    onChange: setBasicoMensual
+  }, "Saldo anterior (ARS)"), /*#__PURE__*/React.createElement(MoneyInput, {
+    value: saldoAnterior,
+    onChange: setSaldoAnterior,
+    allowNegative: true,
+    placeholder: "0  (negativo = lo debe el chofer)"
   }))), selChofer && selPeriodo && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 12
@@ -8599,12 +8613,12 @@ function Module6({
     }
   }, fmtNum(subtotal)), /*#__PURE__*/React.createElement("td", null)), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     colSpan: 2
-  }, "Básico mensual"), /*#__PURE__*/React.createElement("td", {
+  }, "Saldo anterior"), /*#__PURE__*/React.createElement("td", {
     style: {
       fontFamily: "var(--mono)",
       textAlign: "right"
     }
-  }, fmtNum(moneyNum(basicoMensual))), /*#__PURE__*/React.createElement("td", null)),
+  }, saldoAnt < 0 ? "\u2212" : "", fmtNum(Math.abs(saldoAnt))), /*#__PURE__*/React.createElement("td", null)),
   // FIX 3 — Filas de anticipos de sueldo (entregas huérfanas), sólo choferes propios
   ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
     key: "ant-header",
