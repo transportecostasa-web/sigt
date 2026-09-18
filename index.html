@@ -5076,6 +5076,9 @@ function EntregaForm({
 }) {
   const isCaja = mode === "caja";
   const isEdit = !!(entregaInicial && entregaInicial.id);
+  // ID de la entrega fijado al abrir el formulario: si un guardado da error y se
+  // reintenta, el servidor reconoce la misma entrega y no la duplica.
+  const [baseIdNuevo] = useState(() => "ENT-" + Date.now());
   // En Caja el destinatario son COLABORADORES; en Entregas son CHOFERES.
   const destOptions = isCaja ? (dropdowns.COLABORADORES || []) : (dropdowns.CHOFERES || []);
   const destLabel   = isCaja ? "Destinatario" : "Chofer (destinatario)";
@@ -5156,7 +5159,7 @@ function EntregaForm({
     if (!validate()) return;
     setSaving(true);
     // FIX 2 — al editar, reusar el _baseId del grupo; al crear, generar uno nuevo
-    const baseId = (isEdit && entregaInicial._baseId) ? entregaInicial._baseId : ("ENT-" + Date.now());
+    const baseId = (isEdit && entregaInicial._baseId) ? entregaInicial._baseId : baseIdNuevo;
     // Mapa divisa→id de los registros originales (para actualizar el correcto)
     const idsPorDivisa = {};
     if (isEdit && Array.isArray(entregaInicial._items)) {
@@ -7346,6 +7349,9 @@ function FacturaForm({
 }) {
   const readonly = !canEdit;
   const isNew = !factura;
+  // Numero interno de la factura fijado al abrir el formulario (antes se inventaba
+  // en cada click de Guardar: un reintento creaba una factura nueva).
+  const [facId] = useState(() => factura && factura.id || "FAC-" + Date.now());
   // FIX 4 — check de verificación de cobro, solo JAVIER puede marcar/desmarcar
   const isJavier = session && String(session.username).toUpperCase() === "JAVIER";
 
@@ -7536,7 +7542,7 @@ function FacturaForm({
     if (savingRef.current) return; // ya hay un guardado en curso
     setSaving(true);
     await onSave({
-      id: factura?.id || "FAC-" + Date.now(),
+      id: facId,
       tripId: G("tripId"),
       numMIC: G("numMIC"),
       fechaMIC: G("fechaMIC"),
@@ -8939,6 +8945,8 @@ function GastoGeneralForm({
   const [patente, setPatente] = useState("");
   const [chofer, setChofer] = useState("");
   const [responsablePago, setResponsablePago] = useState("");
+  // ID del gasto fijado al abrir el formulario: un reintento no lo duplica
+  const [gastoId] = useState(() => "GG-" + Date.now());
   const [errors, setErrors] = useState({});
   const [saving, setSaving, savingRef] = useGuardando();
   function validate() {
@@ -8956,6 +8964,7 @@ function GastoGeneralForm({
     if (!validate()) return;
     setSaving(true);
     await onSave({
+      id: gastoId,
       fechaGasto,
       tipoGasto,
       observaciones,
