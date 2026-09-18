@@ -4946,6 +4946,7 @@ function Module2({
           chofer: e.chofer,
           responsable: e.responsable,
           formaPago: e.formaPago,
+          concepto: esEntregaSueldo(e) ? "SUELDO" : "VIAJE",
           obs: e.obs,
           createdAt: e.createdAt,
           ARS: "",
@@ -4974,7 +4975,15 @@ function Module2({
           color: "var(--text)"
         }
       }, v || "—")
-    }, {
+    }, ...(isCaja ? [] : [{
+      key: "concepto",
+      label: "Concepto",
+      render: v => v === "SUELDO" ? /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 11, fontWeight: 600, color: "var(--warning)", whiteSpace: "nowrap" }
+      }, "\u{1F4BC} Sueldo") : /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 11, color: "var(--text3)", whiteSpace: "nowrap" }
+      }, "Viaje")
+    }]), {
       key: "responsable",
       label: "Responsable"
     }, {
@@ -5067,6 +5076,14 @@ function Module2({
     onClose: () => setDetalle(null)
   }));
 }
+// Una entrega de plata al chofer es PARA EL VIAJE (entra en su rendicion) o es
+// SUELDO / anticipo de sueldo (no entra en ninguna rendicion: se descuenta en la
+// liquidacion mensual de RRHH). Se marca al cargarla (columna "concepto").
+// Las entregas viejas sin marca cuentan como de viaje.
+function esEntregaSueldo(e) {
+  return String(e && e.concepto || "").trim().toUpperCase() === "SUELDO";
+}
+
 function EntregaForm({
   dropdowns,
   onSave,
@@ -5102,6 +5119,7 @@ function EntregaForm({
     else { setRespOtro(false); setRespLibre(""); setResponsable(v); }
   }
   const [formaPago, setFormaPago] = useState(entregaInicial?.formaPago || "");
+  const [concepto, setConcepto] = useState(esEntregaSueldo(entregaInicial) ? "SUELDO" : "VIAJE");
   const [obs, setObs] = useState(entregaInicial?.obs || "");
   // Montos: una fila por divisa, el usuario activa las que necesita
   const [montos, setMontos] = useState(() => {
@@ -5174,6 +5192,7 @@ function EntregaForm({
         chofer: chofer,
         responsable: responsable,
         formaPago: formaPago,
+        ...(isCaja ? {} : { concepto }),
         obs: obs,
         monto: String(m.monto),
         moneda: m.moneda,
@@ -5226,7 +5245,23 @@ function EntregaForm({
     value: chofer,
     onChange: setChofer,
     placeholder: "A quién se entrega..."
-  })), /*#__PURE__*/React.createElement("div", {
+  })), !isCaja && /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Concepto ", /*#__PURE__*/React.createElement(Req, null)), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8 }
+  }, [["VIAJE", "\u{1F69A} Plata para el viaje"], ["SUELDO", "\u{1F4BC} Sueldo / anticipo de sueldo"]].map(([v, etq]) => /*#__PURE__*/React.createElement("button", {
+    key: v,
+    type: "button",
+    className: "btn btn-sm " + (concepto === v ? "btn-primary" : "btn-secondary"),
+    style: { flex: 1, justifyContent: "center" },
+    onClick: () => setConcepto(v)
+  }, etq))), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 11, color: "var(--text3)", marginTop: 6 }
+  }, concepto === "SUELDO"
+    ? "No entra en las rendiciones de viaje. Se descuenta en la liquidación mensual (RRHH) del mes de esta fecha."
+    : "Entra en la rendición del viaje que cubra esta fecha.")), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
@@ -5810,6 +5845,7 @@ function RendicionForm({
     const from = toISO(dateFrom);
     return entregas.filter(e => {
       if (e.chofer !== driver) return false;
+      if (esEntregaSueldo(e)) return false; // sueldo: va a RRHH, no a la rendicion
       const eFecha = toISO(e.fecha);
       if (from && eFecha < from) return false;
       if (dateToMinus1 && eFecha > dateToMinus1) return false;
@@ -8226,94 +8262,99 @@ function Module6({
   const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
   const [view, setView] = useState("list"); // "list"|"liq"
   const [entregas, setEntregas] = useState([]); // FIX 3 — para anticipos de sueldo
+  const [trips, setTrips] = useState([]); // fechas de los tramos (rendiciones sin cierre)
 
   useEffect(() => {
     Promise.all([
       cachedGet("getRendiciones", "rendiciones"),
       cachedGet("getRRHH", "rrhh"),
-      cachedGet("getEntregas", "entregas")
-    ]).then(([r, l, e]) => {
+      cachedGet("getEntregas", "entregas"),
+      cachedGet("getTrips", "trips")
+    ]).then(([r, l, e, t]) => {
       if (r.ok) setRendiciones(r.data);
       if (l.ok) setLiquidaciones(l.data);
       if (e.ok) setEntregas(e.data);
+      if (t && t.ok) setTrips(t.data);
       setLoading(false);
     });
   }, []);
 
+  // ── A qué mes pertenece cada cosa ──
+  // Una rendicion pertenece al mes en que EMPIEZA su viaje (la fecha de inicio
+  // mas antigua de sus tramos), no al mes en que se cargo. Una entrega de sueldo,
+  // al mes de su fecha.
+  const mesDe = f => {
+    const dt = parseDate(f);
+    return dt ? `${dt.toLocaleString("es-AR", { month: "long" }).toUpperCase()} ${dt.getFullYear()}` : "";
+  };
+  const fechaInicioPorSeg = useMemo(() => {
+    const m = {};
+    (trips || []).forEach(t => (t.segments || []).forEach(sg => {
+      if (sg.segId && sg.fechaInicio) m[sg.segId] = sg.fechaInicio;
+    }));
+    return m;
+  }, [trips]);
+  // Fecha de inicio del viaje de una rendicion ("YYYY-MM-DD"). Primero la copia
+  // fija del cierre; si no hay, las fechas actuales de los tramos.
+  function inicioRend(r) {
+    const c = r.cierre;
+    if (c && c.periodo && c.periodo.desde) return toInputDate(c.periodo.desde);
+    const fechas = ((c && c.tramos) || r.segments || [])
+      .map(sg => toInputDate(sg.fechaInicio || fechaInicioPorSeg[sg.segId]))
+      .filter(Boolean)
+      .sort();
+    return fechas[0] || "";
+  }
+  const mesRend = r => mesDe(inicioRend(r) || r.createdAt);
+  // Saldo de una rendicion: el de la copia fija del cierre (el documento). La
+  // columna de la hoja podia estar mal leida (ver saldoChofer en el backend).
+  const saldoRend = r => {
+    const c = r.cierre && r.cierre.totales;
+    return Number(c && c.saldoChofer != null ? c.saldoChofer : (r.totals?.saldoChofer || 0)) || 0;
+  };
+  const entregasSueldo = useMemo(() => (entregas || []).filter(esEntregaSueldo), [entregas]);
+
 
   // Choferes únicos con rendiciones
-  const choferes = useMemo(() => [...new Set((rendiciones || []).map(r => r.driver).filter(Boolean))], [rendiciones]);
+  const choferes = useMemo(() => [...new Set([
+    ...(rendiciones || []).map(r => r.driver),
+    ...entregasSueldo.map(e => e.chofer)
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [rendiciones, entregasSueldo]);
 
-  // Meses únicos del selector de período
+  // Meses del selector: los de las rendiciones del chofer (por inicio de viaje)
+  // y los de sus entregas de sueldo. Del mas reciente al mas viejo.
   const periodos = useMemo(() => {
-    const set = new Set();
-    (rendiciones || []).forEach(r => {
-      if (r.createdAt) {
-        const dt = parseDate(r.createdAt);
-        if (dt) {
-          const mes = dt.toLocaleString("es-AR", {
-            month: "long"
-          }).toUpperCase();
-          set.add(`${mes} ${dt.getFullYear()}`);
-        }
-      }
-    });
-    return [...set].sort().reverse();
-  }, [rendiciones]);
-
-  // Rendiciones del chofer en el período
-  const rendFiltradas = useMemo(() => {
-    if (!selChofer || !selPeriodo) return [];
-    return rendiciones.filter(r => {
-      if (r.driver !== selChofer) return false;
-      const dt = parseDate(r.createdAt);
-      if (!dt) return false;
-      const mes = dt.toLocaleString("es-AR", {
-        month: "long"
-      }).toUpperCase();
-      const key = `${mes} ${dt.getFullYear()}`;
-      return key === selPeriodo;
-    });
-  }, [rendiciones, selChofer, selPeriodo]);
-  const subtotal = rendFiltradas.reduce((s, r) => s + Number(r.totals?.saldoChofer || 0), 0);
-
-  // FIX 3 — Entregas huérfanas (anticipos de sueldo).
-  // Una entrega de un chofer PROPIO es "huérfana" si su fecha no cae dentro del rango
-  // de fechas de NINGÚN tramo incluido en alguna rendición de ese chofer.
-  // Esas entregas se trasladan a RRHH como ANTICIPO DE SUELDO.
-  const anticiposSueldo = useMemo(() => {
     if (!selChofer) return [];
-    // Rangos de fechas de todos los tramos rendidos del chofer (de TODAS sus rendiciones)
-    const rangos = [];
-    (rendiciones || []).forEach(r => {
-      if (r.driver !== selChofer) return;
-      (r.segments || []).forEach(sg => {
-        // buscar el tramo real para sus fechas
-        const fi = toInputDate(sg.fechaInicio);
-        const ff = toInputDate(sg.fechaLlegadaReal || sg.fechaLlegadaPrevista || sg.fechaInicio);
-        if (fi) rangos.push({ desde: fi, hasta: ff || fi });
-      });
-    });
-    // Entregas del chofer que NO caen en ningún rango
-    return (entregas || []).filter(e => {
-      if (e.chofer !== selChofer) return false;
-      const fe = toInputDate(e.fecha);
-      if (!fe) return false;
-      const dentro = rangos.some(rg => fe >= rg.desde && fe <= rg.hasta);
-      return !dentro; // huérfana = fuera de todo rango
-    });
-  }, [entregas, rendiciones, selChofer]);
+    const orden = {};
+    const agregar = f => {
+      const dt = parseDate(f);
+      if (!dt) return;
+      orden[mesDe(f)] = dt.getFullYear() * 100 + dt.getMonth();
+    };
+    (rendiciones || []).filter(r => r.driver === selChofer).forEach(r => agregar(inicioRend(r) || r.createdAt));
+    entregasSueldo.filter(e => e.chofer === selChofer).forEach(e => agregar(e.fecha));
+    return Object.keys(orden).sort((x, y) => orden[y] - orden[x]);
+  }, [rendiciones, entregasSueldo, selChofer, fechaInicioPorSeg]);
 
-  // Filtrar anticipos al período seleccionado
+  // Rendiciones del chofer en el período. Solo las CERRADAS entran en la
+  // liquidacion; las abiertas se avisan.
+  const rendDelPeriodo = useMemo(() => {
+    if (!selChofer || !selPeriodo) return [];
+    return (rendiciones || [])
+      .filter(r => r.driver === selChofer && mesRend(r) === selPeriodo)
+      .sort((x, y) => (inicioRend(x) || "").localeCompare(inicioRend(y) || ""));
+  }, [rendiciones, selChofer, selPeriodo, fechaInicioPorSeg]);
+  const rendFiltradas = rendDelPeriodo.filter(r => r.estado === "cerrada");
+  const rendAbiertas = rendDelPeriodo.filter(r => r.estado !== "cerrada");
+  const subtotal = rendFiltradas.reduce((acc, r) => acc + saldoRend(r), 0);
+
+  // Anticipos de sueldo: entregas marcadas como SUELDO, del chofer, en el mes.
   const anticiposPeriodo = useMemo(() => {
-    if (!selPeriodo) return [];
-    return anticiposSueldo.filter(e => {
-      const dt = parseDate(e.fecha);
-      if (!dt) return false;
-      const key = `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
-      return key === selPeriodo;
-    });
-  }, [anticiposSueldo, selPeriodo]);
+    if (!selChofer || !selPeriodo) return [];
+    return entregasSueldo
+      .filter(e => e.chofer === selChofer && mesDe(e.fecha) === selPeriodo)
+      .sort((x, y) => (toInputDate(x.fecha) || "").localeCompare(toInputDate(y.fecha) || ""));
+  }, [entregasSueldo, selChofer, selPeriodo]);
 
   // Total de anticipos (en ARS equivalente, usando TC global del sistema)
   const totalAnticipos = anticiposPeriodo.reduce((s, e) => s + toARS(e.monto, e.moneda || "ARS"), 0);
@@ -8329,8 +8370,9 @@ function Module6({
     setSaving(true);
     const detalle = rendFiltradas.map(r => ({
       id: r.id,
-      segmentos: (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", "),
-      saldoChofer: r.totals?.saldoChofer || 0
+      inicio: inicioRend(r),
+      segmentos: fmtDate(inicioRend(r)), // compatibilidad: el PDF viejo muestra esta columna
+      saldoChofer: saldoRend(r)
     }));
     // FIX 3 — detalle de anticipos de sueldo (entregas huérfanas)
     const detalleAnticipos = anticiposPeriodo.map(e => ({
@@ -8338,6 +8380,7 @@ function Module6({
       fecha: e.fecha,
       responsable: e.responsable || "",
       formaPago: e.formaPago || "",
+      obs: e.obs || "",
       monto: e.monto,
       moneda: e.moneda || "ARS",
       montoARS: toARS(e.monto, e.moneda || "ARS")
@@ -8498,14 +8541,17 @@ function Module6({
     style: {
       marginTop: 12
     }
-  }, rendFiltradas.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, rendAbiertas.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "alert alert-warning",
+    style: { marginBottom: 12 }
+  }, "\u26A0\uFE0F ", selChofer, " tiene ", rendAbiertas.length === 1 ? "una rendición abierta" : rendAbiertas.length + " rendiciones abiertas", " en ", selPeriodo, " (", rendAbiertas.map(r => r.id).join(", "), "). No se incluyen: cerralas para que entren en la liquidación."), rendFiltradas.length === 0 && anticiposPeriodo.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "alert alert-info"
-  }, "No hay rendiciones para ", selChofer, " en ", selPeriodo, ".") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "No hay rendiciones cerradas ni entregas de sueldo para ", selChofer, " en ", selPeriodo, ".") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap",
     style: {
       marginBottom: 12
     }
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Segmentos"), /*#__PURE__*/React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Inicio de viaje"), /*#__PURE__*/React.createElement("th", {
     style: {
       textAlign: "right"
     }
@@ -8518,14 +8564,16 @@ function Module6({
     }
   }, r.id), /*#__PURE__*/React.createElement("td", {
     style: {
-      fontSize: 12
+      fontSize: 12,
+      whiteSpace: "nowrap"
     }
-  }, (r.segments || []).map(s => `${s.desde}→${s.hasta}`).join(", ") || "—"), /*#__PURE__*/React.createElement("td", {
+  }, inicioRend(r) ? fmtDate(inicioRend(r)) : "—"), /*#__PURE__*/React.createElement("td", {
     style: {
       fontFamily: "var(--mono)",
-      textAlign: "right"
+      textAlign: "right",
+      whiteSpace: "nowrap"
     }
-  }, fmtNum(r.totals?.saldoChofer || 0)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+  }, fmtNum(saldoRend(r))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: () => setResumenRend(r),
     title: "Ver resumen de la rendición"
@@ -8559,14 +8607,16 @@ function Module6({
   }, /*#__PURE__*/React.createElement("td", {
     colSpan: 4,
     style: { fontWeight: 600, fontSize: 12, color: "var(--warning)" }
-  }, "− Anticipos de sueldo (entregas no rendidas)"))] : []),
+  }, "− Anticipos de sueldo (entregas marcadas como sueldo)"))] : []),
   ...anticiposPeriodo.map((e, i) => /*#__PURE__*/React.createElement("tr", {
     key: "ant-" + (e.id || i)
   }, /*#__PURE__*/React.createElement("td", {
     colSpan: 2,
     style: { fontSize: 12 }
-  }, fmtDate(e.fecha), " — ", e.responsable || "", " (", e.formaPago || "", ")"), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)" }
+  }, fmtDate(e.fecha), " — ", e.responsable || "", " (", e.formaPago || "", ")", e.obs ? /*#__PURE__*/React.createElement("span", {
+    style: { color: "var(--text3)" }
+  }, " · ", e.obs) : null), /*#__PURE__*/React.createElement("td", {
+    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)", whiteSpace: "nowrap" }
   }, "−", fmtNum(toARS(e.monto, e.moneda || "ARS")), " ARS", e.moneda !== "ARS" ? ` (${fmtNum(e.monto)} ${e.moneda})` : ""), /*#__PURE__*/React.createElement("td", null))),
   ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
     key: "ant-subtotal"
@@ -8622,7 +8672,7 @@ function Module6({
     exportFilename: "liquidaciones_rrhh"
   }), resumenRend && (() => {
     const r = resumenRend;
-    const t = r.totals || {};
+    const t = { ...(r.totals || {}), ...((r.cierre && r.cierre.totales) || {}) };
     const dev = r.devolucion || {};
     const fmtMon = (v, m) => v !== "" && v != null && Number(v) !== 0 ? `${fmtNum(v)} ${m}` : null;
     const devStr = [fmtMon(dev.ARS, "ARS"), fmtMon(dev.CLP, "CLP"), fmtMon(dev.USD, "USD")].filter(Boolean).join(" · ") || "—";
