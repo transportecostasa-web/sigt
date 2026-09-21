@@ -5461,16 +5461,36 @@ function Module3({
   const [histView, setHistView] = useState(false); // ver historial de cerradas
   const [verCerrada, setVerCerrada] = useState(null); // rendición cerrada abierta como documento
   const [reabriendo, setReabriendo] = useState(false);
+  const [liquidacionesRRHH, setLiquidacionesRRHH] = useState([]); // para "Estado liquidación"
 
   useEffect(() => {
-    // Usa caché para las tres colecciones — sin llamadas duplicadas al servidor
-    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones")]).then(([t, e, r]) => {
+    // Usa caché para las colecciones — sin llamadas duplicadas al servidor
+    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh")]).then(([t, e, r, l]) => {
       if (t.ok) setTrips(t.data);
       if (e.ok) setEntregas(e.data);
       if (r.ok) setRendiciones(r.data);
+      if (l && l.ok) setLiquidacionesRRHH(l.data || []);
       setLoading(false);
     });
   }, []);
+
+  // Rendicion -> liquidacion de RRHH (vigente) que la incluye. Tambien cuentan
+  // las que se dieron por incluidas en el saldo anterior de una primera liquidacion.
+  const liquidadaEn = useMemo(() => {
+    const lista = v => {
+      if (Array.isArray(v)) return v;
+      try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch (er) { return []; }
+    };
+    const m = {};
+    (liquidacionesRRHH || []).forEach(l => {
+      if (l.estado === "anulada") return;
+      let previas = l.previas;
+      if (typeof previas === "string") { try { previas = JSON.parse(previas); } catch (er) { previas = null; } }
+      lista(l.rendicionIds).forEach(id => { m[String(id)] = { id: l.id, periodo: l.periodo, previa: false }; });
+      lista(previas && previas.rendiciones).forEach(id => { m[String(id)] = { id: l.id, periodo: l.periodo, previa: true }; });
+    });
+    return m;
+  }, [liquidacionesRRHH]);
 
   // Solo los tramos en rendiciones CERRADAS quedan liquidados (fuera de la lista de pendientes).
   // Los tramos en rendiciones ABIERTAS se editan desde esa rendición, no se vuelven a listar sueltos.
@@ -5670,7 +5690,7 @@ function Module3({
       style: {
         marginBottom: 20
       }
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "Consumo"), /*#__PURE__*/React.createElement("th", null, "Total Gastos"), histView && /*#__PURE__*/React.createElement("th", null, "Cerrada"))), /*#__PURE__*/React.createElement("tbody", null, lista.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "Consumo"), /*#__PURE__*/React.createElement("th", null, "Total Gastos"), histView && /*#__PURE__*/React.createElement("th", null, "Cerrada"), histView && /*#__PURE__*/React.createElement("th", null, "Estado liquidación"))), /*#__PURE__*/React.createElement("tbody", null, lista.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.id
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
@@ -5696,8 +5716,17 @@ function Module3({
         fontSize: 11,
         color: "var(--text3)"
       }
-    }, fmtDate(r.updatedAt || r.createdAt)))))));
-  })(), /*#__PURE__*/React.createElement("div", {
+    }, fmtDate(r.updatedAt || r.createdAt)), histView && /*#__PURE__*/React.createElement("td", null, (() => {
+      const liq = liquidadaEn[String(r.id)];
+      return liq ? /*#__PURE__*/React.createElement("span", {
+        className: "badge badge-green",
+        title: liq.previa ? "Incluida en el saldo anterior de " + liq.id + " (" + liq.periodo + ")" : "Liquidación " + liq.id + " (" + liq.periodo + ")"
+      }, "Liquidado") : /*#__PURE__*/React.createElement("span", {
+        className: "badge badge-yellow",
+        title: "Todavía no entró en ninguna liquidación de RRHH"
+      }, "Pendiente");
+    })()))))));
+  })(), !histView && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 16,
       maxWidth: 360
@@ -5720,11 +5749,11 @@ function Module3({
       setSelSegIds([]);
     },
     placeholder: "Elegir chofer..."
-  }))), !selDriver && /*#__PURE__*/React.createElement("div", {
+  }))), !histView && !selDriver && /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, /*#__PURE__*/React.createElement("div", {
     className: "empty-icon"
-  }, "👤"), /*#__PURE__*/React.createElement("p", null, "Seleccioná un chofer para ver sus tramos pendientes.")), selDriver && loading && /*#__PURE__*/React.createElement("div", {
+  }, "👤"), /*#__PURE__*/React.createElement("p", null, "Seleccioná un chofer para ver sus tramos pendientes.")), !histView && selDriver && loading && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 32
@@ -5734,11 +5763,11 @@ function Module3({
     style: {
       margin: "0 auto"
     }
-  })), selDriver && !loading && filtered.length === 0 && /*#__PURE__*/React.createElement("div", {
+  })), !histView && selDriver && !loading && filtered.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, /*#__PURE__*/React.createElement("div", {
     className: "empty-icon"
-  }, "✅"), /*#__PURE__*/React.createElement("p", null, "No hay tramos pendientes para ", selDriver, ".")), selDriver && !loading && filtered.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "✅"), /*#__PURE__*/React.createElement("p", null, "No hay tramos pendientes para ", selDriver, ".")), !histView && selDriver && !loading && filtered.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       maxHeight: "calc(100vh - 300px)",
       overflowY: "auto"
@@ -5763,7 +5792,7 @@ function Module3({
     }
   }, s.tripId), /*#__PURE__*/React.createElement("td", null, s.chofer), /*#__PURE__*/React.createElement("td", null, s.desde), /*#__PURE__*/React.createElement("td", null, s.hasta), /*#__PURE__*/React.createElement("td", null, fmtDate(s.fechaInicio)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(StatusBadge, {
     status: s.status
-  })))))))), canEdit && selSegIds.length > 0 && /*#__PURE__*/React.createElement("div", {
+  })))))))), !histView && canEdit && selSegIds.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "liquidar-bar"
   }, /*#__PURE__*/React.createElement("span", {
     style: {
