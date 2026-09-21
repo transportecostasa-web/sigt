@@ -8353,17 +8353,20 @@ function Module6({
   const [anulando, setAnulando, anulandoRef] = useGuardando();
   const [saving, setSaving, savingRef] = useGuardando();
 
+  // Periodos: "AGOSTO 2026" <-> 202608, para ordenarlos cronologicamente
+  const MESES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+  const claveMes = etq => {
+    const p = String(etq || "").trim().toUpperCase().split(/\s+/);
+    const m = MESES.indexOf(p[0]);
+    return m < 0 || !Number(p[1]) ? 0 : Number(p[1]) * 100 + m + 1;
+  };
+  const hoy = new Date();
+  const claveHoy = hoy.getFullYear() * 100 + hoy.getMonth() + 1; // nunca se liquida por adelantado
+
   // Formulario
-  const opcionesPeriodo = useMemo(() => {
-    const out = [];
-    const d = new Date();
-    d.setDate(1);
-    for (let i = 0; i < 12; i++) { out.push(etiquetaMes(d)); d.setMonth(d.getMonth() - 1); }
-    return out;
-  }, []);
   const [liqId, setLiqId] = useState(() => "LIQ-" + Date.now()); // fijo por formulario: un reintento no duplica
   const [selChofer, setSelChofer] = useState("");
-  const [selPeriodo, setSelPeriodo] = useState(() => opcionesPeriodo[1]); // por defecto, el mes anterior
+  const [selPeriodo, setSelPeriodo] = useState("");
   const [saldoManual, setSaldoManual] = useState(""); // solo en la PRIMERA liquidacion del chofer
   const [basico, setBasico] = useState("");
   const [basicoDetalle, setBasicoDetalle] = useState("");
@@ -8474,11 +8477,11 @@ function Module6({
     ...liqs.map(l => l.chofer)
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [rendiciones, entregas, liqs]);
 
-  // Ultima liquidacion vigente del chofer: de ahi sale el saldo anterior
-  const ultimaDe = chofer => {
-    const l = activas.filter(x => x.chofer === chofer);
-    return l.length ? l[l.length - 1] : null;
-  };
+  // Ultima liquidacion vigente del chofer POR PERIODO (no por orden de cierre):
+  // de ahi sale el saldo anterior, aunque haya meses salteados.
+  const ultimaDe = chofer => activas
+    .filter(x => x.chofer === chofer)
+    .reduce((mejor, x) => !mejor || claveMes(x.periodo) >= claveMes(mejor.periodo) ? x : mejor, null);
   const prevLiq = selChofer ? ultimaDe(selChofer) : null;
   // Una sola liquidacion vigente por chofer y periodo: la ya cerrada se consulta
   // en el historial, no se vuelve a hacer.
@@ -8491,6 +8494,27 @@ function Module6({
     .sort((a, b) => (inicioRend(a) || "").localeCompare(inicioRend(b) || "")),
   [rendiciones, selChofer, usados, fechaInicioPorSeg]);
   const rendAbiertas = (rendiciones || []).filter(r => r.driver === selChofer && r.estado !== "cerrada");
+
+  // Periodos que se pueden liquidar: los meses (por inicio de viaje) de las
+  // rendiciones cerradas pendientes, POSTERIORES al ultimo periodo liquidado y
+  // hasta el mes en curso. Liquidar octubre puede incluir rendiciones de
+  // septiembre; despues de eso, solo quedan los meses posteriores a octubre.
+  const opcionesPeriodo = useMemo(() => {
+    if (!selChofer) return [];
+    const desde = prevLiq ? claveMes(prevLiq.periodo) : 0;
+    const claves = new Set();
+    rendPend.forEach(r => {
+      const dt = parseDate(inicioRend(r) || r.createdAt);
+      if (!dt) return;
+      const k = dt.getFullYear() * 100 + dt.getMonth() + 1;
+      if (k > desde && k <= claveHoy) claves.add(k);
+    });
+    return [...claves].sort((a, b) => a - b).map(k => MESES[k % 100 - 1] + " " + Math.floor(k / 100));
+  }, [selChofer, rendPend, prevLiq && prevLiq.id]);
+  // Si el periodo elegido deja de ser valido, se propone el mas reciente
+  useEffect(() => {
+    if (!opcionesPeriodo.includes(selPeriodo)) setSelPeriodo(opcionesPeriodo.length ? opcionesPeriodo[opcionesPeriodo.length - 1] : "");
+  }, [opcionesPeriodo.join("|")]);
   const entPend = useMemo(() => !selChofer ? [] : (entregas || [])
     .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !usados.es.has(claveEnt(e)))
     .sort((a, b) => (toInputDate(a.fecha) || "").localeCompare(toInputDate(b.fecha) || "")),
@@ -8524,6 +8548,7 @@ function Module6({
   async function cerrarLiquidacion() {
     if (savingRef.current) return; // ya hay un guardado en curso
     if (!selChofer || !selPeriodo) { notif.add("Elegí chofer y período", "warn"); return; }
+    if (!opcionesPeriodo.includes(selPeriodo)) { notif.add("El período " + selPeriodo + " no se puede liquidar.", "warn"); return; }
     if (yaLiquidada) { notif.add("La liquidación de " + selPeriodo + " de " + selChofer + " ya está cerrada (" + yaLiquidada.id + ").", "warn"); return; }
     if (esPrimera && saldoManual === "") {
       notif.add("Es la primera liquidación de " + selChofer + ": cargá el saldo anterior (0 si no tiene).", "warn");
@@ -8817,7 +8842,9 @@ function Module6({
             h(SearchableSelect, { options: choferes, value: selChofer, onChange: v => { setSelChofer(v); limpiarFormulario(); }, placeholder: "Seleccionar chofer..." })),
           h("div", { className: "form-group" },
             h("label", { className: "form-label" }, "Período"),
-            h(SearchableSelect, { options: opcionesPeriodo, value: selPeriodo, onChange: setSelPeriodo, placeholder: "Ej: AGOSTO 2026" })),
+            h(SearchableSelect, { options: opcionesPeriodo, value: selPeriodo, onChange: setSelPeriodo, disabled: !selChofer || !opcionesPeriodo.length, placeholder: selChofer && !opcionesPeriodo.length ? "Sin períodos para liquidar" : "Ej: AGOSTO 2026" }),
+            selChofer && !opcionesPeriodo.length && h("div", { style: { fontSize: 11, color: "var(--text3)", marginTop: 4 } },
+              "No hay rendiciones cerradas pendientes", prevLiq ? " posteriores a " + prevLiq.periodo : "", ".")),
           h("div", { className: "form-group" },
             h("label", { className: "form-label" }, "Saldo anterior (ARS)"),
             prevLiq
@@ -8834,7 +8861,7 @@ function Module6({
         yaLiquidada && h("div", { className: "alert alert-info", style: { marginTop: 4, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
           h("span", null, "✅ La liquidación de ", h("strong", null, selPeriodo), " de ", selChofer, " ya está cerrada (", yaLiquidada.id, "). Se consulta y reimprime desde el historial; para liquidar lo pendiente, elegí otro período."),
           h("button", { className: "btn btn-secondary btn-sm", onClick: () => { setDocLiq(yaLiquidada); setView("doc"); } }, "📄 Ver liquidación")),
-        selChofer && !yaLiquidada && h(React.Fragment, null,
+        selChofer && selPeriodo && !yaLiquidada && h(React.Fragment, null,
           rendAbiertas.length > 0 && h("div", { className: "alert alert-warning", style: { marginTop: 4 } },
             "⚠️ ", selChofer, " tiene ", rendAbiertas.length === 1 ? "una rendición abierta" : rendAbiertas.length + " rendiciones abiertas",
             " (", rendAbiertas.map(r => r.id).join(", "), "). Hay que cerrarlas para poder liquidarlas."),
