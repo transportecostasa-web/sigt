@@ -8473,6 +8473,9 @@ function Module6({
     return l.length ? l[l.length - 1] : null;
   };
   const prevLiq = selChofer ? ultimaDe(selChofer) : null;
+  // Una sola liquidacion vigente por chofer y periodo: la ya cerrada se consulta
+  // en el historial, no se vuelve a hacer.
+  const yaLiquidada = selChofer && selPeriodo ? activas.find(l => l.chofer === selChofer && l.periodo === selPeriodo) : null;
   const esPrimera = !!selChofer && !prevLiq;
   const saldoAnterior = prevLiq ? r2(prevLiq.saldoTrasladar) : r2(saldoManual);
 
@@ -8514,6 +8517,7 @@ function Module6({
   async function cerrarLiquidacion() {
     if (savingRef.current) return; // ya hay un guardado en curso
     if (!selChofer || !selPeriodo) { notif.add("Elegí chofer y período", "warn"); return; }
+    if (yaLiquidada) { notif.add("La liquidación de " + selPeriodo + " de " + selChofer + " ya está cerrada (" + yaLiquidada.id + ").", "warn"); return; }
     if (esPrimera && saldoManual === "") {
       notif.add("Es la primera liquidación de " + selChofer + ": cargá el saldo anterior (0 si no tiene).", "warn");
       return;
@@ -8594,6 +8598,10 @@ function Module6({
     if (!r.ok) { notif.add(r.error || "Error al guardar la liquidación", "error"); return; }
     notif.add("Liquidación cerrada: " + liqId);
     imprimirA4("Liquidacion " + liqId, htmlResumenLiquidacion(cierre));
+    // El formulario queda vacio y se pasa al documento recien cerrado
+    setDocLiq({ id: liqId, chofer: selChofer, periodo: selPeriodo, estado: "cerrada", cierre });
+    setView("doc");
+    setSelChofer("");
     limpiarFormulario();
     setLiqId("LIQ-" + Date.now());
     cargar(true);
@@ -8808,15 +8816,18 @@ function Module6({
             prevLiq
               ? h("div", { className: "field-readonly", title: "Sale de la liquidación anterior y no se puede modificar" },
                   conSigno(saldoAnterior), h("span", { style: { fontSize: 11, color: "var(--text3)", marginLeft: 8 } }, "\u{1F512} de ", prevLiq.id))
-              : h(MoneyInput, { value: saldoManual, onChange: setSaldoManual, allowNegative: true, disabled: !selChofer, placeholder: "Negativo = lo debe el chofer" }),
+              : h(MoneyInput, { value: saldoManual, onChange: setSaldoManual, allowNegative: true, disabled: !selChofer || !!yaLiquidada, placeholder: "Negativo = lo debe el chofer" }),
             esPrimera && h("div", { style: { fontSize: 11, color: "var(--text3)", marginTop: 4 } }, "Primera liquidación del chofer: se carga a mano.")),
           h("div", { className: "form-group" },
             h("label", { className: "form-label" }, "Básico mensual (ARS)"),
-            h(MoneyInput, { value: basico, onChange: setBasico, disabled: !selChofer, placeholder: "Solo si no se entregó por Plata choferes" })),
+            h(MoneyInput, { value: basico, onChange: setBasico, disabled: !selChofer || !!yaLiquidada, placeholder: "Solo si no se entregó por Plata choferes" })),
           h("div", { className: "form-group" },
             h("label", { className: "form-label" }, "Detalle del básico"),
-            h("input", { className: "form-input", value: basicoDetalle, onChange: ev => setBasicoDetalle(ev.target.value), disabled: !selChofer, placeholder: "Ej: medio agosto" }))),
-        selChofer && h(React.Fragment, null,
+            h("input", { className: "form-input", value: basicoDetalle, onChange: ev => setBasicoDetalle(ev.target.value), disabled: !selChofer || !!yaLiquidada, placeholder: "Ej: medio agosto" }))),
+        yaLiquidada && h("div", { className: "alert alert-info", style: { marginTop: 4, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } },
+          h("span", null, "✅ La liquidación de ", h("strong", null, selPeriodo), " de ", selChofer, " ya está cerrada (", yaLiquidada.id, "). Se consulta y reimprime desde el historial; para liquidar lo pendiente, elegí otro período."),
+          h("button", { className: "btn btn-secondary btn-sm", onClick: () => { setDocLiq(yaLiquidada); setView("doc"); } }, "📄 Ver liquidación")),
+        selChofer && !yaLiquidada && h(React.Fragment, null,
           rendAbiertas.length > 0 && h("div", { className: "alert alert-warning", style: { marginTop: 4 } },
             "⚠️ ", selChofer, " tiene ", rendAbiertas.length === 1 ? "una rendición abierta" : rendAbiertas.length + " rendiciones abiertas",
             " (", rendAbiertas.map(r => r.id).join(", "), "). Hay que cerrarlas para poder liquidarlas."),
