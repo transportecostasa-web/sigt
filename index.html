@@ -164,6 +164,9 @@ tr:hover td{background:var(--bg3);}
 .hoja-a4 .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:8px;}
 .hoja-a4 .saldo{border:2px solid #111;padding:6px 10px;font-size:13px;font-weight:bold;display:flex;justify-content:space-between;margin-top:8px;}
 .hoja-a4 .firmas{display:flex;gap:40px;margin-top:18px;font-size:10px;}
+.hoja-a4 .saldo.fuerte{font-size:14px;border-width:3px;margin:10px 0;}
+.hoja-a4 .t-liq{table-layout:fixed;}
+.hoja-a4 .anulada{border:2px dashed #111;padding:6px;text-align:center;font-weight:bold;font-size:13px;margin-bottom:8px;}
 .hoja-a4 .firmas div{flex:1;border-top:1px solid #111;padding-top:3px;text-align:center;}
 .field-readonly{background:var(--bg4);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;font-size:13px;color:var(--text2);font-family:var(--mono);}
 .status-standby{background:rgba(92,98,112,.3);color:var(--text2);}
@@ -711,6 +714,69 @@ function imprimirA4(titulo, cuerpoHtml) {
     try { marco.contentWindow.focus(); marco.contentWindow.print(); } catch (e) { limpiar(); }
     setTimeout(limpiar, 120000);
   }, 250);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RESUMEN DE LIQUIDACION DE CHOFER (hoja A4)
+// Formato cuaderno: cada movimiento va en la columna A FAVOR o EN CONTRA del
+// chofer. Sale de la copia fija `cierre` guardada al cerrar.
+// ══════════════════════════════════════════════════════════════════════════════
+function htmlResumenLiquidacion(c, liq) {
+  const t = c.totales || {};
+  const fila = cels => "<tr>" + cels.join("") + "</tr>";
+  const td = (v, cls) => '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + escHtml(v) + '</td>';
+  const th = (v, cls) => '<th' + (cls ? ' class="' + cls + '"' : '') + '>' + escHtml(v) + '</th>';
+  const lado = v => (Number(v) < 0 ? "EN CONTRA DEL CHOFER" : "A FAVOR DEL CHOFER");
+  const abs = v => fmtNum(Math.abs(Number(v) || 0)) + " ARS";
+
+  const movs = (c.movimientos || []).map(m => fila([
+    td(m.fecha || "—", "nw"),
+    td(m.concepto),
+    td(m.monto > 0 || m.monto === 0 ? fmtNum(m.monto) : "", "num"),
+    td(m.monto < 0 ? fmtNum(-m.monto) : "", "num")
+  ])).join("");
+
+  const pagos = (c.pagos || []).map(p => fila([
+    td(p.fecha || "—", "nw"), td(p.forma), td(p.obs || ""), td(fmtNum(p.monto), "num")
+  ])).join("");
+
+  const previas = c.previas || {};
+  const hayPrevias = (previas.rendiciones || []).length || (previas.entregas || []).length;
+
+  const anulada = liq && liq.estado === "anulada"
+    ? '<div class="anulada">LIQUIDACIÓN ANULADA' + (liq.anuladaAt ? ' el ' + escHtml(liq.anuladaAt) : '') +
+      (liq.anuladaPor ? ' por ' + escHtml(liq.anuladaPor) : '') +
+      (liq.motivoAnulacion ? '<br><span style="font-weight:normal">Motivo: ' + escHtml(liq.motivoAnulacion) + '</span>' : '') + '</div>'
+    : '';
+
+  return '' + anulada +
+  '<div class="cab"><div><h1>Liquidación de chofer — ' + escHtml(c.chofer) + '</h1>' +
+  '<div class="sub">' + escHtml(c.id) + ' · Período ' + escHtml(c.periodo) + '</div></div>' +
+  '<div class="sub" style="text-align:right">Cerrada el ' + escHtml(c.cerradaAt) + '<br>por ' + escHtml(c.cerradaPor) + '</div></div>' +
+
+  '<h2>Movimientos</h2><table class="t-liq">' +
+  '<colgroup><col style="width:11%"><col style="width:53%"><col style="width:18%"><col style="width:18%"></colgroup><thead>' +
+  fila([th("Fecha"), th("Concepto"), th("A favor del chofer", "num"), th("En contra del chofer", "num")]) + '</thead><tbody>' +
+  movs +
+  fila(['<td></td>', '<td><b>Totales</b></td>', '<td class="num"><b>' + escHtml(fmtNum(t.aFavor)) + '</b></td>', '<td class="num"><b>' + escHtml(fmtNum(t.enContra)) + '</b></td>']) +
+  '</tbody></table>' +
+
+  '<div class="saldo fuerte"><span>Balance: ' + lado(t.balance) + '</span><span>' + escHtml(abs(t.balance)) + '</span></div>' +
+
+  '<h2>Pago al chofer</h2>' +
+  (pagos
+    ? '<table><colgroup><col style="width:12%"><col style="width:24%"><col style="width:48%"><col style="width:16%"></colgroup><thead>' +
+      fila([th("Fecha"), th("Forma de pago"), th("Detalle"), th("Monto", "num")]) + '</thead><tbody>' + pagos +
+      fila(['<td></td>', '<td></td>', '<td><b>Total pagado</b></td>', '<td class="num"><b>' + escHtml(fmtNum(t.pagado)) + '</b></td>']) + '</tbody></table>'
+    : '<div class="sub">Sin pagos en esta liquidación.</div>') +
+
+  '<div class="saldo fuerte"><span>Saldo que pasa al período siguiente: ' + lado(t.saldoTrasladar) + '</span><span>' + escHtml(abs(t.saldoTrasladar)) + '</span></div>' +
+
+  (hayPrevias
+    ? '<div class="sub" style="margin-top:8px">Dados por incluidos en el saldo anterior (primera liquidación, no suman ni restan): ' +
+      escHtml([...(previas.rendiciones || []), ...(previas.entregas || []).map(x => "entrega " + x)].join(" · ")) + '</div>'
+    : '') +
+  '<div class="firmas"><div>Firma del chofer</div><div>Firma responsable</div></div>';
 }
 
 function ordenarTramosPorFecha(lista) {
@@ -8260,49 +8326,115 @@ function Module6({
   dropdowns,
   notif
 }) {
-  // TC del sistema. Este modulo llamaba a toARS() sin tenerlo definido en su
-  // scope (la funcion vive dentro de RendicionForm), asi que rompia al calcular
-  // los anticipos del periodo.
+  // ── LIQUIDACION DE CHOFERES (cuenta corriente) ──
+  // Funciona como el cuaderno: A FAVOR del chofer (saldo anterior positivo,
+  // rendiciones con saldo a favor, basico) y EN CONTRA (saldo anterior negativo,
+  // rendiciones en contra, anticipos de sueldo). El balance, menos lo que se le
+  // paga al cerrar, es el saldo que pasa a la liquidacion siguiente, donde queda
+  // fijo (no se puede editar).
+  //
+  // Rendiciones cerradas y entregas de SUELDO se eligen con un check, sin
+  // importar la fecha. Lo que entra en una liquidacion no vuelve a aparecer; lo
+  // que nunca se liquido sigue pendiente hasta que se incluya.
+  const h = React.createElement;
   const TC = tcDeDropdowns(dropdowns);
   const toARS = (monto, cur) => convARS(TC, monto, cur);
+  const r2 = x => Math.round((Number(x) || 0) * 100) / 100;
+  const etiquetaMes = d => `${d.toLocaleString("es-AR", { month: "long" }).toUpperCase()} ${d.getFullYear()}`;
+
   const [rendiciones, setRendiciones] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selChofer, setSelChofer] = useState("");
-  const [selPeriodo, setSelPeriodo] = useState(""); // "MARZO 2026"
-  // Saldo que arrastra el chofer de la liquidacion anterior. Positivo = a favor
-  // del chofer (se le debe); negativo = en contra (lo debe el chofer). El sueldo
-  // ya no se carga aca: se instrumenta con Entregas de plata (concepto SUELDO).
-  const [saldoAnterior, setSaldoAnterior] = useState("");
-  const [saving, setSaving, savingRef] = useGuardando();
-  const [resumenRend, setResumenRend] = useState(null); // FIX 4b — rendición a mostrar en modal
-  const [view, setView] = useState("list"); // "list"|"liq"
-  const [entregas, setEntregas] = useState([]); // FIX 3 — para anticipos de sueldo
+  const [entregas, setEntregas] = useState([]);
   const [trips, setTrips] = useState([]); // fechas de los tramos (rendiciones sin cierre)
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("list"); // "list" | "doc"
+  const [docLiq, setDocLiq] = useState(null);
+  const [resumenRend, setResumenRend] = useState(null); // rendición a mostrar en modal
+  const [anulando, setAnulando, anulandoRef] = useGuardando();
+  const [saving, setSaving, savingRef] = useGuardando();
 
-  useEffect(() => {
-    Promise.all([
+  // Formulario
+  const opcionesPeriodo = useMemo(() => {
+    const out = [];
+    const d = new Date();
+    d.setDate(1);
+    for (let i = 0; i < 12; i++) { out.push(etiquetaMes(d)); d.setMonth(d.getMonth() - 1); }
+    return out;
+  }, []);
+  const [liqId, setLiqId] = useState(() => "LIQ-" + Date.now()); // fijo por formulario: un reintento no duplica
+  const [selChofer, setSelChofer] = useState("");
+  const [selPeriodo, setSelPeriodo] = useState(() => opcionesPeriodo[1]); // por defecto, el mes anterior
+  const [saldoManual, setSaldoManual] = useState(""); // solo en la PRIMERA liquidacion del chofer
+  const [basico, setBasico] = useState("");
+  const [basicoDetalle, setBasicoDetalle] = useState("");
+  const [incRend, setIncRend] = useState({}); // id -> "incluir" | "previa"
+  const [incEnt, setIncEnt] = useState({});   // clave -> "incluir" | "previa"
+  const [pagos, setPagos] = useState([]);
+
+  function cargar(forzar) {
+    if (forzar) invalidateCache("rrhh");
+    return Promise.all([
       cachedGet("getRendiciones", "rendiciones"),
       cachedGet("getRRHH", "rrhh"),
       cachedGet("getEntregas", "entregas"),
       cachedGet("getTrips", "trips")
     ]).then(([r, l, e, t]) => {
-      if (r.ok) setRendiciones(r.data);
-      if (l.ok) setLiquidaciones(l.data);
-      if (e.ok) setEntregas(e.data);
-      if (t && t.ok) setTrips(t.data);
+      if (r.ok) setRendiciones(r.data || []);
+      if (l.ok) setLiquidaciones(l.data || []);
+      if (e.ok) setEntregas(e.data || []);
+      if (t && t.ok) setTrips(t.data || []);
       setLoading(false);
     });
-  }, []);
+  }
+  useEffect(() => { cargar(false); }, []);
 
-  // ── A qué mes pertenece cada cosa ──
-  // Una rendicion pertenece al mes en que EMPIEZA su viaje (la fecha de inicio
-  // mas antigua de sus tramos), no al mes en que se cargo. Una entrega de sueldo,
-  // al mes de su fecha.
-  const mesDe = f => {
-    const dt = parseDate(f);
-    return dt ? `${dt.toLocaleString("es-AR", { month: "long" }).toUpperCase()} ${dt.getFullYear()}` : "";
+  function limpiarFormulario() {
+    setIncRend({});
+    setIncEnt({});
+    setSaldoManual("");
+    setBasico("");
+    setBasicoDetalle("");
+    setPagos([]);
+  }
+
+  // ── Liquidaciones guardadas (los campos JSON pueden venir como texto) ──
+  const comoLista = v => {
+    if (Array.isArray(v)) return v;
+    try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch (er) { return []; }
   };
+  const comoObjeto = v => {
+    if (v && typeof v === "object") return v;
+    try { return JSON.parse(v || "null"); } catch (er) { return null; }
+  };
+  const liqs = useMemo(() => (liquidaciones || []).map(l => {
+    const previas = comoObjeto(l.previas) || {};
+    return {
+      ...l,
+      estado: l.estado || "cerrada",
+      rendicionIds: comoLista(l.rendicionIds).map(String),
+      entregaIds: comoLista(l.entregaIds).map(String),
+      previas: { rendiciones: comoLista(previas.rendiciones).map(String), entregas: comoLista(previas.entregas).map(String) },
+      pagos: comoLista(l.pagos),
+      cierre: comoObjeto(l.cierre)
+    };
+  }), [liquidaciones]);
+  const activas = useMemo(() => liqs.filter(l => l.estado !== "anulada"), [liqs]);
+
+  // Todo lo que ya entro en alguna liquidacion vigente (o se dio por incluido
+  // en el saldo anterior de la primera) no vuelve a aparecer.
+  const claveEnt = e => String(e.id) + "|" + String(e.moneda || "ARS"); // el id solo no alcanza: una entrega multi-divisa puede repetirlo
+  const usados = useMemo(() => {
+    const rs = new Set(), es = new Set();
+    activas.forEach(l => {
+      l.rendicionIds.forEach(x => rs.add(x));
+      l.previas.rendiciones.forEach(x => rs.add(x));
+      l.entregaIds.forEach(x => es.add(x));
+      l.previas.entregas.forEach(x => es.add(x));
+    });
+    return { rs, es };
+  }, [activas]);
+
+  // ── Fechas y saldos de rendiciones ──
   const fechaInicioPorSeg = useMemo(() => {
     const m = {};
     (trips || []).forEach(t => (t.segments || []).forEach(sg => {
@@ -8310,7 +8442,7 @@ function Module6({
     }));
     return m;
   }, [trips]);
-  // Fecha de inicio del viaje de una rendicion ("YYYY-MM-DD"). Primero la copia
+  // Fecha de inicio del viaje de una rendicion ("YYYY-MM-DD"): primero la copia
   // fija del cierre; si no hay, las fechas actuales de los tramos.
   function inicioRend(r) {
     const c = r.cierre;
@@ -8321,375 +8453,396 @@ function Module6({
       .sort();
     return fechas[0] || "";
   }
-  const mesRend = r => mesDe(inicioRend(r) || r.createdAt);
-  // Saldo de una rendicion: el de la copia fija del cierre (el documento). La
-  // columna de la hoja podia estar mal leida (ver saldoChofer en el backend).
+  // Saldo de una rendicion: el de la copia fija del cierre (el documento).
   const saldoRend = r => {
     const c = r.cierre && r.cierre.totales;
     return Number(c && c.saldoChofer != null ? c.saldoChofer : (r.totals?.saldoChofer || 0)) || 0;
   };
-  const entregasSueldo = useMemo(() => (entregas || []).filter(esEntregaSueldo), [entregas]);
+  const viajesRend = r => [...new Set(((r.cierre && r.cierre.tramos) || r.segments || []).map(sg => sg.tripId).filter(Boolean))];
 
-
-  // Choferes únicos con rendiciones
+  // ── Choferes ──
   const choferes = useMemo(() => [...new Set([
     ...(rendiciones || []).map(r => r.driver),
-    ...entregasSueldo.map(e => e.chofer)
-  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [rendiciones, entregasSueldo]);
+    ...(entregas || []).filter(esEntregaSueldo).map(e => e.chofer),
+    ...liqs.map(l => l.chofer)
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [rendiciones, entregas, liqs]);
 
-  // Meses del selector: los de las rendiciones del chofer (por inicio de viaje)
-  // y los de sus entregas de sueldo. Del mas reciente al mas viejo.
-  const periodos = useMemo(() => {
-    if (!selChofer) return [];
-    const orden = {};
-    const agregar = f => {
-      const dt = parseDate(f);
-      if (!dt) return;
-      orden[mesDe(f)] = dt.getFullYear() * 100 + dt.getMonth();
-    };
-    (rendiciones || []).filter(r => r.driver === selChofer).forEach(r => agregar(inicioRend(r) || r.createdAt));
-    entregasSueldo.filter(e => e.chofer === selChofer).forEach(e => agregar(e.fecha));
-    return Object.keys(orden).sort((x, y) => orden[y] - orden[x]);
-  }, [rendiciones, entregasSueldo, selChofer, fechaInicioPorSeg]);
+  // Ultima liquidacion vigente del chofer: de ahi sale el saldo anterior
+  const ultimaDe = chofer => {
+    const l = activas.filter(x => x.chofer === chofer);
+    return l.length ? l[l.length - 1] : null;
+  };
+  const prevLiq = selChofer ? ultimaDe(selChofer) : null;
+  const esPrimera = !!selChofer && !prevLiq;
+  const saldoAnterior = prevLiq ? r2(prevLiq.saldoTrasladar) : r2(saldoManual);
 
-  // Rendiciones del chofer en el período. Solo las CERRADAS entran en la
-  // liquidacion; las abiertas se avisan.
-  const rendDelPeriodo = useMemo(() => {
-    if (!selChofer || !selPeriodo) return [];
-    return (rendiciones || [])
-      .filter(r => r.driver === selChofer && mesRend(r) === selPeriodo)
-      .sort((x, y) => (inicioRend(x) || "").localeCompare(inicioRend(y) || ""));
-  }, [rendiciones, selChofer, selPeriodo, fechaInicioPorSeg]);
-  const rendFiltradas = rendDelPeriodo.filter(r => r.estado === "cerrada");
-  const rendAbiertas = rendDelPeriodo.filter(r => r.estado !== "cerrada");
-  const subtotal = rendFiltradas.reduce((acc, r) => acc + saldoRend(r), 0);
+  const rendPend = useMemo(() => !selChofer ? [] : (rendiciones || [])
+    .filter(r => r.driver === selChofer && r.estado === "cerrada" && !usados.rs.has(String(r.id)))
+    .sort((a, b) => (inicioRend(a) || "").localeCompare(inicioRend(b) || "")),
+  [rendiciones, selChofer, usados, fechaInicioPorSeg]);
+  const rendAbiertas = (rendiciones || []).filter(r => r.driver === selChofer && r.estado !== "cerrada");
+  const entPend = useMemo(() => !selChofer ? [] : (entregas || [])
+    .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !usados.es.has(claveEnt(e)))
+    .sort((a, b) => (toInputDate(a.fecha) || "").localeCompare(toInputDate(b.fecha) || "")),
+  [entregas, selChofer, usados]);
 
-  // Anticipos de sueldo: entregas marcadas como SUELDO, del chofer, en el mes.
-  const anticiposPeriodo = useMemo(() => {
-    if (!selChofer || !selPeriodo) return [];
-    return entregasSueldo
-      .filter(e => e.chofer === selChofer && mesDe(e.fecha) === selPeriodo)
-      .sort((x, y) => (toInputDate(x.fecha) || "").localeCompare(toInputDate(y.fecha) || ""));
-  }, [entregasSueldo, selChofer, selPeriodo]);
+  // ── Cuenta ──
+  const rendInc = rendPend.filter(r => incRend[r.id] === "incluir");
+  const entInc = entPend.filter(e => incEnt[claveEnt(e)] === "incluir");
+  const entARS = e => r2(toARS(e.monto, e.moneda || "ARS"));
+  const subtotalRend = r2(rendInc.reduce((s, r) => s + saldoRend(r), 0));
+  const totalAnt = r2(entInc.reduce((s, e) => s + entARS(e), 0));
+  const basicoN = r2(basico);
+  const balance = r2(saldoAnterior + subtotalRend + basicoN - totalAnt);
+  const pagosValidos = pagos.filter(p => Number(p.monto) > 0);
+  const totalPagado = r2(pagosValidos.reduce((s, p) => s + Number(p.monto), 0));
+  const saldoTrasladar = r2(balance - totalPagado);
 
-  // Total de anticipos (en ARS equivalente, usando TC global del sistema)
-  const totalAnticipos = anticiposPeriodo.reduce((s, e) => s + toARS(e.monto, e.moneda || "ARS"), 0);
+  const marcar = (setter, clave, modo) => setter(p => {
+    const n = { ...p };
+    if (n[clave] === modo) delete n[clave]; else n[clave] = modo;
+    return n;
+  });
+  const incluirTodas = (setter, claves) => setter(p => {
+    const todas = claves.length > 0 && claves.every(k => p[k] === "incluir");
+    const n = { ...p };
+    claves.forEach(k => { if (todas) delete n[k]; else n[k] = "incluir"; });
+    return n;
+  });
 
-  const saldoAnt = Number(saldoAnterior) || 0;
-  const total = subtotal + saldoAnt - totalAnticipos;
-
-  async function handleGuardarLiquidacion() {
+  // ── Guardar ──
+  async function cerrarLiquidacion() {
     if (savingRef.current) return; // ya hay un guardado en curso
-    if (!selChofer || !selPeriodo) {
-      notif.add("Seleccioná chofer y período", "warn");
+    if (!selChofer || !selPeriodo) { notif.add("Elegí chofer y período", "warn"); return; }
+    if (esPrimera && saldoManual === "") {
+      notif.add("Es la primera liquidación de " + selChofer + ": cargá el saldo anterior (0 si no tiene).", "warn");
       return;
     }
+    const pagoIncompleto = pagosValidos.find(p => !p.fecha || !p.forma);
+    if (pagoIncompleto) { notif.add("Cada pago necesita fecha y forma de pago.", "warn"); return; }
+    if (!rendInc.length && !entInc.length && !basicoN && !pagosValidos.length && !(esPrimera && saldoAnterior)) {
+      notif.add("No hay nada para liquidar: marcá rendiciones o entregas, o cargá básico o pagos.", "warn");
+      return;
+    }
+    const signo = v => (v < 0 ? "en contra del chofer " : "a favor del chofer ") + fmtNum(Math.abs(v)) + " ARS";
+    if (!confirm("Cerrar la liquidación de " + selChofer + " (" + selPeriodo + ")?\n\n" +
+      "Balance: " + signo(balance) + "\n" +
+      "Pagado: " + fmtNum(totalPagado) + " ARS\n" +
+      "Saldo que pasa al período siguiente: " + signo(saldoTrasladar) + "\n\n" +
+      "Queda como documento: las rendiciones y entregas incluidas no vuelven a aparecer.")) return;
+
+    const previasRend = rendPend.filter(r => incRend[r.id] === "previa");
+    const previasEnt = entPend.filter(e => incEnt[claveEnt(e)] === "previa");
+    const descEnt = e => ["Anticipo de sueldo", e.formaPago, e.obs].filter(Boolean).join(" · ") +
+      (e.moneda && e.moneda !== "ARS" ? " (" + fmtNum(e.monto) + " " + e.moneda + ")" : "");
+    const movimientos = [];
+    movimientos.push({
+      fecha: prevLiq ? fmtDate(prevLiq.createdAt) : "",
+      concepto: prevLiq ? "Saldo anterior (liquidación " + prevLiq.id + " · " + (prevLiq.periodo || "") + ")" : "Saldo anterior (carga manual)",
+      monto: saldoAnterior
+    });
+    rendInc.forEach(r => movimientos.push({
+      fecha: fmtDate(inicioRend(r)),
+      concepto: "Rendición " + r.id + (viajesRend(r).length ? " · viajes " + viajesRend(r).join(", ") : ""),
+      monto: r2(saldoRend(r))
+    }));
+    if (basicoN) movimientos.push({ fecha: "", concepto: "Básico mensual" + (basicoDetalle.trim() ? " · " + basicoDetalle.trim() : ""), monto: basicoN });
+    entInc.forEach(e => movimientos.push({ fecha: fmtDate(e.fecha), concepto: descEnt(e), monto: -entARS(e) }));
+    const aFavor = r2(movimientos.reduce((s, m) => s + (m.monto > 0 ? m.monto : 0), 0));
+    const enContra = r2(movimientos.reduce((s, m) => s + (m.monto < 0 ? -m.monto : 0), 0));
+    const pagosDoc = pagosValidos.map(p => ({ fecha: fmtDate(p.fecha), forma: p.forma, obs: (p.obs || "").trim(), monto: r2(p.monto) }));
+    const cierre = {
+      id: liqId,
+      chofer: selChofer,
+      periodo: selPeriodo,
+      cerradaAt: fmtDT(new Date()),
+      cerradaPor: session.username,
+      primera: esPrimera,
+      movimientos,
+      pagos: pagosDoc,
+      totales: { aFavor, enContra, balance, pagado: totalPagado, saldoTrasladar },
+      previas: {
+        rendiciones: previasRend.map(r => r.id),
+        entregas: previasEnt.map(e => fmtDate(e.fecha) + " " + fmtNum(e.monto) + " " + (e.moneda || "ARS"))
+      },
+      tc: { USD: TC.USD, CLP: TC.CLP }
+    };
     setSaving(true);
-    const detalle = rendFiltradas.map(r => ({
-      id: r.id,
-      inicio: inicioRend(r),
-      segmentos: fmtDate(inicioRend(r)), // compatibilidad: el PDF viejo muestra esta columna
-      saldoChofer: saldoRend(r)
-    }));
-    // FIX 3 — detalle de anticipos de sueldo (entregas huérfanas)
-    const detalleAnticipos = anticiposPeriodo.map(e => ({
-      id: e.id,
-      fecha: e.fecha,
-      responsable: e.responsable || "",
-      formaPago: e.formaPago || "",
-      obs: e.obs || "",
-      monto: e.monto,
-      moneda: e.moneda || "ARS",
-      montoARS: toARS(e.monto, e.moneda || "ARS")
-    }));
     const r = await gasCall("saveRRHH", {
       liquidacion: {
+        id: liqId,
         chofer: selChofer,
         periodo: selPeriodo,
         tipoChofer: "PROPIO",
-        saldoAnterior: saldoAnt,
-        subtotalRendiciones: subtotal,
-        totalAnticipos: totalAnticipos,
-        total: total,
-        rendicionIds: rendFiltradas.map(r => r.id),
-        detalleRendiciones: detalle,
-        detalleAnticipos: detalleAnticipos,
-        cambioUsdArs: "",
-        cambioUsdClp: "",
-        detalleFletero: {}
-      },
-      user: session.username
+        saldoAnterior,
+        saldoAnteriorDe: prevLiq ? prevLiq.id : "",
+        basicoMensual: basicoN,
+        subtotalRendiciones: subtotalRend,
+        totalAnticipos: totalAnt,
+        balance,
+        total: balance,
+        totalPagado,
+        saldoTrasladar,
+        rendicionIds: rendInc.map(x => String(x.id)),
+        entregaIds: entInc.map(claveEnt),
+        previas: { rendiciones: previasRend.map(x => String(x.id)), entregas: previasEnt.map(claveEnt) },
+        pagos: pagosDoc,
+        cierre
+      }
     });
     setSaving(false);
-    if (r.ok) {
-      notif.add(`Liquidación guardada. PDF: ${r.pdfUrl ? "✓" : "sin PDF"}`);
-      invalidateCache("rrhh");
-      const l = await cachedGet("getRRHH", "rrhh");
-      if (l.ok) setLiquidaciones(l.data);
-    } else notif.add(r.error || "Error", "error");
+    if (!r.ok) { notif.add(r.error || "Error al guardar la liquidación", "error"); return; }
+    notif.add("Liquidación cerrada: " + liqId);
+    imprimirA4("Liquidacion " + liqId, htmlResumenLiquidacion(cierre));
+    limpiarFormulario();
+    setLiqId("LIQ-" + Date.now());
+    cargar(true);
   }
+
+  async function anular(l) {
+    if (anulandoRef.current) return;
+    const motivo = prompt("Anular la liquidación " + l.id + " de " + l.chofer + ".\n\nSus rendiciones y entregas vuelven a quedar pendientes y el saldo anterior vuelve al de la liquidación previa.\n\nMotivo (queda registrado):");
+    if (!motivo || !motivo.trim()) return;
+    setAnulando(true);
+    const r = await gasCall("anularRRHH", { id: l.id, motivo: motivo.trim() });
+    setAnulando(false);
+    if (!r.ok) { notif.add(r.error || "No se pudo anular", "error"); return; }
+    notif.add("Liquidación " + l.id + " anulada");
+    setDocLiq(null);
+    setView("list");
+    cargar(true);
+  }
+
+  // ── Piezas de interfaz ──
+  const conSigno = (v, grande) => h("span", {
+    style: { fontFamily: "var(--mono)", whiteSpace: "nowrap", fontWeight: grande ? 700 : 500, color: v < 0 ? "var(--danger)" : "var(--success)" }
+  }, v < 0 ? "−" : "", fmtNum(Math.abs(v)), " ARS");
+  const tituloSeccion = (txt, extra) => h("div", {
+    style: { display: "flex", alignItems: "center", gap: 10, margin: "18px 0 8px" }
+  }, h("div", { style: { fontWeight: 600, fontSize: 13, color: "var(--text)" } }, txt), extra);
+  const check = (checked, onChange, title) => h("input", {
+    type: "checkbox", checked, onChange, title,
+    style: { width: 16, height: 16, cursor: "pointer" }
+  });
+  const estiloFila = modo => modo === "incluir" ? { background: "rgba(79,127,255,.07)" } : modo === "previa" ? { opacity: .55 } : null;
+  const thDer = txt => h("th", { style: { textAlign: "right" } }, txt);
+  const ayudaPrevia = "Primera liquidación: marcá lo que YA estaba contemplado en el saldo anterior del cuaderno. No suma ni resta, pero deja de aparecer como pendiente.";
+
+  // ── Documento (liquidacion cerrada o anulada) ──
+  if (view === "doc" && docLiq) {
+    const c = docLiq.cierre;
+    const html = c ? htmlResumenLiquidacion(c, docLiq) : "";
+    const ultima = ultimaDe(docLiq.chofer);
+    const puedeAnular = canEdit && docLiq.estado !== "anulada" && ultima && ultima.id === docLiq.id;
+    return h("div", { className: "module-container" },
+      h("div", { className: "module-header" },
+        h("div", null,
+          h("div", { className: "module-title" }, "\u{1F4C4} Liquidación — ", docLiq.chofer),
+          h("div", { className: "module-subtitle", style: { fontFamily: "var(--mono)", fontSize: 12 } }, docLiq.id, " · ", docLiq.periodo, docLiq.estado === "anulada" ? " · ANULADA" : "")),
+        h("div", { style: { display: "flex", gap: 8 } },
+          c && h("button", { className: "btn btn-primary btn-sm", onClick: () => imprimirA4("Liquidacion " + docLiq.id, html) }, "\u{1F5A8} Imprimir A4"),
+          puedeAnular && h("button", {
+            className: "btn btn-secondary btn-sm",
+            onClick: () => anular(docLiq),
+            disabled: anulando,
+            title: "Solo se puede anular la última liquidación vigente del chofer"
+          }, anulando ? "Anulando..." : "⛔ Anular"),
+          h("button", { className: "btn btn-secondary btn-sm", onClick: () => { setDocLiq(null); setView("list"); } }, "← Volver"))),
+      c
+        ? h("div", { className: "hoja-a4", dangerouslySetInnerHTML: { __html: html } })
+        : h("div", { className: "alert alert-warning" }, "Esta liquidación no tiene resumen guardado."));
+  }
+
   const liqCols = [{
     key: "periodo",
     label: "Período",
     render: v => {
-      // FIX 6 — si el período quedó guardado como fecha ISO, mostrarlo como "JUNIO 2026"
+      // Si el período quedó guardado como fecha ISO, mostrarlo como "JUNIO 2026"
       if (!v) return "—";
       const s = String(v);
       if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
         const dt = new Date(s);
-        if (!isNaN(dt)) {
-          return `${dt.toLocaleString("es-AR",{month:"long"}).toUpperCase()} ${dt.getFullYear()}`;
-        }
+        if (!isNaN(dt)) return etiquetaMes(dt);
       }
-      return s; // ya viene como "JUNIO 2026"
+      return s;
     }
   }, {
     key: "chofer",
     label: "Chofer"
   }, {
-    key: "subtotalRendiciones",
-    label: "Subtotal rend.",
-    align: "right",
-    render: v => /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontFamily: "var(--mono)"
-      }
-    }, fmtNum(v), " ARS")
+    key: "estado",
+    label: "Estado",
+    render: v => v === "anulada"
+      ? h("span", { style: { fontSize: 11, fontWeight: 600, color: "var(--danger)" } }, "ANULADA")
+      : h("span", { style: { fontSize: 11, color: "var(--text3)" } }, "Cerrada")
   }, {
-    key: "saldoAnterior",
-    label: "Saldo anterior",
+    key: "balance",
+    label: "Balance",
     align: "right",
-    render: v => /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontFamily: "var(--mono)"
-      }
-    }, fmtNum(v), " ARS")
+    render: (v, row) => conSigno(Number(v !== "" && v != null ? v : row.total) || 0)
   }, {
-    key: "total",
-    label: "Total",
+    key: "totalPagado",
+    label: "Pagado",
     align: "right",
-    render: v => /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontFamily: "var(--mono)",
-        fontWeight: 600,
-        color: "var(--success)"
-      }
-    }, fmtNum(v), " ARS")
+    render: v => h("span", { style: { fontFamily: "var(--mono)" } }, fmtNum(Number(v) || 0), " ARS")
+  }, {
+    key: "saldoTrasladar",
+    label: "Saldo trasladado",
+    align: "right",
+    render: v => conSigno(Number(v) || 0, true)
   }, {
     key: "createdAt",
-    label: "Generado",
-    render: v => /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 11,
-        color: "var(--text3)"
-      }
-    }, fmtDT(v))
-  }, {
-    key: "pdfUrl",
-    label: "PDF",
-    sortable: false,
-    render: v => v && !v.startsWith("Error") ? /*#__PURE__*/React.createElement("a", {
-      href: v,
-      target: "_blank",
-      rel: "noreferrer",
-      style: {
-        color: "var(--accent)",
-        fontSize: 12
-      }
-    }, "📄 Ver PDF") : /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: "var(--text3)",
-        fontSize: 11
-      }
-    }, v || "—")
+    label: "Cerrada",
+    render: v => h("span", { style: { fontSize: 11, color: "var(--text3)" } }, fmtDT(v))
   }];
-  return /*#__PURE__*/React.createElement("div", {
-    className: "module-container"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "module-header"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "module-title"
-  }, "👥 RRHH — Liquidaciones"), /*#__PURE__*/React.createElement("div", {
-    className: "module-subtitle"
-  }, liquidaciones.length, " liquidación(es) generada(s)"))), canEdit && /*#__PURE__*/React.createElement("div", {
-    className: "card",
+
+  const opcionesForma = (dropdowns && dropdowns.FORMAS_PAGO && dropdowns.FORMAS_PAGO.length) ? dropdowns.FORMAS_PAGO : ["EFECTIVO", "TRANSFERENCIA BANCARIA", "MERCADO PAGO", "OTRO"];
+  const actualizarPago = (i, campo, valor) => setPagos(p => p.map((x, j) => j === i ? { ...x, [campo]: valor } : x));
+
+  // Tabla de rendiciones pendientes
+  const tablaRend = rendPend.length === 0
+    ? h("div", { style: { fontSize: 12, color: "var(--text3)" } }, "No hay rendiciones cerradas pendientes de liquidar.")
+    : h("div", { className: "table-wrap" }, h("table", null,
+      h("thead", null, h("tr", null,
+        h("th", { style: { width: 60 } }, "Incluir"),
+        esPrimera && h("th", { style: { width: 90 }, title: ayudaPrevia }, "Ya en saldo ant."),
+        h("th", null, "Rendición"), h("th", null, "Inicio de viaje"), h("th", null, "Viajes"),
+        thDer("Saldo chofer"), h("th", { style: { width: 70 } }, ""))),
+      h("tbody", null, rendPend.map(r => {
+        const modo = incRend[r.id];
+        return h("tr", { key: r.id, style: estiloFila(modo) },
+          h("td", null, check(modo === "incluir", () => marcar(setIncRend, r.id, "incluir"), "Incluir en esta liquidación")),
+          esPrimera && h("td", null, check(modo === "previa", () => marcar(setIncRend, r.id, "previa"), ayudaPrevia)),
+          h("td", { style: { fontFamily: "var(--mono)", fontSize: 12 } }, r.id),
+          h("td", { style: { whiteSpace: "nowrap" } }, inicioRend(r) ? fmtDate(inicioRend(r)) : "—"),
+          h("td", { style: { fontFamily: "var(--mono)", fontSize: 11, color: "var(--text2)" } }, viajesRend(r).join(", ") || "—"),
+          h("td", { style: { textAlign: "right" } }, conSigno(saldoRend(r))),
+          h("td", null, h("button", { className: "btn btn-secondary btn-sm", onClick: () => setResumenRend(r), title: "Ver resumen de la rendición" }, "\u{1F50D} Ver")));
+      }))));
+
+  // Tabla de entregas de sueldo pendientes
+  const tablaEnt = entPend.length === 0
+    ? h("div", { style: { fontSize: 12, color: "var(--text3)" } }, "No hay entregas de sueldo pendientes. (Solo aparecen las entregas marcadas como Sueldo en Plata choferes.)")
+    : h("div", { className: "table-wrap" }, h("table", null,
+      h("thead", null, h("tr", null,
+        h("th", { style: { width: 60 } }, "Incluir"),
+        esPrimera && h("th", { style: { width: 90 }, title: ayudaPrevia }, "Ya en saldo ant."),
+        h("th", null, "Fecha"), h("th", null, "Responsable"), h("th", null, "Forma de pago"), h("th", null, "Observaciones"),
+        thDer("Monto"), thDer("En ARS"))),
+      h("tbody", null, entPend.map(e => {
+        const k = claveEnt(e);
+        const modo = incEnt[k];
+        return h("tr", { key: k, style: estiloFila(modo) },
+          h("td", null, check(modo === "incluir", () => marcar(setIncEnt, k, "incluir"), "Descontar en esta liquidación")),
+          esPrimera && h("td", null, check(modo === "previa", () => marcar(setIncEnt, k, "previa"), ayudaPrevia)),
+          h("td", { style: { whiteSpace: "nowrap" } }, fmtDate(e.fecha)),
+          h("td", { style: { fontSize: 12 } }, e.responsable || "—"),
+          h("td", { style: { fontSize: 12 } }, e.formaPago || "—"),
+          h("td", { style: { fontSize: 12, color: "var(--text2)" } }, e.obs || ""),
+          h("td", { style: { textAlign: "right", fontFamily: "var(--mono)", whiteSpace: "nowrap" } }, fmtNum(e.monto), " ", e.moneda || "ARS"),
+          h("td", { style: { textAlign: "right", fontFamily: "var(--mono)", whiteSpace: "nowrap", color: "var(--danger)" } }, "−", fmtNum(entARS(e))));
+      }))));
+
+  // Resumen de la cuenta
+  const filaCuenta = (etq, valor, opts = {}) => h("tr", null,
+    h("td", { style: { fontSize: 13, color: opts.tenue ? "var(--text3)" : "var(--text2)" } }, etq),
+    h("td", { style: { textAlign: "right" } }, valor));
+  const cajaSaldo = (titulo, v) => h("div", {
     style: {
-      marginBottom: 16
+      marginTop: 12, padding: "12px 14px", borderRadius: "var(--radius)",
+      border: "2px solid " + (v < 0 ? "var(--danger)" : "var(--success)"),
+      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap"
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card-header"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "card-title"
-  }, "➕ Nueva Liquidación")), /*#__PURE__*/React.createElement("div", {
-    className: "card-body"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "form-row"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Chofer"), /*#__PURE__*/React.createElement(SearchableSelect, {
-    options: choferes,
-    value: selChofer,
-    onChange: v => {
-      setSelChofer(v);
-      setSelPeriodo("");
-    },
-    placeholder: "Seleccionar chofer..."
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Período"), /*#__PURE__*/React.createElement(SearchableSelect, {
-    options: periodos,
-    value: selPeriodo,
-    onChange: setSelPeriodo,
-    placeholder: "Ej: MARZO 2026",
-    disabled: !selChofer
-  })),
-  /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Saldo anterior (ARS)"), /*#__PURE__*/React.createElement(MoneyInput, {
-    value: saldoAnterior,
-    onChange: setSaldoAnterior,
-    allowNegative: true,
-    placeholder: "0  (negativo = lo debe el chofer)"
-  }))), selChofer && selPeriodo && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 12
-    }
-  }, rendAbiertas.length > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "alert alert-warning",
-    style: { marginBottom: 12 }
-  }, "\u26A0\uFE0F ", selChofer, " tiene ", rendAbiertas.length === 1 ? "una rendición abierta" : rendAbiertas.length + " rendiciones abiertas", " en ", selPeriodo, " (", rendAbiertas.map(r => r.id).join(", "), "). No se incluyen: cerralas para que entren en la liquidación."), rendFiltradas.length === 0 && anticiposPeriodo.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "alert alert-info"
-  }, "No hay rendiciones cerradas ni entregas de sueldo para ", selChofer, " en ", selPeriodo, ".") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "table-wrap",
-    style: {
-      marginBottom: 12
-    }
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Inicio de viaje"), /*#__PURE__*/React.createElement("th", {
-    style: {
-      textAlign: "right"
-    }
-  }, "Saldo Chofer (ARS)"), /*#__PURE__*/React.createElement("th", null, "Resumen"))), /*#__PURE__*/React.createElement("tbody", null, rendFiltradas.map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontFamily: "var(--mono)",
-      fontSize: 12
-    }
-  }, r.id), /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontSize: 12,
-      whiteSpace: "nowrap"
-    }
-  }, inicioRend(r) ? fmtDate(inicioRend(r)) : "—"), /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontFamily: "var(--mono)",
-      textAlign: "right",
-      whiteSpace: "nowrap"
-    }
-  }, fmtNum(saldoRend(r))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-secondary btn-sm",
-    onClick: () => setResumenRend(r),
-    title: "Ver resumen de la rendición"
-  }, "🔍 Ver"))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {
-    style: {
-      background: "var(--bg4)"
-    }
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: 2,
-    style: {
-      fontWeight: 600
-    }
-  }, "Subtotal rendiciones"), /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontFamily: "var(--mono)",
-      fontWeight: 600,
-      textAlign: "right"
-    }
-  }, fmtNum(subtotal)), /*#__PURE__*/React.createElement("td", null)), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-    colSpan: 2
-  }, "Saldo anterior"), /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontFamily: "var(--mono)",
-      textAlign: "right"
-    }
-  }, saldoAnt < 0 ? "\u2212" : "", fmtNum(Math.abs(saldoAnt))), /*#__PURE__*/React.createElement("td", null)),
-  // FIX 3 — Filas de anticipos de sueldo (entregas huérfanas), sólo choferes propios
-  ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
-    key: "ant-header",
-    style: { background: "var(--bg4)" }
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: 4,
-    style: { fontWeight: 600, fontSize: 12, color: "var(--warning)" }
-  }, "− Anticipos de sueldo (entregas marcadas como sueldo)"))] : []),
-  ...anticiposPeriodo.map((e, i) => /*#__PURE__*/React.createElement("tr", {
-    key: "ant-" + (e.id || i)
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: 2,
-    style: { fontSize: 12 }
-  }, fmtDate(e.fecha), " — ", e.responsable || "", " (", e.formaPago || "", ")", e.obs ? /*#__PURE__*/React.createElement("span", {
-    style: { color: "var(--text3)" }
-  }, " · ", e.obs) : null), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", textAlign: "right", color: "var(--danger)", whiteSpace: "nowrap" }
-  }, "−", fmtNum(toARS(e.monto, e.moneda || "ARS")), " ARS", e.moneda !== "ARS" ? ` (${fmtNum(e.monto)} ${e.moneda})` : ""), /*#__PURE__*/React.createElement("td", null))),
-  ...(anticiposPeriodo.length > 0 ? [/*#__PURE__*/React.createElement("tr", {
-    key: "ant-subtotal"
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: 2,
-    style: { fontWeight: 600 }
-  }, "Subtotal anticipos"), /*#__PURE__*/React.createElement("td", {
-    style: { fontFamily: "var(--mono)", fontWeight: 600, textAlign: "right", color: "var(--danger)" }
-  }, "−", fmtNum(totalAnticipos), " ARS"), /*#__PURE__*/React.createElement("td", null))] : []),
-  /*#__PURE__*/React.createElement("tr", {
-    style: {
-      background: "rgba(79,127,255,.08)"
-    }
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: 2,
-    style: {
-      fontWeight: 600,
-      fontSize: 14
-    }
-  }, "TOTAL"), /*#__PURE__*/React.createElement("td", {
-    style: {
-      fontFamily: "var(--mono)",
-      fontWeight: 700,
-      fontSize: 14,
-      textAlign: "right",
-      color: "var(--success)"
-    }
-  }, fmtNum(total), " ARS"), /*#__PURE__*/React.createElement("td", null))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "flex-end"
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-primary",
-    onClick: handleGuardarLiquidacion,
-    disabled: saving
-  }, saving ? "Generando PDF..." : "🖨 Guardar e Imprimir Liquidación")))))), loading ? /*#__PURE__*/React.createElement("div", {
-    style: {
-      textAlign: "center",
-      padding: 32
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "spinner",
-    style: {
-      margin: "0 auto"
-    }
-  })) : /*#__PURE__*/React.createElement(DataTable, {
-    llenarPantalla: false, // va debajo del formulario: una caja al pie quedaria chica
-    columns: liqCols,
-    data: liquidaciones,
-    searchPlaceholder: "Buscar liquidaciones...",
-    emptyText: "Sin liquidaciones generadas.",
-    exportFilename: "liquidaciones_rrhh"
-  }), resumenRend && (() => {
+  }, h("div", null,
+    h("div", { style: { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".05em" } }, titulo),
+    h("div", { style: { fontSize: 13, fontWeight: 700, color: v < 0 ? "var(--danger)" : "var(--success)" } }, v < 0 ? "EN CONTRA DEL CHOFER" : "A FAVOR DEL CHOFER")),
+  h("div", { style: { fontFamily: "var(--mono)", fontSize: 20, fontWeight: 700, color: v < 0 ? "var(--danger)" : "var(--success)" } }, fmtNum(Math.abs(v)), " ARS"));
+
+  const panelCuenta = h("div", { className: "card", style: { flex: "1 1 380px", margin: 0 } },
+    h("div", { className: "card-header" }, h("div", { className: "card-title" }, "\u{1F4D2} Cuenta del chofer")),
+    h("div", { className: "card-body" },
+      h("table", { style: { width: "100%" } }, h("tbody", null,
+        filaCuenta("Saldo anterior", conSigno(saldoAnterior)),
+        filaCuenta("Rendiciones incluidas (" + rendInc.length + ")", conSigno(subtotalRend)),
+        filaCuenta("Básico mensual", conSigno(basicoN)),
+        filaCuenta("Anticipos de sueldo (" + entInc.length + ")", conSigno(-totalAnt)))),
+      cajaSaldo("Balance", balance)));
+
+  const panelPagos = h("div", { className: "card", style: { flex: "1 1 460px", margin: 0 } },
+    h("div", { className: "card-header" }, h("div", { className: "card-title" }, "\u{1F4B8} Pago al chofer al cerrar")),
+    h("div", { className: "card-body" },
+      h("div", { style: { fontSize: 12, color: "var(--text3)", marginBottom: 10 } },
+        "Lo que se le paga al liquidar. No lo cargues también en Plata choferes: se contaría dos veces."),
+      pagos.map((p, i) => h("div", { key: i, style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 } },
+        h("div", { style: { width: 140 } }, h(DateInput, { value: p.fecha, onChange: v => actualizarPago(i, "fecha", v) })),
+        h("div", { style: { width: 190 } }, h(SearchableSelect, { options: opcionesForma, value: p.forma, onChange: v => actualizarPago(i, "forma", v), placeholder: "Forma de pago..." })),
+        h("div", { style: { width: 150 } }, h(MoneyInput, { value: p.monto, onChange: v => actualizarPago(i, "monto", v), placeholder: "Monto ARS" })),
+        h("input", { className: "form-input", style: { flex: "1 1 120px" }, value: p.obs || "", onChange: ev => actualizarPago(i, "obs", ev.target.value), placeholder: "Detalle (opcional)" }),
+        h("button", { className: "btn btn-secondary btn-sm btn-icon", onClick: () => setPagos(ps => ps.filter((x, j) => j !== i)), title: "Quitar" }, "✕"))),
+      h("button", {
+        className: "btn btn-secondary btn-sm",
+        onClick: () => setPagos(ps => [...ps, { fecha: toInputDate(new Date()), forma: "", monto: "", obs: "" }])
+      }, "+ Agregar pago"),
+      totalPagado > 0 && h("div", { style: { marginTop: 10, fontSize: 13, color: "var(--text2)" } }, "Total pagado: ", h("span", { style: { fontFamily: "var(--mono)", fontWeight: 600 } }, fmtNum(totalPagado), " ARS")),
+      totalPagado > 0 && totalPagado > Math.max(balance, 0) + 0.005 && h("div", { className: "alert alert-warning", style: { marginTop: 10, fontSize: 12 } },
+        "Se paga más que el saldo a favor: la diferencia queda en contra del chofer."),
+      cajaSaldo("Saldo que pasa al período siguiente", saldoTrasladar)));
+
+  return h("div", { className: "module-container" },
+    h("div", { className: "module-header" },
+      h("div", null,
+        h("div", { className: "module-title" }, "\u{1F465} RRHH — Liquidaciones"),
+        h("div", { className: "module-subtitle" }, activas.length, " liquidación(es) vigente(s)"))),
+    canEdit && h("div", { className: "card", style: { marginBottom: 16 } },
+      h("div", { className: "card-header" }, h("div", { className: "card-title" }, "➕ Nueva liquidación")),
+      h("div", { className: "card-body" },
+        h("div", { className: "form-row" },
+          h("div", { className: "form-group" },
+            h("label", { className: "form-label" }, "Chofer"),
+            h(SearchableSelect, { options: choferes, value: selChofer, onChange: v => { setSelChofer(v); limpiarFormulario(); }, placeholder: "Seleccionar chofer..." })),
+          h("div", { className: "form-group" },
+            h("label", { className: "form-label" }, "Período"),
+            h(SearchableSelect, { options: opcionesPeriodo, value: selPeriodo, onChange: setSelPeriodo, placeholder: "Ej: AGOSTO 2026" })),
+          h("div", { className: "form-group" },
+            h("label", { className: "form-label" }, "Saldo anterior (ARS)"),
+            prevLiq
+              ? h("div", { className: "field-readonly", title: "Sale de la liquidación anterior y no se puede modificar" },
+                  conSigno(saldoAnterior), h("span", { style: { fontSize: 11, color: "var(--text3)", marginLeft: 8 } }, "\u{1F512} de ", prevLiq.id))
+              : h(MoneyInput, { value: saldoManual, onChange: setSaldoManual, allowNegative: true, disabled: !selChofer, placeholder: "Negativo = lo debe el chofer" }),
+            esPrimera && h("div", { style: { fontSize: 11, color: "var(--text3)", marginTop: 4 } }, "Primera liquidación del chofer: se carga a mano.")),
+          h("div", { className: "form-group" },
+            h("label", { className: "form-label" }, "Básico mensual (ARS)"),
+            h(MoneyInput, { value: basico, onChange: setBasico, disabled: !selChofer, placeholder: "Solo si no se entregó por Plata choferes" })),
+          h("div", { className: "form-group" },
+            h("label", { className: "form-label" }, "Detalle del básico"),
+            h("input", { className: "form-input", value: basicoDetalle, onChange: ev => setBasicoDetalle(ev.target.value), disabled: !selChofer, placeholder: "Ej: medio agosto" }))),
+        selChofer && h(React.Fragment, null,
+          rendAbiertas.length > 0 && h("div", { className: "alert alert-warning", style: { marginTop: 4 } },
+            "⚠️ ", selChofer, " tiene ", rendAbiertas.length === 1 ? "una rendición abierta" : rendAbiertas.length + " rendiciones abiertas",
+            " (", rendAbiertas.map(r => r.id).join(", "), "). Hay que cerrarlas para poder liquidarlas."),
+          esPrimera && (rendPend.length > 0 || entPend.length > 0) && h("div", { className: "alert alert-info", style: { marginTop: 4, fontSize: 12 } },
+            "Primera liquidación de ", selChofer, ": lo que ya estaba contemplado en el saldo anterior marcalo en “Ya en saldo ant.” para que no quede pendiente para siempre."),
+          tituloSeccion("\u{1F4CA} Rendiciones cerradas pendientes (" + rendPend.length + ")",
+            rendPend.length > 1 && h("button", { className: "btn btn-secondary btn-sm", onClick: () => incluirTodas(setIncRend, rendPend.map(r => r.id)) }, "Incluir todas / ninguna")),
+          tablaRend,
+          tituloSeccion("\u{1F4BC} Entregas de sueldo pendientes (" + entPend.length + ")",
+            entPend.length > 1 && h("button", { className: "btn btn-secondary btn-sm", onClick: () => incluirTodas(setIncEnt, entPend.map(claveEnt)) }, "Incluir todas / ninguna")),
+          tablaEnt,
+          h("div", { style: { display: "flex", gap: 16, flexWrap: "wrap", marginTop: 18, alignItems: "stretch" } }, panelCuenta, panelPagos),
+          h("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 16 } },
+            h("button", { className: "btn btn-primary", onClick: cerrarLiquidacion, disabled: saving },
+              saving ? "Guardando..." : "\u{1F512} Cerrar liquidación e imprimir"))))),
+    loading
+      ? h("div", { style: { textAlign: "center", padding: 32 } }, h("div", { className: "spinner", style: { margin: "0 auto" } }))
+      : h(DataTable, {
+          llenarPantalla: false, // va debajo del formulario: una caja al pie quedaria chica
+          columns: liqCols,
+          data: liqs.slice().reverse(),
+          onRowClick: row => { setDocLiq(row); setView("doc"); },
+          searchPlaceholder: "Buscar liquidaciones...",
+          emptyText: "Sin liquidaciones.",
+          exportFilename: "liquidaciones_rrhh"
+        }), resumenRend && (() => {
     const r = resumenRend;
     const t = { ...(r.totals || {}), ...((r.cierre && r.cierre.totales) || {}) };
     const dev = r.devolucion || {};
