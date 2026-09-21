@@ -8406,10 +8406,17 @@ function Module6({
     if (v && typeof v === "object") return v;
     try { return JSON.parse(v || "null"); } catch (er) { return null; }
   };
+  // La planilla convierte "AGOSTO 2026" en fecha: se vuelve a la etiqueta
+  const normPeriodo = v => {
+    const s = String(v || "");
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) { const dt = new Date(s); if (!isNaN(dt)) return etiquetaMes(dt); }
+    return s;
+  };
   const liqs = useMemo(() => (liquidaciones || []).map(l => {
     const previas = comoObjeto(l.previas) || {};
     return {
       ...l,
+      periodo: normPeriodo(l.periodo),
       estado: l.estado || "cerrada",
       rendicionIds: comoLista(l.rendicionIds).map(String),
       entregaIds: comoLista(l.entregaIds).map(String),
