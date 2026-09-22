@@ -438,6 +438,30 @@ function esTramoFletero(dropdowns, seg) {
   return !esEmpresaPropia(d);
 }
 
+// Dueno de un vehiculo, sea tractor (hoja CAMIONES) o semi (hoja SEMIS).
+function duenoVehiculo(dropdowns, patente) {
+  const n = normPatente(patente);
+  if (!n) return "";
+  const camion = duenoTractor(dropdowns, patente);
+  if (camion) return camion;
+  const semis = (dropdowns && dropdowns.SEMIS_DUENO) || {};
+  const k = Object.keys(semis).find(x => normPatente(x) === n);
+  return k ? String(semis[k] || "").trim().toUpperCase() : "";
+}
+
+// Vehiculo de un tercero: lo que se gasta en el se descuenta en la liquidacion
+// del fletero (modulo 8), no es un costo propio.
+function esVehiculoFletero(dropdowns, patente) {
+  const d = duenoVehiculo(dropdowns, patente);
+  return !!d && !esEmpresaPropia(d);
+}
+
+// Chofer marcado como FLETEROS en la hoja CHOFERES (columna DETALLE)
+function esChoferFletero(dropdowns, chofer) {
+  const t = String(((dropdowns && dropdowns.CHOFERES_TIPO) || {})[chofer] || "").toUpperCase();
+  return t.indexOf("FLETERO") >= 0;
+}
+
 // Categorías de gastos disponibles en la Rendición de Gastos (Módulo 3).
 // El orden aquí es el orden que aparece en el desplegable.
 const EXPENSE_CATS = ["GAS-OIL", "PEAJES Y DESINFECCIÓN", "ADUANA", "LASTRE", "GOMERÍA", "TELÉFONO", "LAVADERO", "COIMAS", "ESTADÍA", "REVISIÓN TÉCNICA", "PARQUEADERO", "OTRO"];
@@ -8535,7 +8559,7 @@ function Module6({
   // ── Choferes ──
   const choferes = useMemo(() => [...new Set([
     ...(rendiciones || []).map(r => r.driver),
-    ...(entregas || []).filter(esEntregaSueldo).map(e => e.chofer),
+    ...(entregas || []).filter(e => esEntregaSueldo(e) && !esChoferFletero(dropdowns, e.chofer)).map(e => e.chofer),
     ...liqs.map(l => l.chofer)
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [rendiciones, entregas, liqs]);
 
@@ -8578,7 +8602,8 @@ function Module6({
     if (!opcionesPeriodo.includes(selPeriodo)) setSelPeriodo(opcionesPeriodo.length ? opcionesPeriodo[opcionesPeriodo.length - 1] : "");
   }, [opcionesPeriodo.join("|")]);
   const entPend = useMemo(() => !selChofer ? [] : (entregas || [])
-    .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !usados.es.has(claveEnt(e)))
+    // Los choferes FLETEROS no se liquidan aca: su plata se descuenta en el modulo 8
+    .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !esChoferFletero(dropdowns, e.chofer) && !usados.es.has(claveEnt(e)))
     .sort((a, b) => (toInputDate(a.fecha) || "").localeCompare(toInputDate(b.fecha) || "")),
   [entregas, selChofer, usados]);
 
@@ -9143,8 +9168,19 @@ function Module7({
   notif
 }) {
   const [gastos, setGastos] = useState([]);
+  const [fletLiqs, setFletLiqs] = useState([]); // para saber si ya se le descontó al fletero
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("list");
+
+  // Un gasto cargado a la patente de un tercero no es costo propio: se descuenta
+  // en la liquidacion de ese fletero (modulo 8).
+  const descontadoEn = useMemo(() => {
+    const m = {};
+    (fletLiqs || []).forEach(l => (l.descuentos || []).forEach(d => {
+      if (d && d.origen === "gasto" && d.origenId) m[String(d.origenId).replace(/^GG\|/, "")] = l;
+    }));
+    return m;
+  }, [fletLiqs]);
 
   // Combinar CAMIONES + SEMIS para el selector de patente
   const vehiculos = useMemo(() => [...(dropdowns.CAMIONES || []), ...(dropdowns.SEMIS || [])], [dropdowns]);
@@ -9153,8 +9189,9 @@ function Module7({
   }, []);
   async function loadGastos() {
     setLoading(true);
-    const r = await cachedGet("getGastosGenerales", "gastosGenerales");
+    const [r, f] = await Promise.all([cachedGet("getGastosGenerales", "gastosGenerales"), cachedGet("getFleterosLiq", "fleterosLiq")]);
     if (r.ok) setGastos(r.data);
+    if (f && f.ok) setFletLiqs(f.data || []);
     setLoading(false);
   }
   async function handleSave(data) {
@@ -9194,6 +9231,17 @@ function Module7({
         fontSize: 12
       }
     }, v || "—")
+  }, {
+    key: "_fletero",
+    label: "Fletero",
+    sortable: false,
+    render: (v, row) => {
+      if (!row.patente || !esVehiculoFletero(dropdowns, row.patente)) return /*#__PURE__*/React.createElement("span", { style: { color: "var(--text3)" } }, "—");
+      const liq = descontadoEn[String(row.id)];
+      return liq
+        ? /*#__PURE__*/React.createElement("span", { className: "badge badge-green", title: "Descontado en la liquidación " + liq.id }, "Descontado")
+        : /*#__PURE__*/React.createElement("span", { className: "badge badge-yellow", title: "Vehículo de " + duenoVehiculo(dropdowns, row.patente) + ": se descuenta al liquidar esa patente en Fleteros" }, "Pendiente");
+    }
   }, {
     key: "chofer",
     label: "Chofer",
@@ -9446,7 +9494,7 @@ function GastoGeneralForm({
 // monto, divisa) reordenables por arrastre. Totales POR DIVISA sin conversión.
 // Guardar → hoja FLETEROS_LIQ + PDF en Drive. Historial con link al PDF.
 // ═══════════════════════════════════════════════════════════════════════════════
-const TIPOS_DESCUENTO_FLETERO = ["COMBUSTIBLE", "INSUMOS VARIOS", "SEGURO", "OTROS"];
+const TIPOS_DESCUENTO_FLETERO = ["COMBUSTIBLE", "INSUMOS VARIOS", "SEGURO", "ENTREGA DE PLATA", "GASTO GENERAL", "OTROS"];
 function Module8({
   session,
   canEdit,
@@ -9455,6 +9503,7 @@ function Module8({
   selPatente,
   onPatentesChange
 }) {
+  const h = React.createElement;
   const [trips, setTrips] = useState([]);
   const [liqs, setLiqs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9462,6 +9511,9 @@ function Module8({
   const [selSegIds, setSelSegIds] = useState([]);
   const [datos, setDatos] = useState({}); // { segId: { monto, divisa, comision } }
   const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, chofer, semi, monto, divisa }]
+  const [entregas, setEntregas] = useState([]);       // plata entregada a los choferes del fletero
+  const [gastosGen, setGastosGen] = useState([]);     // gastos generales a nombre de sus patentes
+  const [incAuto, setIncAuto] = useState({});         // que entregas/gastos se descuentan en esta liquidacion
   // Cotizaciones para liquidar en ARS. Arrancan con el TC del sistema (hojas
   // USD/ARS y CLP/ARS CHOFERES) y se pueden pisar si con este fletero se nego-
   // cio otra. MISMA UNIDAD QUE EL RESTO DEL SISTEMA:
@@ -9475,9 +9527,16 @@ function Module8({
   const dragIdxRef = useRef(null);
   const patentesPrevRef = useRef("");
   useEffect(() => {
-    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getFleterosLiq", "fleterosLiq")]).then(([t, l]) => {
+    Promise.all([
+      cachedGet("getTrips", "trips"),
+      cachedGet("getFleterosLiq", "fleterosLiq"),
+      cachedGet("getEntregas", "entregas"),
+      cachedGet("getGastosGenerales", "gastosGenerales")
+    ]).then(([t, l, e, g]) => {
       if (t.ok) setTrips(t.data);
       if (l.ok) setLiqs(l.data);
+      if (e && e.ok) setEntregas(e.data || []);
+      if (g && g.ok) setGastosGen(g.data || []);
       setLoading(false);
     });
   }, []);
@@ -9521,6 +9580,54 @@ function Module8({
   }, [patentes]);
   const tramosPatente = useMemo(() => pendientes.filter(s => normPatente(s.tractor) === normPatente(selPatente)), [pendientes, selPatente]);
   const selSegs = tramosPatente.filter(s => selSegIds.includes(s.segId));
+
+  // ── Lo que viene de otros modulos y se descuenta al fletero ──
+  // Plata entregada a los choferes que manejan esta patente (modulo 2) y gastos
+  // generales cargados a esta patente o a sus semis (modulo 7). Se eligen con un
+  // check; lo que entra en una liquidacion no vuelve a ofrecerse.
+  const claveEntregaFlet = e => "ENT|" + String(e.id) + "|" + String(e.moneda || "ARS");
+  const claveGastoFlet = g => "GG|" + String(g.id);
+  const usadosAuto = useMemo(() => {
+    const u = new Set();
+    (liqs || []).forEach(l => (l.descuentos || []).forEach(d => { if (d && d.origenId) u.add(String(d.origenId)); }));
+    return u;
+  }, [liqs]);
+  const choferesPatente = useMemo(() => [...new Set(tramosPatente.map(s => s.chofer).filter(Boolean))], [tramosPatente]);
+  const semisPatente = useMemo(() => [...new Set(tramosPatente.map(s => s.semi).filter(Boolean))], [tramosPatente]);
+  const entregasPend = useMemo(() => !selPatente ? [] : (entregas || [])
+    .filter(e => choferesPatente.includes(e.chofer) && !usadosAuto.has(claveEntregaFlet(e)))
+    .sort((a, b) => (toInputDate(a.fecha) || "").localeCompare(toInputDate(b.fecha) || "")),
+  [entregas, choferesPatente, usadosAuto, selPatente]);
+  const gastosPend = useMemo(() => {
+    if (!selPatente) return [];
+    const patentes = [normPatente(selPatente), ...semisPatente.filter(sm => esVehiculoFletero(dropdowns, sm)).map(normPatente)];
+    return (gastosGen || [])
+      .filter(g => g.patente && patentes.includes(normPatente(g.patente)) && !usadosAuto.has(claveGastoFlet(g)))
+      .sort((a, b) => (toInputDate(a.fechaGasto) || "").localeCompare(toInputDate(b.fechaGasto) || ""));
+  }, [gastosGen, selPatente, semisPatente, usadosAuto, dropdowns]);
+  // Filas de descuento que generan los items marcados
+  const autoDesc = useMemo(() => {
+    const out = [];
+    entregasPend.forEach(e => {
+      if (incAuto[claveEntregaFlet(e)]) out.push({
+        fecha: toInputDate(e.fecha), tipo: "ENTREGA DE PLATA",
+        detalle: [e.responsable ? "entregó " + e.responsable : "", e.formaPago, e.obs].filter(Boolean).join(" · "),
+        chofer: e.chofer || "", semi: "", monto: Number(e.monto || 0), divisa: e.moneda || "ARS",
+        origen: "entrega", origenId: claveEntregaFlet(e)
+      });
+    });
+    gastosPend.forEach(g => {
+      if (incAuto[claveGastoFlet(g)]) out.push({
+        fecha: toInputDate(g.fechaGasto), tipo: "GASTO GENERAL",
+        detalle: [g.tipoGasto, g.patente, g.observaciones].filter(Boolean).join(" · "),
+        chofer: g.chofer || "", semi: normPatente(g.patente) === normPatente(selPatente) ? "" : (g.patente || ""),
+        monto: Number(g.monto || 0), divisa: g.divisa || "ARS",
+        origen: "gasto", origenId: claveGastoFlet(g)
+      });
+    });
+    return out;
+  }, [entregasPend, gastosPend, incAuto, selPatente]);
+  const marcarAuto = clave => setIncAuto(p => { const n = { ...p }; if (n[clave]) delete n[clave]; else n[clave] = true; return n; });
   // Choferes y semis disponibles = los de los tramos seleccionados (para los descuentos)
   const choferesDisp = [...new Set(selSegs.map(s => s.chofer).filter(Boolean))];
   const semisDisp = [...new Set(selSegs.map(s => s.semi).filter(Boolean))];
@@ -9554,11 +9661,11 @@ function Module8({
     selSegs.forEach(sg => {
       if (Number((datos[sg.segId] || {}).monto || 0)) s.add((datos[sg.segId] || {}).divisa || "USD");
     });
-    descuentos.forEach(ds => {
+    [...descuentos, ...autoDesc].forEach(ds => {
       if (Number(ds.monto || 0)) s.add(ds.divisa || "ARS");
     });
     return s;
-  }, [selSegs, datos, descuentos]);
+  }, [selSegs, datos, descuentos, autoDesc]);
   const necesitaUsd = divisasEnJuego.has("USD");
   const necesitaClp = divisasEnJuego.has("CLP");
   const tcFaltante = (necesitaUsd && !Number(tcUsd)) || (necesitaClp && !Number(tcClp));
@@ -9580,14 +9687,14 @@ function Module8({
       t.saldos[div] += s;
       t.ingresosARS += aARS(s, div);
     });
-    descuentos.forEach(ds => {
+    [...descuentos, ...autoDesc].forEach(ds => {
       const div = ds.divisa || "ARS";
       t.descuentos[div] += Number(ds.monto || 0);
       t.descuentosARS += aARS(ds.monto, div);
     });
     t.netoARS = t.ingresosARS - t.descuentosARS;
     return t;
-  }, [selSegs, datos, descuentos, tcUsd, tcClp]);
+  }, [selSegs, datos, descuentos, autoDesc, tcUsd, tcClp]);
 
   // Descuentos estilo planilla: alta, edición, borrado, reordenado por arrastre
   function addDescuento() {
@@ -9676,7 +9783,7 @@ function Module8({
         saldoARS: aARS(saldo, divisa)
       };
     });
-    const descPayload = descLimpios.map(ds => ({
+    const descPayload = [...descLimpios, ...autoDesc].map(ds => ({
       fecha: ds.fecha,
       tipo: ds.tipo,
       detalle: ds.detalle || "",
@@ -9684,7 +9791,10 @@ function Module8({
       semi: ds.semi || "",
       monto: Number(ds.monto || 0),
       divisa: ds.divisa || "ARS",
-      montoARS: aARS(ds.monto, ds.divisa || "ARS")
+      montoARS: aARS(ds.monto, ds.divisa || "ARS"),
+      // origen: de que modulo vino, para no descontarlo dos veces
+      origen: ds.origen || "manual",
+      origenId: ds.origenId || ""
     }));
     const r = await gasCall("saveFleteroLiq", {
       liq: {
@@ -9703,6 +9813,7 @@ function Module8({
       setSelSegIds([]);
       setDatos({});
       setDescuentos([]);
+      setIncAuto({});
       setTcUsd("");
       setTcClp("");
       invalidateCache("fleterosLiq", "trips");
@@ -9882,7 +9993,58 @@ function Module8({
     }, sel && d.monto ? fmtNum(saldoTramo(sg)) + " " + (d.divisa || "USD") : "—"), /*#__PURE__*/React.createElement("td", {
       style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 600, color: "var(--text2)" }
     }, sel && d.monto ? (tcDe(d.divisa || "USD") ? fmtNum(aARS(saldoTramo(sg), d.divisa || "USD")) + " ARS" : "TC?") : "—"));
-  })))))), /*#__PURE__*/React.createElement("div", {
+  })))))), (() => {
+    // Lo que ya esta cargado en otros modulos y le corresponde a este fletero:
+    // plata entregada a sus choferes (modulo 2) y gastos de sus patentes (modulo 7).
+    const chk = (clave) => h("input", {
+      type: "checkbox", checked: !!incAuto[clave], disabled: !canEdit,
+      onChange: () => marcarAuto(clave),
+      style: { width: 16, height: 16, cursor: canEdit ? "pointer" : "default" }
+    });
+    const nada = entregasPend.length === 0 && gastosPend.length === 0;
+    return h("div", { className: "card", style: { marginBottom: 16 } },
+      h("div", { className: "card-header" },
+        h("div", { className: "card-title" }, "\u{1F501} Del sistema ",
+          h("span", { style: { fontSize: 11, fontWeight: 400, color: "var(--text3)" } },
+            "(entregas de plata a sus choferes y gastos generales de sus patentes)"))),
+      h("div", { className: "card-body" },
+        nada
+          ? h("div", { style: { fontSize: 12, color: "var(--text3)", fontStyle: "italic" } },
+              "No hay entregas de plata ni gastos generales pendientes para esta patente.")
+          : h(React.Fragment, null,
+            h("div", { style: { fontSize: 12, color: "var(--text3)", marginBottom: 10 } },
+              "Marcá lo que se descuenta en esta liquidación. Lo que entre acá no vuelve a ofrecerse; lo que no marques queda pendiente."),
+            entregasPend.length > 0 && h(React.Fragment, null,
+              h("div", { style: { fontWeight: 600, fontSize: 13, margin: "6px 0" } }, "\u{1F4B5} Entregas de plata (", entregasPend.length, ")"),
+              h("div", { className: "table-wrap", style: { marginBottom: 14 } }, h("table", null,
+                h("thead", null, h("tr", null, h("th", { style: { width: 60 } }, "Descontar"), h("th", null, "Fecha"), h("th", null, "Chofer"), h("th", null, "Responsable"), h("th", null, "Forma de pago"), h("th", null, "Obs."), h("th", { style: { textAlign: "right" } }, "Monto"))),
+                h("tbody", null, entregasPend.map(e => {
+                  const k = claveEntregaFlet(e);
+                  return h("tr", { key: k, style: incAuto[k] ? { background: "rgba(79,127,255,.07)" } : null },
+                    h("td", null, chk(k)),
+                    h("td", { style: { whiteSpace: "nowrap" } }, fmtDate(e.fecha)),
+                    h("td", null, e.chofer),
+                    h("td", { style: { fontSize: 12 } }, e.responsable || "—"),
+                    h("td", { style: { fontSize: 12 } }, e.formaPago || "—"),
+                    h("td", { style: { fontSize: 11, color: "var(--text3)" } }, e.obs || ""),
+                    h("td", { style: { textAlign: "right", fontFamily: "var(--mono)", whiteSpace: "nowrap" } }, fmtNum(e.monto), " ", e.moneda || "ARS"));
+                })))),
+            gastosPend.length > 0 && h(React.Fragment, null,
+              h("div", { style: { fontWeight: 600, fontSize: 13, margin: "6px 0" } }, "\u{1F6D2} Gastos generales (", gastosPend.length, ")"),
+              h("div", { className: "table-wrap" }, h("table", null,
+                h("thead", null, h("tr", null, h("th", { style: { width: 60 } }, "Descontar"), h("th", null, "Fecha"), h("th", null, "Tipo"), h("th", null, "Patente"), h("th", null, "Obs."), h("th", null, "Responsable"), h("th", { style: { textAlign: "right" } }, "Monto"))),
+                h("tbody", null, gastosPend.map(g => {
+                  const k = claveGastoFlet(g);
+                  return h("tr", { key: k, style: incAuto[k] ? { background: "rgba(79,127,255,.07)" } : null },
+                    h("td", null, chk(k)),
+                    h("td", { style: { whiteSpace: "nowrap" } }, fmtDate(g.fechaGasto)),
+                    h("td", { style: { fontSize: 12 } }, g.tipoGasto || "—"),
+                    h("td", { style: { fontFamily: "var(--mono)", fontSize: 12 } }, g.patente || "—"),
+                    h("td", { style: { fontSize: 11, color: "var(--text3)" } }, g.observaciones || ""),
+                    h("td", { style: { fontSize: 12 } }, g.responsablePago || "—"),
+                    h("td", { style: { textAlign: "right", fontFamily: "var(--mono)", whiteSpace: "nowrap" } }, fmtNum(g.monto), " ", g.divisa || "ARS"));
+                })))))))));
+  })(), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: { marginBottom: 16 }
   }, /*#__PURE__*/React.createElement("div", {
