@@ -5476,6 +5476,26 @@ function Module3({
 
   // Rendicion -> liquidacion de RRHH (vigente) que la incluye. Tambien cuentan
   // las que se dieron por incluidas en el saldo anterior de una primera liquidacion.
+  // Fecha de inicio mas antigua de los tramos de una rendicion: la de la copia
+  // fija del cierre si existe; si no, las fechas actuales de los viajes.
+  const fechaInicioSeg = useMemo(() => {
+    const m = {};
+    (trips || []).forEach(t => (t.segments || []).forEach(sg => { if (sg.segId && sg.fechaInicio) m[sg.segId] = sg.fechaInicio; }));
+    return m;
+  }, [trips]);
+  const inicioDeRend = r => {
+    const c = r.cierre;
+    if (c && c.periodo && c.periodo.desde) return toInputDate(c.periodo.desde);
+    const fs = ((c && c.tramos) || r.segments || []).map(sg => toInputDate(sg.fechaInicio || fechaInicioSeg[sg.segId])).filter(Boolean).sort();
+    return fs[0] || "";
+  };
+  // Saldo del chofer: el del documento de cierre si existe; si no, el ultimo guardado
+  const saldoDeRend = r => {
+    const c = r.cierre && r.cierre.totales;
+    const v = c && c.saldoChofer != null ? c.saldoChofer : r.totals && r.totals.saldoChofer;
+    return v === "" || v == null ? null : Number(v);
+  };
+
   const liquidadaEn = useMemo(() => {
     const lista = v => {
       if (Array.isArray(v)) return v;
@@ -5690,7 +5710,7 @@ function Module3({
       style: {
         marginBottom: 20
       }
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "Consumo"), /*#__PURE__*/React.createElement("th", null, "Total Gastos"), histView && /*#__PURE__*/React.createElement("th", null, "Cerrada"), histView && /*#__PURE__*/React.createElement("th", null, "Estado liquidación"))), /*#__PURE__*/React.createElement("tbody", null, lista.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "ID Rendición"), /*#__PURE__*/React.createElement("th", { title: "Fecha de inicio más antigua de sus tramos" }, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Tramos"), /*#__PURE__*/React.createElement("th", null, "Consumo"), /*#__PURE__*/React.createElement("th", { style: { textAlign: "right" } }, "Saldo chofer"), histView && /*#__PURE__*/React.createElement("th", null, "Cerrada"), histView && /*#__PURE__*/React.createElement("th", null, "Estado liquidación"))), /*#__PURE__*/React.createElement("tbody", null, lista.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.id
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
@@ -5701,7 +5721,9 @@ function Module3({
         fontFamily: "var(--mono)",
         fontSize: 11
       }
-    }, r.id), /*#__PURE__*/React.createElement("td", null, r.driver), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    }, r.id), /*#__PURE__*/React.createElement("td", {
+      style: { whiteSpace: "nowrap" }
+    }, inicioDeRend(r) ? fmtDate(inicioDeRend(r)) : "—"), /*#__PURE__*/React.createElement("td", null, r.driver), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: "badge badge-gray"
     }, (r.segments || []).length)), /*#__PURE__*/React.createElement("td", {
       style: {
@@ -5709,9 +5731,20 @@ function Module3({
       }
     }, r.totals && r.totals.consumo || "—"), /*#__PURE__*/React.createElement("td", {
       style: {
-        fontFamily: "var(--mono)"
+        fontFamily: "var(--mono)",
+        textAlign: "right"
       }
-    }, r.totals && r.totals.expTotalARS ? fmtNum(r.totals.expTotalARS) + " ARS" : "—"), histView && /*#__PURE__*/React.createElement("td", {
+    }, (() => {
+      // Positivo = a favor del chofer; negativo = en contra
+      const v = saldoDeRend(r);
+      if (v == null || isNaN(v)) return "—";
+      return /*#__PURE__*/React.createElement("span", {
+        title: v < 0 ? "En contra del chofer" : "A favor del chofer",
+        style: { fontWeight: 600, color: v < 0 ? "var(--danger)" : "var(--success)", whiteSpace: "nowrap" }
+      }, v < 0 ? "\u2212" : "", fmtNum(Math.abs(v)), " ARS", /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 10, fontWeight: 400, marginLeft: 6, color: "var(--text3)" }
+      }, v < 0 ? "en contra" : "a favor"));
+    })()), histView && /*#__PURE__*/React.createElement("td", {
       style: {
         fontSize: 11,
         color: "var(--text3)"
