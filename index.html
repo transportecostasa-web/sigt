@@ -5664,9 +5664,13 @@ function Module3({
     formSegs = ordenarTramosPorFecha(formSegs);
     // tripId del primer seg (todos los del mismo viaje comparten tripId)
     const formTripId = formSegs[0]?.tripId || null;
+    // Tramos del chofer que no estan en ninguna rendicion: se pueden sumar a esta
+    const driverForm = editRend ? editRend.driver : selDriver;
+    const disponibles = unsettled.filter(sg => sg.chofer === driverForm);
     return /*#__PURE__*/React.createElement(RendicionForm, {
       segs: formSegs,
-      driver: selDriver,
+      disponibles,
+      driver: driverForm,
       entregas: entregas,
       dropdowns: dropdowns,
       rendicion: editRend,
@@ -5903,7 +5907,8 @@ function RendicionCerrada({ rend, onBack, canEdit, onReabrir, reabriendo }) {
 }
 
 function RendicionForm({
-  segs,
+  segs: segsIniciales,
+  disponibles = [],
   driver,
   entregas,
   dropdowns,
@@ -5917,6 +5922,30 @@ function RendicionForm({
   // Si rendicion viene cargada, estamos editando una rendición existente (stand by).
   const isEdit = !!(rendicion && rendicion.id);
   const [rendId] = useState(() => rendicion && rendicion.id || "RND-" + Date.now());
+  // Los tramos de la rendicion se pueden cambiar mientras esta en curso. Se
+  // guardan en estado: agregar o quitar uno NO toca lo ya cargado (montos, km,
+  // gastos, combustible), porque todo eso esta indexado por segId.
+  const h = React.createElement;
+  const [segs, setSegs] = useState(() => segsIniciales);
+  const [agregarOpen, setAgregarOpen] = useState(false);
+  const [segsAAgregar, setSegsAAgregar] = useState([]);
+  const disponiblesLibres = (disponibles || []).filter(d => !segs.some(x => x.segId === d.segId));
+  function agregarTramos() {
+    const nuevos = disponiblesLibres.filter(d => segsAAgregar.includes(d.segId));
+    if (!nuevos.length) { setAgregarOpen(false); return; }
+    setSegs(p => ordenarTramosPorFecha([...p, ...nuevos]));
+    setSegMonto(p => { const n = { ...p }; nuevos.forEach(sg => { if (!n[sg.segId]) n[sg.segId] = { monto: "", moneda: "USD" }; }); return n; });
+    setKmReales(p => { const n = { ...p }; nuevos.forEach(sg => { if (n[sg.segId] === undefined) n[sg.segId] = ""; }); return n; });
+    setSegsAAgregar([]);
+    setAgregarOpen(false);
+  }
+  function quitarTramo(sg) {
+    if (segs.length <= 1) { alert("La rendición tiene que quedar con al menos un tramo."); return; }
+    if (!confirm("¿Sacar el tramo " + sg.segId + " de esta rendición?\n\nVuelve a quedar pendiente. El monto y los km que le cargaste se descartan; el resto de la rendición queda igual.")) return;
+    setSegs(p => p.filter(x => x.segId !== sg.segId));
+    setSegMonto(p => { const n = { ...p }; delete n[sg.segId]; return n; });
+    setKmReales(p => { const n = { ...p }; delete n[sg.segId]; return n; });
+  }
   const [segMonto, setSegMonto] = useState(() => rendicion && rendicion.segMonto && Object.keys(rendicion.segMonto).length ? segs.reduce((a, s) => ({
     ...a,
     [s.segId]: rendicion.segMonto[s.segId] || {
@@ -6202,10 +6231,11 @@ function RendicionForm({
       id: rendId,
       driver,
       estado: estado || "abierta",
-      segMonto,
+      // Solo lo de los tramos que quedaron en la rendicion
+      segMonto: segs.reduce((a, sg) => (segMonto[sg.segId] !== undefined ? { ...a, [sg.segId]: segMonto[sg.segId] } : a), {}),
       expenses,
       fuelRows,
-      kmReales,
+      kmReales: segs.reduce((a, sg) => (kmReales[sg.segId] !== undefined ? { ...a, [sg.segId]: kmReales[sg.segId] } : a), {}),
       devolucion,
       tcEntrega,
       segments: segs,
@@ -6259,7 +6289,12 @@ function RendicionForm({
     className: "card-header"
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-title"
-  }, "🗺 Tramos incluidos")), /*#__PURE__*/React.createElement("div", {
+  }, "🗺 Tramos incluidos (", segs.length, ")"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm",
+    onClick: () => { setSegsAAgregar([]); setAgregarOpen(true); },
+    disabled: disponiblesLibres.length === 0,
+    title: disponiblesLibres.length === 0 ? "No hay tramos pendientes de " + driver + " para agregar" : "Agregar tramos pendientes de " + driver
+  }, "➕ Agregar tramo", disponiblesLibres.length ? " (" + disponiblesLibres.length + ")" : "")), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
   }, segs.map(s => /*#__PURE__*/React.createElement("div", {
     key: s.segId,
@@ -6287,7 +6322,13 @@ function RendicionForm({
     }
   }, s.desde, " → ", s.hasta), /*#__PURE__*/React.createElement(StatusBadge, {
     status: s.status
-  })), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-secondary btn-sm btn-icon",
+    style: { marginLeft: "auto" },
+    onClick: () => quitarTramo(s),
+    disabled: segs.length <= 1,
+    title: segs.length <= 1 ? "La rendición necesita al menos un tramo" : "Sacar este tramo de la rendición"
+  }, "✕")), /*#__PURE__*/React.createElement("div", {
     className: "form-row",
     style: {
       flexWrap: "wrap",
@@ -6870,7 +6911,39 @@ function RendicionForm({
       fontWeight: 600,
       color: saldoChofer >= 0 ? "var(--success)" : "var(--danger)"
     }
-  }, saldoChofer < 0 ? "−" : "", fmtNum(Math.abs(saldoChofer)), " ARS"))))), /*#__PURE__*/React.createElement("div", {
+  }, saldoChofer < 0 ? "−" : "", fmtNum(Math.abs(saldoChofer)), " ARS"))))), agregarOpen && (() => {
+    // Tramos pendientes del chofer que se pueden sumar a esta rendicion.
+    // Se cierra solo con los botones, para no perder la seleccion por un clic al lado.
+    const filas = ordenarTramosPorFecha(disponiblesLibres);
+    return h("div", { className: "modal-overlay" },
+      h("div", { className: "modal-box", style: { width: "min(900px, 94vw)", maxHeight: "85vh", display: "flex", flexDirection: "column" } },
+        h("div", { className: "modal-header" }, "➕ Agregar tramos de ", driver),
+        h("div", { className: "modal-body", style: { overflowY: "auto" } },
+          filas.length === 0
+            ? h("div", { style: { fontSize: 13, color: "var(--text3)" } }, "No hay tramos pendientes para agregar.")
+            : h("div", { className: "table-wrap" }, h("table", null,
+                h("thead", null, h("tr", null, h("th", { style: { width: 50 } }), h("th", null, "Tramo"), h("th", null, "Viaje"), h("th", null, "Desde"), h("th", null, "Hasta"), h("th", null, "Fecha inicio viaje"), h("th", null, "Estado"))),
+                h("tbody", null, filas.map(sg => h("tr", {
+                  key: sg.segId,
+                  style: segsAAgregar.includes(sg.segId) ? { background: "rgba(79,127,255,.07)" } : null
+                },
+                  h("td", null, h("input", {
+                    type: "checkbox",
+                    checked: segsAAgregar.includes(sg.segId),
+                    onChange: () => setSegsAAgregar(p => p.includes(sg.segId) ? p.filter(x => x !== sg.segId) : [...p, sg.segId]),
+                    style: { width: 16, height: 16, cursor: "pointer" }
+                  })),
+                  h("td", { style: { fontFamily: "var(--mono)", fontSize: 11 } }, sg.segId),
+                  h("td", { style: { fontFamily: "var(--mono)", fontSize: 11 } }, sg.tripId),
+                  h("td", { style: { fontSize: 12 } }, sg.desde),
+                  h("td", { style: { fontSize: 12 } }, sg.hasta),
+                  h("td", { style: { whiteSpace: "nowrap" } }, fmtDate(sg.fechaInicio)),
+                  h("td", null, h(StatusBadge, { status: sg.status }))))))),
+        h("div", { className: "modal-footer" },
+          h("button", { className: "btn btn-secondary", onClick: () => { setSegsAAgregar([]); setAgregarOpen(false); } }, "Cancelar"),
+          h("button", { className: "btn btn-primary", onClick: agregarTramos, disabled: segsAAgregar.length === 0 },
+            "➕ Agregar", segsAAgregar.length ? " (" + segsAAgregar.length + ")" : "")))));
+  })(), /*#__PURE__*/React.createElement("div", {
     className: "save-bar"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary",
