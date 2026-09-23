@@ -951,12 +951,27 @@ function isLugarArgentino(lugar) {
 //   INT = al menos un tramo cruza la frontera
 //   0001 = correlativo según cuántos viajes NAC o INT ya existen
 //   7342 = número aleatorio para evitar duplicados si dos personas crean viajes al mismo tiempo
+// Prefijo que le corresponde a un viaje segun sus tramos.
+// INT si algun lugar es extranjero, o si hay tramos y ninguno es argentino
+// (ej: Chile-Chile). Sin tramos todavia no se puede saber: devuelve "".
+function prefijoSegunTramos(segments, lugares) {
+  const segs = segments || [];
+  if (!segs.length) return "";
+  const hasInt = segs.some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares))
+    || !segs.some(s => isLugarArgentino(s.desde) || isLugarArgentino(s.hasta));
+  return hasInt ? "INT" : "NAC";
+}
+
+// Viaje cuyo ID dejo de reflejar su recorrido: se le agrego un tramo al
+// exterior despues de crearlo (o al reves).
+function prefijoDesajustado(trip, lugares) {
+  const p = prefijoSegunTramos(trip && trip.segments, lugares);
+  return !!p && String((trip && trip.id) || "").slice(0, 3) !== p;
+}
+
 function generateTripId(trips, segments, lugares) {
   const segs = segments || [];
-  // INT si algún lugar es extranjero, O si hay tramos pero ningún lugar es argentino (ej: Chile-Chile)
-  const hasInt = segs.some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares))
-    || (segs.length > 0 && !segs.some(s => isLugarArgentino(s.desde) || isLugarArgentino(s.hasta)));
-  const prefix = hasInt ? "INT" : "NAC";
+  const prefix = prefijoSegunTramos(segs, lugares) || "NAC";
   const count = (trips || []).filter(t => t.id && t.id.startsWith(prefix)).length + 1;
   const seq = count.toString().padStart(4, "0");
   const sub = Math.floor(Math.random() * 9000 + 1000).toString();
@@ -969,13 +984,10 @@ function generateTripId(trips, segments, lugares) {
 // de los tramos, para que el ID se actualice solo.
 // Ej: si el usuario agrega un tramo con destino ASUNCIÓN → el ID cambia de NAC a INT
 function recalcPrefix(id, segments, lugares) {
-  const segs = segments || [];
-  const hasInt = segs.some(s => isLugarExtranjero(s.desde, lugares) || isLugarExtranjero(s.hasta, lugares))
-    || (segs.length > 0 && !segs.some(s => isLugarArgentino(s.desde) || isLugarArgentino(s.hasta)));
-  const newPrefix = hasInt ? "INT" : "NAC";
+  const newPrefix = prefijoSegunTramos(segments, lugares);
   const oldPrefix = id.startsWith("INT") ? "INT" : "NAC";
-  if (newPrefix === oldPrefix) return id;
-  return id.replace(oldPrefix, newPrefix);
+  if (!newPrefix || newPrefix === oldPrefix) return id;
+  return newPrefix + id.slice(3);
 }
 
 // Contador global de tramos — persiste en localStorage para ser incremental
@@ -3361,7 +3373,14 @@ function Module1({
     session: session,
     onSave: handleSave,
     onFinalize: handleFinalize,
-    onBack: () => setView("list")
+    onBack: () => setView("list"),
+    onRenombrado: () => {
+      invalidateCache("trips", "facturacion", "rendiciones");
+      setEditTrip(null);
+      setView("list");
+      loadTrips();
+      notif.add("ID del viaje corregido");
+    }
   });
   const active = trips.filter(t => t.status !== "finalizado");
   const hist = trips.filter(t => t.status === "finalizado");
@@ -3587,7 +3606,12 @@ function Module1({
     }, "📑"))), M1COLS.map(col => /*#__PURE__*/React.createElement("td", {
       key: col.key,
       style: cellStyle[col.key] || { fontSize: 12 }
-    }, col.get(t))),
+    }, col.key === "id" && prefijoDesajustado(t, dropdowns.LUGARES || [])
+      ? /*#__PURE__*/React.createElement("span", {
+          style: { color: "var(--warning)" },
+          title: "El recorrido de este viaje es " + prefijoSegunTramos(t.segments, dropdowns.LUGARES || []) + ", pero su ID dice " + String(t.id).slice(0, 3) + ". Abrilo para corregirlo."
+        }, col.get(t), " \u26A0\uFE0F")
+      : col.get(t))),
     // OBSERVACIONES: días abierto + cantidad de tramos (+ fecha fin en historial)
     /*#__PURE__*/React.createElement("td", {
       style: { whiteSpace: "nowrap" }
@@ -3668,7 +3692,8 @@ function TripForm({
   session,
   onSave,
   onFinalize,
-  onBack
+  onBack,
+  onRenombrado
 }) {
   const isFinalized = trip?.status === "finalizado";
   const readonly = !canEdit || isFinalized;
@@ -3847,12 +3872,36 @@ function TripForm({
     if (isContenedor) setClasificacion("");
   }, [pies]);
 
-  // FIX #1 — Recalcular NAC/INT cuando cambian los tramos
+  // Recalcular el ID mientras se crea el viaje: el prefijo NAC/INT y tambien el
+  // correlativo, que depende del prefijo. El ID arranca sin tramos (asi que
+  // arranca NAC) y cambia al cargar el primer tramo al exterior. El sufijo
+  // aleatorio del final se conserva.
   useEffect(() => {
-    if (!isNew) return; // solo para viajes nuevos en creación
-    const newId = recalcPrefix(id, segments, lugares);
-    if (newId !== id) setId(newId);
+    if (!isNew) return; // los guardados se corrigen con el boton de abajo
+    const base = generateTripId(trips, segments, lugares);
+    const nuevo = base.slice(0, -4) + id.slice(-4);
+    if (nuevo !== id) setId(nuevo);
   }, [segments]);
+
+  // Viaje YA GUARDADO al que se le agrego un tramo al exterior (o al reves): el
+  // ID no se cambia solo porque arrastra tramos, facturacion y rendiciones.
+  const prefijoOk = isNew ? null : prefijoSegunTramos(segments, lugares);
+  const idDesajustado = !isNew && !!prefijoOk && prefijoOk !== String(id).slice(0, 3);
+  const idCorregido = idDesajustado ? prefijoOk + String(id).slice(3) : "";
+  const [corrigiendoId, setCorrigiendoId] = useState(false);
+  async function corregirId() {
+    if (corrigiendoId) return;
+    if (!confirm("Cambiar el ID del viaje\n\n" + id + "  \u2192  " + idCorregido +
+      "\n\nSe actualiza el viaje, sus tramos, su facturación y las rendiciones abiertas que lo incluyan. " +
+      "Las rendiciones cerradas no se tocan: si alguna lo incluye, el cambio se rechaza.")) return;
+    setCorrigiendoId(true);
+    const r = await gasCall("renameTrip", { from: id, to: idCorregido });
+    setCorrigiendoId(false);
+    if (!r.ok) { alert(r.error || "No se pudo cambiar el ID"); return; }
+    alert("Listo: " + id + " ahora es " + idCorregido +
+      (r.detalle ? "\n\n" + r.detalle : ""));
+    onRenombrado ? onRenombrado() : onBack();
+  }
 
   // KM total reactivo
   const totalKm = useMemo(() => segments.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0), [segments]);
@@ -4122,8 +4171,20 @@ function TripForm({
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
   }, "ID Viaje"), /*#__PURE__*/React.createElement("div", {
-    className: "field-readonly"
-  }, id))), /*#__PURE__*/React.createElement("div", {
+    className: "field-readonly",
+    style: idDesajustado ? { borderColor: "var(--warning)", color: "var(--warning)" } : null
+  }, id)), idDesajustado && /*#__PURE__*/React.createElement("div", {
+    className: "alert alert-warning",
+    style: { flex: "1 1 320px", marginBottom: 0, fontSize: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("span", null,
+    "\u26A0\uFE0F El ID dice ", /*#__PURE__*/React.createElement("strong", null, String(id).slice(0, 3)),
+    " pero el recorrido es ", /*#__PURE__*/React.createElement("strong", null, prefijoOk),
+    ". Deber\u00eda ser ", /*#__PURE__*/React.createElement("span", { style: { fontFamily: "var(--mono)" } }, idCorregido), "."),
+    canEdit && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-secondary btn-sm",
+      onClick: corregirId,
+      disabled: corrigiendoId
+    }, corrigiendoId ? "Corrigiendo..." : "Corregir ID"))), /*#__PURE__*/React.createElement("div", {
     className: "form-row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
