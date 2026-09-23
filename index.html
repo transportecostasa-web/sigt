@@ -3017,7 +3017,8 @@ function SeguimientoModal({
   const tramos = useMemo(() => {
     const out = [];
     (trips || []).forEach(t => (t.segments || []).forEach((sg, i) => {
-      const real = toInputDate(sg.fechaLlegadaReal);
+      const cargaDescarga = toInputDate(sg.fechaLlegadaReal); // "Fecha carga/descarga"
+      const llegada = toInputDate(sg.fechaLlegadaPrevista);    // "Fecha llegada"
       out.push({
         ...sg,
         _viaje: t.id,
@@ -3026,8 +3027,8 @@ function SeguimientoModal({
         _cliente: t.cliente || "",
         _orden: Number(sg.orden) || i + 1,
         _ini: toInputDate(sg.fechaInicio),
-        _fin: real || toInputDate(sg.fechaLlegadaPrevista),
-        _finReal: !!real
+        _fin: llegada || cargaDescarga,
+        _finReal: !!llegada // false = se esta mostrando la de carga/descarga
       });
     }));
     // _clave = fecha por la que se ordena y filtra. Los tramos sin fecha la toman
@@ -3109,7 +3110,7 @@ function SeguimientoModal({
   const periodo = resultado.length ? fmtDate(resultado[0]._clave) + " \u2192 " + fmtDate(ultimo._fin || ultimo._clave) : "";
 
   function exportar() {
-    const headers = ["Inicio", "Ubicación", "Llegada", "Llegada real", "Días", "Viaje", "Estado viaje", "Desde", "Hasta", ...otras.map(o => o.label), "Carga", "Cliente", "KM previstos", "Estado tramo", "ID tramo"];
+    const headers = ["Inicio", "Ubicación", "Llegada", "¿Es fecha de llegada?", "Días", "Viaje", "Estado viaje", "Desde", "Hasta", ...otras.map(o => o.label), "Carga", "Cliente", "KM previstos", "Estado tramo", "ID tramo"];
     const rows = todos.map(x => [
       x._ini ? fmtDate(x._ini) : "",
       x._ini ? "Fecha cargada" : x._ubicacion ? "Sin fecha, " + x._ubicacion : "Sin fecha, sin ubicar",
@@ -3166,8 +3167,8 @@ function SeguimientoModal({
       x._fin ? fmtDate(x._fin) : "\u2014",
       x._fin && !x._finReal && el("span", {
         style: { display: "block", fontSize: 10, color: "var(--text3)", marginTop: 1 },
-        title: "Todavía no tiene llegada real: se muestra la prevista"
-      }, "prev.")),
+        title: "Sin fecha de llegada: se muestra la de carga/descarga"
+      }, "c/d")),
     el("td", { style: { ...celda, ...mono, textAlign: "right" } }, x._ini && x._fin ? diasEntreISO(x._ini, x._fin) : "\u2014"),
     el("td", { style: { ...celda, whiteSpace: "nowrap" } },
       el("div", { style: mono }, x._viaje),
@@ -6070,7 +6071,9 @@ function RendicionForm({
     return `${dt.getFullYear()}-${mm}-${dd}`;
   }
   const allFechasInicio = segs.map(s => segFechaISO(s.fechaInicio)).filter(Boolean).sort();
-  const allFechasLlegada = segs.map(s => segFechaISO(s.fechaLlegadaReal || s.fechaLlegadaPrevista)).filter(Boolean).sort();
+  // "Fecha llegada" es fechaLlegadaPrevista; fechaLlegadaReal es la de
+  // carga/descarga, que puede ser anterior. El periodo va hasta la LLEGADA.
+  const allFechasLlegada = segs.map(s => segFechaISO(s.fechaLlegadaPrevista || s.fechaLlegadaReal)).filter(Boolean).sort();
   const dateFrom = allFechasInicio[0] || "";
   const dateTo = allFechasLlegada[allFechasLlegada.length - 1] || "";
   // FIX: dateToMinus1 usa parseDate() — robusto a cualquier formato de fecha.
