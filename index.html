@@ -5080,6 +5080,18 @@ function Module2({
         };
       });
     });
+    // Las entregas de SUELDO no pasan por una rendicion: se descuentan directo
+    // en la liquidacion de RRHH. Tambien son plata ya rendida.
+    (liqsRRHH || []).forEach(l => {
+      if (l.estado === "anulada") return;
+      let previas = l.previas;
+      if (typeof previas === "string") { try { previas = JSON.parse(previas); } catch (er) { previas = null; } }
+      const ref = { id: l.id, periodo: l.periodo, previa: false };
+      lista(l.entregaIds).forEach(k => { if (!m[String(k)]) m[String(k)] = { rendId: "", liq: ref, directa: true }; });
+      lista(previas && previas.entregas).forEach(k => {
+        if (!m[String(k)]) m[String(k)] = { rendId: "", liq: { ...ref, previa: true }, directa: true };
+      });
+    });
     return m;
   }, [rendiciones, liqsRRHH]);
 
@@ -5169,7 +5181,7 @@ function Module2({
       const rend = rendidaPor[String(e.id) + "|" + String(e.moneda || "ARS")];
       if (rend && !seen[key]._rend) {
         seen[key]._rend = rend;
-        seen[key]._rendId = rend.rendId;
+        seen[key]._rendId = rend.rendId || "";
         seen[key]._liq = rend.liq ? "Liquidado" : "Pendiente";
       }
     });
@@ -5261,7 +5273,11 @@ function Module2({
       cols.push({
         key: "_rendId",
         label: "Rendición",
-        tdStyle: { fontFamily: "var(--mono)", fontSize: 11 }
+        tdStyle: { fontFamily: "var(--mono)", fontSize: 11 },
+        render: (v, row) => v ? v : /*#__PURE__*/React.createElement("span", {
+          style: { fontFamily: "var(--font)", fontSize: 11, color: "var(--text3)" },
+          title: "Sueldo: se descontó directo en la liquidación de RRHH, sin pasar por una rendición"
+        }, "— sueldo")
       }, {
         key: "_liq",
         label: "Estado liquidación",
