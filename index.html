@@ -717,6 +717,11 @@ function htmlResumenRendicion(c) {
 // Imprime el resumen sin abrir ventanas nuevas (un iframe oculto evita que el
 // bloqueador de pop-ups se lo coma).
 function imprimirA4(titulo, cuerpoHtml) {
+  // Chrome usa el <title> del documento principal como nombre sugerido del PDF,
+  // no el del iframe: se cambia mientras dura la impresion y se restaura al salir.
+  const tituloPagina = document.title;
+  const nombre = String(titulo || "Documento").replace(/[\\/:*?"<>|]+/g, "-").trim();
+  document.title = nombre;
   const marco = document.createElement("iframe");
   marco.setAttribute("aria-hidden", "true");
   marco.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
@@ -724,7 +729,7 @@ function imprimirA4(titulo, cuerpoHtml) {
   const doc = marco.contentWindow.document;
   const css = [...document.querySelectorAll("style")].map(e => e.textContent).join("\n");
   doc.open();
-  doc.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + escHtml(titulo) + '</title>' +
+  doc.write('<!doctype html><html lang="es"><head><meta charset="utf-8"><title>' + escHtml(nombre) + '</title>' +
     '<style>' + css + '</style>' +
     '<style>@page{size:A4;margin:12mm;} body{margin:0;background:#fff;} ' +
     '.hoja-a4{width:auto;padding:0;box-shadow:none;border-radius:0;} ' +
@@ -732,7 +737,12 @@ function imprimirA4(titulo, cuerpoHtml) {
     '<body><div class="hoja-a4">' + cuerpoHtml + '</div></body></html>');
   doc.close();
   let limpio = false;
-  const limpiar = () => { if (limpio) return; limpio = true; setTimeout(() => marco.remove(), 500); };
+  const limpiar = () => {
+    if (limpio) return;
+    limpio = true;
+    document.title = tituloPagina;
+    setTimeout(() => marco.remove(), 500);
+  };
   marco.contentWindow.onafterprint = limpiar;
   setTimeout(() => {
     try { marco.contentWindow.focus(); marco.contentWindow.print(); } catch (e) { limpiar(); }
@@ -1541,13 +1551,17 @@ const DateInput = React.memo(function DateInput({
   // El <input type="date"> nativo es pesado de instanciar; se monta sólo al
   // pedir el calendario (evita renderizar decenas de pickers a la vez).
   const [showNative, setShowNative] = useState(false);
+  // Abre el calendario del <input type="date"> oculto
+  function abrirPicker() {
+    const n = nativeRef.current;
+    if (!n) return;
+    try {
+      if (n.showPicker) n.showPicker();
+      else n.focus();
+    } catch (e) { n.focus(); }
+  }
   useEffect(() => {
-    if (showNative && nativeRef.current) {
-      try {
-        if (nativeRef.current.showPicker) nativeRef.current.showPicker();
-        else nativeRef.current.focus();
-      } catch (e) { nativeRef.current.focus(); }
-    }
+    if (showNative) abrirPicker();
   }, [showNative]);
 
   // Sincronizar cuando el valor externo cambia (ej: al resetear el formulario)
@@ -1626,7 +1640,6 @@ const DateInput = React.memo(function DateInput({
     setDisplay(fmtDate(iso));
     setError("");
     onChange(iso);
-    setShowNative(false);
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1663,7 +1676,9 @@ const DateInput = React.memo(function DateInput({
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     disabled: disabled,
-    onClick: () => !disabled && setShowNative(true),
+    // Si el input nativo ya esta montado se le pide el calendario directo: el
+    // efecto solo corre cuando showNative cambia de false a true.
+    onClick: () => { if (disabled) return; if (nativeRef.current) abrirPicker(); else setShowNative(true); },
     title: "Abrir calendario",
     style: {
       height: "100%",
@@ -1681,7 +1696,9 @@ const DateInput = React.memo(function DateInput({
     type: "date",
     value: value || "",
     onChange: handleNativePick,
-    onBlur: () => setShowNative(false),
+    // OJO: nada de cerrar el picker en onBlur. Al tocar las flechas de mes o el
+    // selector de año, el input pierde el foco y el calendario se cerraba solo.
+    // El input queda montado (invisible) y se reusa en la proxima apertura.
     disabled: disabled,
     style: {
       position: "absolute",
@@ -6106,7 +6123,7 @@ function RendicionCerrada({ rend, onBack, canEdit, onReabrir, reabriendo }) {
     style: { display: "flex", gap: 8 }
   }, c && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
-    onClick: () => imprimirA4("Rendicion " + rend.id, html)
+    onClick: () => imprimirA4("Rendicion " + rend.driver + " " + rend.id, html)
   }, "🖨 Imprimir resumen A4"), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: () => {
@@ -6497,7 +6514,7 @@ function RendicionForm({
     setSaving(false);
     // Cerrada: se abre el resumen para imprimir y encarpetar
     if (cierre && (!respuesta || respuesta.ok !== false)) {
-      imprimirA4("Rendicion " + rendId, htmlResumenRendicion(cierre));
+      imprimirA4("Rendicion " + driver + " " + rendId, htmlResumenRendicion(cierre));
     }
   }
   return /*#__PURE__*/React.createElement("div", {
@@ -9081,7 +9098,7 @@ function Module6({
     if (fallaron) notif.add(fallaron + " pago(s) no se pudieron registrar en Plata a choferes. Cargalos a mano.", "error");
     else if (pagosDoc.length) invalidateCache("entregas");
     notif.add("Liquidación cerrada: " + liqId);
-    imprimirA4("Liquidacion " + liqId, htmlResumenLiquidacion(cierre));
+    imprimirA4("Liquidacion " + selChofer + " " + selPeriodo, htmlResumenLiquidacion(cierre));
     // El formulario queda vacio y se pasa al documento recien cerrado
     setDocLiq({ id: liqId, chofer: selChofer, periodo: selPeriodo, estado: "cerrada", cierre });
     setView("doc");
@@ -9132,7 +9149,7 @@ function Module6({
           h("div", { className: "module-title" }, "\u{1F4C4} Liquidación — ", docLiq.chofer),
           h("div", { className: "module-subtitle", style: { fontFamily: "var(--mono)", fontSize: 12 } }, docLiq.id, " · ", docLiq.periodo, docLiq.estado === "anulada" ? " · ANULADA" : "")),
         h("div", { style: { display: "flex", gap: 8 } },
-          c && h("button", { className: "btn btn-primary btn-sm", onClick: () => imprimirA4("Liquidacion " + docLiq.id, html) }, "\u{1F5A8} Imprimir A4"),
+          c && h("button", { className: "btn btn-primary btn-sm", onClick: () => imprimirA4("Liquidacion " + docLiq.chofer + " " + docLiq.periodo, html) }, "\u{1F5A8} Imprimir A4"),
           puedeAnular && h("button", {
             className: "btn btn-secondary btn-sm",
             onClick: () => anular(docLiq),
