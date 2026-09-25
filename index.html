@@ -5178,7 +5178,7 @@ function Module2({
       // que suman Rendición y RRHH sobre las filas crudas.
       seen[key][e.moneda] = (Number(seen[key][e.moneda]) || 0) + Number(e.monto || 0);
       seen[key]._items.push(e);
-      const rend = rendidaPor[String(e.id) + "|" + String(e.moneda || "ARS")];
+      const rend = (clavesEntrega(e).map(k => rendidaPor[k]).find(Boolean)) || null;
       if (rend && !seen[key]._rend) {
         seen[key]._rend = rend;
         seen[key]._rendId = rend.rendId || "";
@@ -5342,6 +5342,17 @@ function Module2({
 // SUELDO / anticipo de sueldo (no entra en ninguna rendicion: se descuenta en la
 // liquidacion mensual de RRHH). Se marca al cargarla (columna "concepto").
 // Las entregas viejas sin marca cuentan como de viaje.
+// Claves con las que se busca una entrega dentro de una liquidacion o de una
+// rendicion. La exacta es id|moneda; las de _baseId cubren el pago de una
+// liquidacion, cuyo id lo define el frontend pero el servidor puede reasignar.
+function clavesEntrega(e) {
+  if (!e) return [];
+  const mon = String(e.moneda || "ARS");
+  const out = [String(e.id) + "|" + mon];
+  if (e._baseId) out.push(String(e._baseId) + "|" + mon, String(e._baseId) + "|ARS");
+  return out;
+}
+
 function esEntregaSueldo(e) {
   return String(e && e.concepto || "").trim().toUpperCase() === "SUELDO";
 }
@@ -8924,7 +8935,7 @@ function Module6({
   }, [opcionesPeriodo.join("|")]);
   const entPend = useMemo(() => !selChofer ? [] : (entregas || [])
     // Los choferes FLETEROS no se liquidan aca: su plata se descuenta en el modulo 8
-    .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !esChoferFletero(dropdowns, e.chofer) && !usados.es.has(claveEnt(e)))
+    .filter(e => e.chofer === selChofer && esEntregaSueldo(e) && !esChoferFletero(dropdowns, e.chofer) && !clavesEntrega(e).some(k => usados.es.has(k)))
     .sort((a, b) => (toInputDate(a.fecha) || "").localeCompare(toInputDate(b.fecha) || "")),
   [entregas, selChofer, usados]);
 
