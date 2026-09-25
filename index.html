@@ -5026,6 +5026,10 @@ function Module2({
   const [detalle, setDetalle] = useState(null);
   const [entregasChoferes, setEntregasChoferes] = useState([]);
   const [gastosGenerales, setGastosGenerales] = useState([]);
+  // "Dinero rendido": entregas que ya entraron en una rendicion CERRADA
+  const [rendidoView, setRendidoView] = useState(false);
+  const [rendiciones, setRendiciones] = useState([]);
+  const [liqsRRHH, setLiqsRRHH] = useState([]);
   useEffect(() => {
     loadEntregas();
   }, [mode]);
@@ -5038,6 +5042,47 @@ function Module2({
       if (g.ok) setGastosGenerales(g.data);
     });
   }, [isCaja]);
+  // Solo en Plata a choferes: rendiciones (para saber que ya se rindio) y
+  // liquidaciones de RRHH (para saber si esa rendicion ya se liquido).
+  useEffect(() => {
+    if (isCaja) return;
+    Promise.all([cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh")]).then(([r, l]) => {
+      if (r && r.ok) setRendiciones(r.data || []);
+      if (l && l.ok) setLiqsRRHH(l.data || []);
+    });
+  }, [isCaja]);
+
+  // Entrega -> rendicion cerrada que la incluye. La copia fija del cierre guarda
+  // el id y la divisa de cada entrega, asi que el cruce es exacto.
+  const rendidaPor = useMemo(() => {
+    const lista = v => {
+      if (Array.isArray(v)) return v;
+      try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch (er) { return []; }
+    };
+    // Rendiciones ya liquidadas en RRHH (liquidaciones vigentes)
+    const liqDeRend = {};
+    (liqsRRHH || []).forEach(l => {
+      if (l.estado === "anulada") return;
+      let previas = l.previas;
+      if (typeof previas === "string") { try { previas = JSON.parse(previas); } catch (er) { previas = null; } }
+      lista(l.rendicionIds).forEach(id => { liqDeRend[String(id)] = { id: l.id, periodo: l.periodo, previa: false }; });
+      lista(previas && previas.rendiciones).forEach(id => { liqDeRend[String(id)] = { id: l.id, periodo: l.periodo, previa: true }; });
+    });
+    const m = {};
+    (rendiciones || []).forEach(r => {
+      if (r.estado !== "cerrada" || !r.cierre) return;
+      (r.cierre.entregas || []).forEach(e => {
+        if (!e || !e.id) return;
+        m[String(e.id) + "|" + String(e.moneda || "ARS")] = {
+          rendId: r.id,
+          driver: r.driver,
+          liq: liqDeRend[String(r.id)] || null
+        };
+      });
+    });
+    return m;
+  }, [rendiciones, liqsRRHH]);
+
   async function loadEntregas() {
     setLoading(true);
     setEntregas([]); // limpiar datos del módulo anterior antes de cargar
@@ -5121,7 +5166,17 @@ function Module2({
       // que suman Rendición y RRHH sobre las filas crudas.
       seen[key][e.moneda] = (Number(seen[key][e.moneda]) || 0) + Number(e.monto || 0);
       seen[key]._items.push(e);
+      const rend = rendidaPor[String(e.id) + "|" + String(e.moneda || "ARS")];
+      if (rend && !seen[key]._rend) {
+        seen[key]._rend = rend;
+        seen[key]._rendId = rend.rendId;
+        seen[key]._liq = rend.liq ? "Liquidado" : "Pendiente";
+      }
     });
+    // La plata ya rendida sale de la tabla principal y se consulta aparte
+    const pendientes = isCaja ? grouped : grouped.filter(g => !g._rend);
+    const rendidos = isCaja ? [] : grouped.filter(g => g._rend);
+    const filas = rendidoView ? rendidos : pendientes;
     const cols = [{
       key: "fecha",
       label: "Fecha",
@@ -5201,6 +5256,28 @@ function Module2({
         }
       }, fmtDT(v))
     }];
+    // En "Dinero rendido": en que rendicion entro y si esa rendicion ya se liquido
+    if (rendidoView && !isCaja) {
+      cols.push({
+        key: "_rendId",
+        label: "Rendición",
+        tdStyle: { fontFamily: "var(--mono)", fontSize: 11 }
+      }, {
+        key: "_liq",
+        label: "Estado liquidación",
+        render: (v, row) => row._rend && row._rend.liq
+          ? /*#__PURE__*/React.createElement("span", {
+              className: "badge badge-green",
+              title: row._rend.liq.previa
+                ? "La rendición quedó incluida en el saldo anterior de " + row._rend.liq.id + " (" + row._rend.liq.periodo + ")"
+                : "Liquidación " + row._rend.liq.id + " (" + row._rend.liq.periodo + ")"
+            }, "Liquidado")
+          : /*#__PURE__*/React.createElement("span", {
+              className: "badge badge-yellow",
+              title: "La rendición todavía no entró en ninguna liquidación de RRHH"
+            }, "Pendiente")
+      });
+    }
     // En Caja, agregar columna para editar (FIX 1: Caja es editable)
     if (isCaja && canEdit) {
       cols.push({
@@ -5218,15 +5295,24 @@ function Module2({
         }, "✏️")
       });
     }
-    return /*#__PURE__*/React.createElement(DataTable, {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, !isCaja && /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 8, marginBottom: 12 }
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm " + (rendidoView ? "btn-secondary" : "btn-primary"),
+      onClick: () => setRendidoView(false)
+    }, "Entregas (", pendientes.length, ")"), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm " + (rendidoView ? "btn-primary" : "btn-secondary"),
+      onClick: () => setRendidoView(true),
+      title: "Plata que ya entró en una rendición cerrada"
+    }, "\u{1F4C1} Dinero rendido (", rendidos.length, ")")), /*#__PURE__*/React.createElement(DataTable, {
       columns: cols,
-      data: grouped,
+      data: filas,
       searchPlaceholder: isCaja ? "Buscar movimientos..." : "Buscar entregas...",
-      emptyText: isCaja ? "No hay movimientos de caja." : "No hay entregas.",
-      exportFilename: isCaja ? "caja" : "entregas",
+      emptyText: isCaja ? "No hay movimientos de caja." : rendidoView ? "Todavía no hay entregas dentro de rendiciones cerradas." : "No hay entregas pendientes de rendir.",
+      exportFilename: isCaja ? "caja" : (rendidoView ? "entregas_rendidas" : "entregas"),
       // En Caja, click en la fila = ver a dónde se fue esa plata
       onRowClick: isCaja ? row => setDetalle(row) : null
-    });
+    }));
   })(), isCaja && detalle && /*#__PURE__*/React.createElement(CajaDetalle, {
     mov: detalle,
     movimientos: entregas,
