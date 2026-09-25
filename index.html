@@ -761,7 +761,7 @@ function htmlResumenLiquidacion(c, liq) {
   ])).join("");
 
   const pagos = (c.pagos || []).map(p => fila([
-    td(p.fecha || "—", "nw"), td(p.forma), td(p.obs || ""), td(fmtNum(p.monto), "num")
+    td(p.fecha || "—", "nw"), td(p.responsable || "—"), td(p.forma), td(p.obs || ""), td(fmtNum(p.monto), "num")
   ])).join("");
 
   const previas = c.previas || {};
@@ -789,9 +789,9 @@ function htmlResumenLiquidacion(c, liq) {
 
   '<h2>Pago al chofer</h2>' +
   (pagos
-    ? '<table><colgroup><col style="width:12%"><col style="width:24%"><col style="width:48%"><col style="width:16%"></colgroup><thead>' +
-      fila([th("Fecha"), th("Forma de pago"), th("Detalle"), th("Monto", "num")]) + '</thead><tbody>' + pagos +
-      fila(['<td></td>', '<td></td>', '<td><b>Total pagado</b></td>', '<td class="num"><b>' + escHtml(fmtNum(t.pagado)) + '</b></td>']) + '</tbody></table>'
+    ? '<table><colgroup><col style="width:12%"><col style="width:22%"><col style="width:22%"><col style="width:28%"><col style="width:16%"></colgroup><thead>' +
+      fila([th("Fecha"), th("Responsable"), th("Forma de pago"), th("Detalle"), th("Monto", "num")]) + '</thead><tbody>' + pagos +
+      fila(['<td></td>', '<td></td>', '<td></td>', '<td><b>Total pagado</b></td>', '<td class="num"><b>' + escHtml(fmtNum(t.pagado)) + '</b></td>']) + '</tbody></table>'
     : '<div class="sub">Sin pagos en esta liquidación.</div>') +
 
   '<div class="saldo fuerte"><span>Saldo que pasa al período siguiente: ' + lado(t.saldoTrasladar) + '</span><span>' + escHtml(abs(t.saldoTrasladar)) + '</span></div>' +
@@ -8962,8 +8962,8 @@ function Module6({
       notif.add("Es la primera liquidación de " + selChofer + ": cargá el saldo anterior (0 si no tiene).", "warn");
       return;
     }
-    const pagoIncompleto = pagosValidos.find(p => !p.fecha || !p.forma);
-    if (pagoIncompleto) { notif.add("Cada pago necesita fecha y forma de pago.", "warn"); return; }
+    const pagoIncompleto = pagosValidos.find(p => !p.fecha || !p.forma || !p.responsable);
+    if (pagoIncompleto) { notif.add("Cada pago necesita fecha, responsable y forma de pago.", "warn"); return; }
     if (!rendInc.length && !entInc.length && !basicoN && !pagosValidos.length && !(esPrimera && saldoAnterior)) {
       notif.add("No hay nada para liquidar: marcá rendiciones o entregas, o cargá básico o pagos.", "warn");
       return;
@@ -8994,7 +8994,19 @@ function Module6({
     entInc.forEach(e => movimientos.push({ fecha: fmtDate(e.fecha), concepto: descEnt(e), monto: -entARS(e) }));
     const aFavor = r2(movimientos.reduce((s, m) => s + (m.monto > 0 ? m.monto : 0), 0));
     const enContra = r2(movimientos.reduce((s, m) => s + (m.monto < 0 ? -m.monto : 0), 0));
-    const pagosDoc = pagosValidos.map(p => ({ fecha: fmtDate(p.fecha), forma: p.forma, obs: (p.obs || "").trim(), monto: r2(p.monto) }));
+    // Cada pago se registra tambien como entrega de plata al chofer: es plata
+    // que sale de la empresa y tiene que figurar como costo en Plata a choferes.
+    // Va con su id propio y ese id entra en entregaIds, asi queda como "Dinero
+    // rendido" y no vuelve a ofrecerse en la proxima liquidacion.
+    const pagosDoc = pagosValidos.map((p, i) => ({
+      fecha: fmtDate(p.fecha),
+      fechaISO: toInputDate(p.fecha),
+      responsable: p.responsable,
+      forma: p.forma,
+      obs: (p.obs || "").trim(),
+      monto: r2(p.monto),
+      entregaId: p.entregaId || (liqId + "-PAGO-" + (i + 1))
+    }));
     const cierre = {
       id: liqId,
       chofer: selChofer,
@@ -9028,7 +9040,7 @@ function Module6({
         totalPagado,
         saldoTrasladar,
         rendicionIds: rendInc.map(x => String(x.id)),
-        entregaIds: entInc.map(claveEnt),
+        entregaIds: [...entInc.map(claveEnt), ...pagosDoc.map(p => p.entregaId + "|ARS")],
         previas: { rendiciones: previasRend.map(x => String(x.id)), entregas: previasEnt.map(claveEnt) },
         pagos: pagosDoc,
         cierre
@@ -9036,6 +9048,27 @@ function Module6({
     });
     setSaving(false);
     if (!r.ok) { notif.add(r.error || "Error al guardar la liquidación", "error"); return; }
+    // Las entregas de los pagos se crean despues: la liquidacion ya es documento
+    let fallaron = 0;
+    for (const p of pagosDoc) {
+      const re = await gasCall("saveEntrega", {
+        entrega: {
+          id: p.entregaId,
+          _baseId: p.entregaId,
+          fecha: p.fechaISO,
+          chofer: selChofer,
+          responsable: p.responsable,
+          formaPago: p.forma,
+          concepto: "SUELDO",
+          obs: ["Pago liquidación " + liqId, selPeriodo, p.obs].filter(Boolean).join(" · "),
+          monto: String(p.monto),
+          moneda: "ARS"
+        }
+      });
+      if (!re.ok) fallaron++;
+    }
+    if (fallaron) notif.add(fallaron + " pago(s) no se pudieron registrar en Plata a choferes. Cargalos a mano.", "error");
+    else if (pagosDoc.length) invalidateCache("entregas");
     notif.add("Liquidación cerrada: " + liqId);
     imprimirA4("Liquidacion " + liqId, htmlResumenLiquidacion(cierre));
     // El formulario queda vacio y se pasa al documento recien cerrado
@@ -9146,6 +9179,10 @@ function Module6({
 
   const opcionesForma = (dropdowns && dropdowns.FORMAS_PAGO && dropdowns.FORMAS_PAGO.length) ? dropdowns.FORMAS_PAGO : ["EFECTIVO", "TRANSFERENCIA BANCARIA", "MERCADO PAGO", "OTRO"];
   const actualizarPago = (i, campo, valor) => setPagos(p => p.map((x, j) => j === i ? { ...x, [campo]: valor } : x));
+  // Quien entrega la plata: la misma lista que usa Plata a choferes
+  const opcionesResponsable = (dropdowns && dropdowns.ENTREGA_PLATA && dropdowns.ENTREGA_PLATA.length)
+    ? dropdowns.ENTREGA_PLATA
+    : ((dropdowns && dropdowns.COLABORADORES) || []);
 
   // Tabla de rendiciones pendientes
   const tablaRend = rendPend.length === 0
@@ -9223,13 +9260,14 @@ function Module6({
         "Lo que se le paga al liquidar. No lo cargues también en Plata choferes: se contaría dos veces."),
       pagos.map((p, i) => h("div", { key: i, style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 } },
         h("div", { style: { width: 140 } }, h(DateInput, { value: p.fecha, onChange: v => actualizarPago(i, "fecha", v) })),
+        h("div", { style: { width: 180 } }, h(SearchableSelect, { options: opcionesResponsable, value: p.responsable || "", onChange: v => actualizarPago(i, "responsable", v), placeholder: "Responsable..." })),
         h("div", { style: { width: 190 } }, h(SearchableSelect, { options: opcionesForma, value: p.forma, onChange: v => actualizarPago(i, "forma", v), placeholder: "Forma de pago..." })),
         h("div", { style: { width: 150 } }, h(MoneyInput, { value: p.monto, onChange: v => actualizarPago(i, "monto", v), placeholder: "Monto ARS" })),
         h("input", { className: "form-input", style: { flex: "1 1 120px" }, value: p.obs || "", onChange: ev => actualizarPago(i, "obs", ev.target.value), placeholder: "Detalle (opcional)" }),
         h("button", { className: "btn btn-secondary btn-sm btn-icon", onClick: () => setPagos(ps => ps.filter((x, j) => j !== i)), title: "Quitar" }, "✕"))),
       h("button", {
         className: "btn btn-secondary btn-sm",
-        onClick: () => setPagos(ps => [...ps, { fecha: toInputDate(new Date()), forma: "", monto: "", obs: "" }])
+        onClick: () => setPagos(ps => [...ps, { fecha: toInputDate(new Date()), responsable: "", forma: "", monto: "", obs: "", entregaId: "ENT-" + Date.now() + "-" + ps.length }])
       }, "+ Agregar pago"),
       totalPagado > 0 && h("div", { style: { marginTop: 10, fontSize: 13, color: "var(--text2)" } }, "Total pagado: ", h("span", { style: { fontFamily: "var(--mono)", fontWeight: 600 } }, fmtNum(totalPagado), " ARS")),
       totalPagado > 0 && totalPagado > Math.max(balance, 0) + 0.005 && h("div", { className: "alert alert-warning", style: { marginTop: 10, fontSize: 12 } },
