@@ -1000,11 +1000,21 @@ function recalcPrefix(id, segments, lugares) {
   return newPrefix + id.slice(3);
 }
 
-// Contador global de tramos — persiste en localStorage para ser incremental
-// entre sesiones y viajes distintos.
+// Contador global de tramos. El piso NO puede ser solo el localStorage: ese
+// contador vive en cada navegador y no sabe que tramos cargaron los demas, asi
+// que dos computadoras generaban el mismo segId (y el tramo repetido desaparecia
+// de Rendicion, porque el otro ya estaba liquidado). Se toma el mayor entre el
+// contador local y el ultimo numero que exista en la base.
+function maxSegSeqEnDatos() {
+  let max = 0;
+  ((_cache && _cache.trips) || []).forEach(t => (t.segments || []).forEach(sg => {
+    const n = Number(String(sg.segId || "").split("-")[2]);
+    if (n > max) max = n;
+  }));
+  return max;
+}
 function nextGlobalSegSeq() {
-  const curr = Number(lsGet("sigt_seg_seq", 0));
-  const next = curr + 1;
+  const next = Math.max(Number(lsGet("sigt_seg_seq", 0)), maxSegSeqEnDatos()) + 1;
   lsSet("sigt_seg_seq", next);
   return next;
 }
