@@ -701,7 +701,11 @@ function htmlResumenRendicion(c) {
     fila([td("Total en ARS"), td(fmtNum(t.expTotalARS), true), td(""), td("")]) + '</tbody></table>' : '') +
 
   (combustible ? '<h2>Combustible</h2><table><thead>' + fila([th("Fecha"), th("Proveedor"), th("Litros", true), th("Total factura", true)]) + '</thead><tbody>' + combustible + '</tbody></table>' +
-    '<div class="sub">Litros: ' + escHtml(fmtNum(t.totalLitros)) + ' · Km reales: ' + escHtml(fmtNum(t.totalKmReales)) + ' · Consumo: ' + escHtml(t.consumo) + ' L/100km</div>' : '') +
+    '<div class="sub">Litros: ' + escHtml(fmtNum(t.totalLitros)) +
+      (c.odometro && c.odometro.inicial ? ' · Odómetro: ' + escHtml(fmtNum(c.odometro.inicial)) + ' → ' + escHtml(fmtNum(c.odometro.final)) : '') +
+      ' · Km recorridos: ' + escHtml(fmtNum(t.totalKmReales)) +
+      (t.desvioPorc === "" || t.desvioPorc == null ? '' : ' · Desvío: ' + escHtml((t.gapKm > 0 ? '+' : '') + fmtNum(t.gapKm) + ' km (' + t.desvioPorc + '%)')) +
+      ' · Consumo: ' + escHtml(t.consumo) + ' L/100km</div>' : '') +
 
   '<h2>Liquidación</h2><table><tbody>' +
   fila([td("Total montos de tramo (ARS)"), td(fmtNum(t.totalSegARS), true)]) +
@@ -3957,6 +3961,7 @@ function TripForm({
       kmManual: kmAuto === null,
       // true = el usuario debe ingresar manualmente
       odometro: "",
+      odometroFin: "",
       // lectura del odómetro del tractor en ese tramo
       status: "stand by",
       observaciones: "",
@@ -4787,14 +4792,17 @@ function SegmentCard({
     style: {
       color: "var(--success)"
     }
-  }, fmtKm(seg.kmPrevistos)))), /*#__PURE__*/React.createElement("div", {
+  }, fmtKm(seg.kmPrevistos)))),
+  // Odometro: solo en las puntas del viaje. El inicial va en el primer tramo y
+  // el final en el ultimo; con esos dos la rendicion calcula los km recorridos
+  // de verdad, en lugar de los km reales estimados tramo por tramo.
+  idx === 0 && /*#__PURE__*/React.createElement("div", {
     className: "form-group",
-    style: {
-      maxWidth: 160
-    }
+    style: { maxWidth: 170 }
   }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Odómetro"), /*#__PURE__*/React.createElement("input", {
+    className: "form-label",
+    title: "Lectura del odómetro del tractor al salir"
+  }, "Odómetro inicial"), /*#__PURE__*/React.createElement("input", {
     className: "form-input",
     type: "number",
     min: "0",
@@ -4802,6 +4810,20 @@ function SegmentCard({
     placeholder: "km",
     disabled: readonly,
     onChange: e => onChange("odometro", e.target.value === "" ? "" : Number(e.target.value))
+  })), idx === total - 1 && /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { maxWidth: 170 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label",
+    title: "Lectura del odómetro del tractor al terminar el viaje"
+  }, "Odómetro final"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    value: seg.odometroFin ?? "",
+    placeholder: "km",
+    disabled: readonly,
+    onChange: e => onChange("odometroFin", e.target.value === "" ? "" : Number(e.target.value))
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
@@ -6233,6 +6255,13 @@ function RendicionForm({
     [s.segId]: ""
   }), {}));
   // FIX #4 — devoluciones por moneda
+  // Odometro de la vuelta: se precarga con lo cargado en los tramos (modulo 1)
+  // y se puede corregir aca. Los km reales por tramo ya no se piden; los que
+  // estaban guardados se conservan tal cual.
+  const primerSeg = segs[0] || {};
+  const ultimoSeg = segs[segs.length - 1] || {};
+  const [odoIni, setOdoIni] = useState(() => (isEdit && rendicion.odoInicial != null && rendicion.odoInicial !== "" ? rendicion.odoInicial : (primerSeg.odometro ?? "")));
+  const [odoFin, setOdoFin] = useState(() => (isEdit && rendicion.odoFinal != null && rendicion.odoFinal !== "" ? rendicion.odoFinal : (ultimoSeg.odometroFin ?? "")));
   const [tcEntrega, setTcEntrega] = useState(() => isEdit && rendicion.tcEntrega ? { ...rendicion.tcEntrega } : { USD: "", CLP: "" });
   const [devolucion, setDevolucion] = useState(isEdit && rendicion.devolucion ? rendicion.devolucion : {
     ARS: "",
@@ -6422,8 +6451,16 @@ function RendicionForm({
   // Combustible
   const totalLitros = fuelRows.reduce((s, r) => s + Number(r.litros || 0), 0);
   const totalKmPrev = segs.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0);
-  const totalKmReales = Object.values(kmReales).reduce((s, v) => s + Number(v || 0), 0);
+  // Km recorridos = odometro final - inicial. Si todavia no estan cargados, se
+  // usan los km reales que tenga guardada la rendicion (dato viejo).
+  const kmRealesViejos = Object.values(kmReales).reduce((s, v) => s + Number(v || 0), 0);
+  const odoIniN = Number(odoIni) || 0;
+  const odoFinN = Number(odoFin) || 0;
+  const hayOdo = odoIniN > 0 && odoFinN > 0;
+  const odoInvertido = odoIniN > 0 && odoFinN > 0 && odoFinN <= odoIniN;
+  const totalKmReales = hayOdo && !odoInvertido ? odoFinN - odoIniN : kmRealesViejos;
   const gapKm = totalKmReales - totalKmPrev;
+  const desvioPorc = totalKmPrev > 0 && totalKmReales > 0 ? (gapKm / totalKmPrev * 100) : null;
   const consumo = totalKmReales > 0 ? (totalLitros / totalKmReales * 100).toFixed(2) : "—";
 
   // FIX #3 + #4 — Liquidación correcta según spec:
@@ -6480,6 +6517,7 @@ function RendicionForm({
         carga: sg.tripCarga || "", cliente: sg.tripCliente || "",
         fechaInicio: sg.fechaInicio, fechaLlegadaPrevista: sg.fechaLlegadaPrevista, fechaLlegadaReal: sg.fechaLlegadaReal,
         kmPrevistos: sg.kmPrevistos, kmReales: kmReales[sg.segId] || "",
+        odometro: sg.odometro ?? "", odometroFin: sg.odometroFin ?? "",
         monto: (segMonto[sg.segId] || {}).monto || "", moneda: (segMonto[sg.segId] || {}).moneda || "USD"
       })),
       entregas: driverEntregas.map(e => ({
@@ -6491,10 +6529,12 @@ function RendicionForm({
       tcUsado: { USD: tcEntUnitario("USD"), CLP: tcEntUnitario("CLP") * 100 },
       gastos: expenses,
       combustible: fuelRows,
+      odometro: { inicial: odoIniN || "", final: odoFinN || "" },
       totales: {
         totalSegARS, porcChofer, anticipoSueldo, saldoChofer,
         entBruto, entNeto, entTotalARS, expTotal, expTotalARS,
-        totalLitros, totalKmPrev, totalKmReales, gapKm, consumo
+        totalLitros, totalKmPrev, totalKmReales, gapKm, consumo,
+        desvioPorc: desvioPorc === null ? "" : Number(desvioPorc.toFixed(1))
       }
     };
     // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
@@ -6508,6 +6548,8 @@ function RendicionForm({
       expenses,
       fuelRows,
       kmReales: segs.reduce((a, sg) => (kmReales[sg.segId] !== undefined ? { ...a, [sg.segId]: kmReales[sg.segId] } : a), {}),
+      odoInicial: odoIniN || "",
+      odoFinal: odoFinN || "",
       devolucion,
       tcEntrega,
       segments: segs,
@@ -6664,21 +6706,15 @@ function RendicionForm({
   }, CURRENCIES.map(c => /*#__PURE__*/React.createElement("option", {
     key: c,
     value: c
-  }, c))))), /*#__PURE__*/React.createElement("div", {
+  }, c))))), kmReales[s.segId] ? /*#__PURE__*/React.createElement("div", {
     className: "form-group",
-    style: { flex: "0 0 170px", marginBottom: 0 }
+    style: { flex: "0 0 190px", marginBottom: 0 }
   }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Km reales *"), /*#__PURE__*/React.createElement("input", {
-    className: "form-input",
-    type: "number",
-    placeholder: "km",
-    value: kmReales[s.segId] || "",
-    onChange: e => setKmReales(p => ({
-      ...p,
-      [s.segId]: e.target.value
-    }))
-  }))), (() => {
+    className: "form-label",
+    title: "Dato viejo: los km reales ahora salen del odómetro de la vuelta"
+  }, "Km reales (histórico)"), /*#__PURE__*/React.createElement("div", {
+    className: "field-readonly"
+  }, fmtKm(kmReales[s.segId]))) : null), (() => {
     // Un resumen por viaje, debajo de su ultimo tramo. El control es contra la
     // FACTURA al cliente; el cotizado inicial solo se muestra como referencia.
     const v = controlViajes[s.tripId || ""];
@@ -6720,17 +6756,56 @@ function RendicionForm({
       fontSize: 13,
       color: "var(--text2)"
     }
-  }, "Km previstos total: ", /*#__PURE__*/React.createElement("strong", null, fmtKm(totalKmPrev))), /*#__PURE__*/React.createElement("span", {
+  }, "Km previstos total: ", /*#__PURE__*/React.createElement("strong", null, fmtKm(totalKmPrev))), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { width: 150, marginBottom: 0 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label",
+    title: "Sale del primer tramo (módulo 1). Si lo cambiás acá, vale para esta rendición."
+  }, "Odómetro inicial"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    placeholder: "km",
+    value: odoIni ?? "",
+    onChange: e => setOdoIni(e.target.value === "" ? "" : Number(e.target.value))
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group",
+    style: { width: 150, marginBottom: 0 }
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label",
+    title: "Sale del último tramo (módulo 1). Si lo cambiás acá, vale para esta rendición."
+  }, "Odómetro final"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    placeholder: "km",
+    value: odoFin ?? "",
+    onChange: e => setOdoFin(e.target.value === "" ? "" : Number(e.target.value))
+  }))), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       color: "var(--text2)"
     }
-  }, "Km reales total: ", /*#__PURE__*/React.createElement("strong", null, fmtKm(totalKmReales))), /*#__PURE__*/React.createElement("span", {
+  }, "Km recorridos: ", /*#__PURE__*/React.createElement("strong", null, totalKmReales > 0 ? fmtKm(totalKmReales) : "—"),
+    !hayOdo && totalKmReales > 0 ? /*#__PURE__*/React.createElement("span", {
+      style: { fontSize: 11, color: "var(--text3)", marginLeft: 6 }
+    }, "(km reales viejos)") : null), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
-      color: gapKm > 0 ? "var(--warning)" : "var(--success)"
+      color: desvioPorc === null ? "var(--text3)" : Math.abs(desvioPorc) > 10 ? "var(--warning)" : "var(--success)"
     }
-  }, "Gap: ", /*#__PURE__*/React.createElement("strong", null, gapKm > 0 ? "+" : "", gapKm.toLocaleString("es-AR"), " km"))))), /*#__PURE__*/React.createElement("div", {
+  }, "Desvío: ", /*#__PURE__*/React.createElement("strong", null, desvioPorc === null ? "—" : (gapKm > 0 ? "+" : "") + Math.round(gapKm).toLocaleString("es-AR") + " km (" + (desvioPorc > 0 ? "+" : "") + desvioPorc.toFixed(1) + "%)"))),
+    odoInvertido && /*#__PURE__*/React.createElement("div", {
+      className: "alert alert-danger",
+      style: { marginTop: 8, fontSize: 12 }
+    }, "⚠️ El odómetro final tiene que ser mayor que el inicial."),
+    !hayOdo && /*#__PURE__*/React.createElement("div", {
+      className: "alert alert-info",
+      style: { marginTop: 8, fontSize: 12 }
+    }, "Cargá el odómetro inicial y el final para medir los km recorridos. Se completan solos con lo que se cargue en los tramos (módulo 1)."))), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 16
@@ -7240,8 +7315,8 @@ function RendicionForm({
   }, saving ? "Guardando..." : "⏸ Guardar en stand by"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: () => handleSave("cerrada"),
-    disabled: saving || hayExceso || viajesSinFactura.length > 0,
-    title: viajesSinFactura.length > 0
+    disabled: saving || hayExceso || viajesSinFactura.length > 0 || odoInvertido,
+    title: odoInvertido ? "El odómetro final tiene que ser mayor que el inicial" : viajesSinFactura.length > 0
       ? "Falta cargar la factura al cliente de: " + viajesSinFactura.map(v => v.tripId).join(", ")
       : hayExceso ? "Superan el monto facturado: " + viajesExcedidos.map(v => v.tripId).join(", ") : undefined
   }, saving ? "Guardando..." : "💾 Cerrar rendición")));
