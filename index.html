@@ -3765,10 +3765,16 @@ function Module1({
     const fac = histView ? facturado[String(t.id)] : null;
     const filaPrincipal = /*#__PURE__*/React.createElement("tr", {
       key: t.id,
-      // Verde tenue: el viaje ya tiene su factura al cliente cargada
-      style: fac ? { background: "rgba(46,160,67,.10)" } : undefined,
-      title: fac ? "Facturado" + (fac.fcCliente ? " · FC " + fac.fcCliente : "") + (fac.entidadFacturadora ? " · " + fac.entidadFacturadora : "") : undefined
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+      // En el historial se distinguen los dos estados: verde = facturado,
+      // ámbar = todavía sin factura. Con un solo color tenue no se notaba
+      // cuál era cuál.
+      style: histView ? { background: fac ? "rgba(46,160,67,.16)" : "rgba(245,166,35,.10)" } : undefined,
+      title: !histView ? undefined
+        : fac ? "Facturado" + (fac.fcCliente ? " · FC " + fac.fcCliente : "") + (fac.entidadFacturadora ? " · " + fac.entidadFacturadora : "")
+        : "Sin factura cargada"
+    }, /*#__PURE__*/React.createElement("td", {
+      style: histView ? { borderLeft: "3px solid " + (fac ? "var(--success)" : "var(--warning)") } : undefined
+    }, /*#__PURE__*/React.createElement("div", {
       style: { display: "flex", gap: 4 }
     }, /*#__PURE__*/React.createElement("button", {
       className: "btn btn-secondary btn-icon btn-sm",
