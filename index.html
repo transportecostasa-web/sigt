@@ -1492,7 +1492,10 @@ function StatusBadge({
     "incompleto": "badge badge-red status-incompleto",
     "completo": "badge badge-green status-completo",
     "finalizado": "badge badge-blue",
-    "activo": "badge badge-blue"
+    "activo": "badge badge-blue",
+    // Estados del Seguimiento: el tramo ya pasó por rendición cerrada / liquidación
+    "rendido": "badge badge-blue",
+    "liquidado": "badge badge-green"
   };
   return /*#__PURE__*/React.createElement("span", {
     className: map[status] || "badge badge-gray"
@@ -3042,6 +3045,71 @@ function SeguimientoModal({
   onClose
 }) {
   const el = React.createElement;
+  // Rendiciones, liquidaciones y facturación: salen del caché, así que no
+  // agregan demora si los módulos ya se abrieron en esta sesión.
+  const [rendiciones, setRendiciones] = useState([]);
+  const [liqsRRHH, setLiqsRRHH] = useState([]);
+  const [facturas, setFacturas] = useState([]);
+  useEffect(() => {
+    Promise.all([
+      cachedGet("getRendiciones", "rendiciones"),
+      cachedGet("getRRHH", "rrhh"),
+      cachedGet("getFacturacion", "facturacion")
+    ]).then(([r, l, f]) => {
+      if (r && r.ok) setRendiciones(r.data || []);
+      if (l && l.ok) setLiqsRRHH(l.data || []);
+      if (f && f.ok) setFacturas(f.data || []);
+    });
+  }, []);
+
+  // Tramo -> rendición cerrada que lo incluye, y si esa rendición ya se liquidó
+  const estadoDeTramo = useMemo(() => {
+    const lista = v => {
+      if (Array.isArray(v)) return v;
+      try { const x = JSON.parse(v || "[]"); return Array.isArray(x) ? x : []; } catch (er) { return []; }
+    };
+    const liqDeRend = {};
+    (liqsRRHH || []).forEach(l => {
+      if (l.estado === "anulada") return;
+      let previas = l.previas;
+      if (typeof previas === "string") { try { previas = JSON.parse(previas); } catch (er) { previas = null; } }
+      lista(l.rendicionIds).forEach(id => { liqDeRend[String(id)] = l; });
+      lista(previas && previas.rendiciones).forEach(id => { liqDeRend[String(id)] = l; });
+    });
+    const m = {};
+    (rendiciones || []).forEach(r => {
+      if (r.estado !== "cerrada") return;
+      const tramos = (r.cierre && r.cierre.tramos) || r.segments || [];
+      tramos.forEach(sg => {
+        if (!sg || !sg.segId) return;
+        const liq = liqDeRend[String(r.id)];
+        m[String(sg.segId)] = {
+          estado: liq ? "liquidado" : "rendido",
+          rend: r.id,
+          liq: liq ? liq.id : "",
+          periodo: liq ? liq.periodo : ""
+        };
+      });
+    });
+    return m;
+  }, [rendiciones, liqsRRHH]);
+
+  // Viaje -> facturas al cliente (número y razón social que facturó)
+  const facturaDeViaje = useMemo(() => {
+    const m = {};
+    (facturas || []).forEach(f => {
+      const id = String(f.tripId || "");
+      if (!id) return;
+      (m[id] = m[id] || []).push({
+        nro: String(f.fcCliente || "").trim(),
+        entidad: String(f.entidadFacturadora || "").trim(),
+        monto: f.montoFcCliente,
+        divisa: f.divisaCliente || ""
+      });
+    });
+    return m;
+  }, [facturas]);
+  const estadoFinal = x => (estadoDeTramo[String(x.segId)] || {}).estado || x.status || "stand by";
   const ALTO = 37; // alto comun de campos y botones de la barra de controles
 
   // Todos los tramos de la base, aplanados y con los datos de su viaje
@@ -3141,7 +3209,7 @@ function SeguimientoModal({
   const periodo = resultado.length ? fmtDate(resultado[0]._clave) + " \u2192 " + fmtDate(ultimo._fin || ultimo._clave) : "";
 
   function exportar() {
-    const headers = ["Inicio", "Ubicación", "Llegada", "¿Es fecha de llegada?", "Días", "Viaje", "Estado viaje", "Desde", "Hasta", ...otras.map(o => o.label), "Carga", "Cliente", "KM previstos", "Estado tramo", "ID tramo"];
+    const headers = ["Inicio", "Ubicación", "Llegada", "¿Es fecha de llegada?", "Días", "Viaje", "Estado viaje", "Desde", "Hasta", ...otras.map(o => o.label), "Carga", "Cliente", "KM previstos", "Estado tramo", "Rendición", "Liquidación", "Factura", "Facturado por", "ID tramo"];
     const rows = todos.map(x => [
       x._ini ? fmtDate(x._ini) : "",
       x._ini ? "Fecha cargada" : x._ubicacion ? "Sin fecha, " + x._ubicacion : "Sin fecha, sin ubicar",
@@ -3149,7 +3217,12 @@ function SeguimientoModal({
       x._ini && x._fin ? diasEntreISO(x._ini, x._fin) : "",
       x._viaje, x._finalizado ? "Finalizado" : "Activo", x.desde || "", x.hasta || "",
       ...otras.map(o => x[o.key] || ""),
-      x._carga, x._cliente, Number(x.kmPrevistos) || "", x.status || "", x.segId || ""
+      x._carga, x._cliente, Number(x.kmPrevistos) || "", estadoFinal(x),
+      (estadoDeTramo[String(x.segId)] || {}).rend || "",
+      (estadoDeTramo[String(x.segId)] || {}).liq || "",
+      (facturaDeViaje[String(x._viaje)] || []).map(f => f.nro).filter(Boolean).join(" / "),
+      (facturaDeViaje[String(x._viaje)] || []).map(f => f.entidad).filter(Boolean).join(" / "),
+      x.segId || ""
     ]);
     exportToCSV(`seguimiento_${tipo}_${(seleccion ? seleccion.label : "").replace(/[^\w-]+/g, "_")}`, headers, rows);
   }
@@ -3184,7 +3257,7 @@ function SeguimientoModal({
   const columnas = [
     { t: "Inicio" }, { t: "Llegada" }, { t: "Días", der: true }, { t: "Viaje" }, { t: "Tramo" },
     ...otras.map(o => ({ t: o.label })),
-    { t: "Carga / Cliente" }, { t: "KM", der: true }, { t: "Estado" }, { t: "ID tramo" }
+    { t: "Carga / Cliente" }, { t: "KM", der: true }, { t: "Estado" }, { t: "Factura" }
   ];
   const estiloTh = { position: "sticky", top: 0, zIndex: 2, background: "var(--bg3)", padding: "8px 10px", boxShadow: "inset 0 -1px 0 var(--border)" };
 
@@ -3210,8 +3283,27 @@ function SeguimientoModal({
       x._carga || "\u2014",
       x._cliente && el("div", { style: { fontSize: 11, color: "var(--text3)", marginTop: 2 } }, x._cliente)),
     el("td", { style: { ...celda, ...mono, textAlign: "right" } }, Number(x.kmPrevistos) > 0 ? Number(x.kmPrevistos).toLocaleString("es-AR") : "\u2014"),
-    el("td", { style: celda }, el(StatusBadge, { status: x.status || "stand by" })),
-    el("td", { style: { ...celda, ...mono, color: "var(--text3)", whiteSpace: "nowrap" } }, x.segId || "\u2014"));
+    el("td", { style: celda }, (() => {
+      const e = estadoDeTramo[String(x.segId)];
+      return el(StatusBadge, {
+        status: estadoFinal(x),
+        key: "st"
+      });
+    })(), (() => {
+      const e = estadoDeTramo[String(x.segId)];
+      if (!e) return null;
+      return el("div", {
+        style: { fontSize: 10, color: "var(--text3)", marginTop: 3, fontFamily: "var(--mono)" },
+        title: e.liq ? "Rendición " + e.rend + " · liquidación " + e.liq + " (" + e.periodo + ")" : "Rendición " + e.rend
+      }, e.liq || e.rend);
+    })()),
+    el("td", { style: { ...celda, whiteSpace: "nowrap" } }, (() => {
+      const fs = facturaDeViaje[String(x._viaje)] || [];
+      if (!fs.length) return el("span", { style: { color: "var(--text3)" } }, "Sin factura");
+      return fs.map((f, i) => el("div", { key: i, style: { marginTop: i ? 4 : 0 } },
+        el("div", { style: mono }, f.nro || "\u2014"),
+        f.entidad && el("div", { style: { fontSize: 10.5, color: "var(--text3)" } }, f.entidad)));
+    })()));
 
   const filaNota = (key, texto, mal) => el("tr", { key }, el("td", {
     colSpan: columnas.length,
