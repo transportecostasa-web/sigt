@@ -4942,7 +4942,17 @@ function CajaDetalle({
   // entrega. Es todo lo recibido en Caja antes de hoy menos lo que entrego a
   // choferes y lo que gasto antes de hoy. Se arrastra: el saldo acumulado de
   // este período es el saldo anterior de la próxima entrega.
-  const antes = f => { const iso = isoDe(f); return iso && desde && iso < desde; };
+  // Caja registra solo una parte del movimiento de plata: la cuenta arranca en
+  // la PRIMERA entrega de Caja de esta persona. Lo anterior a esa fecha no se
+  // tiene en cuenta.
+  const primeraCaja = useMemo(() => {
+    const fechas = (movimientos || []).filter(m => (m.chofer || "") === persona).map(m => isoDe(m.fecha)).filter(Boolean).sort();
+    return fechas[0] || "";
+  }, [movimientos, persona]);
+  const antes = f => {
+    const iso = isoDe(f);
+    return !!iso && !!desde && iso < desde && (!primeraCaja || iso >= primeraCaja);
+  };
   const saldoAnterior = useMemo(() => {
     const rec = { ARS: 0, CLP: 0, USD: 0 };
     (movimientos || []).forEach(m => {
@@ -4994,7 +5004,9 @@ function CajaDetalle({
   // Encabezado del período
   /*#__PURE__*/React.createElement("div", {
     style: { fontSize: 12, color: "var(--text2)", marginBottom: 14 }
-  }, "Entrega del ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), mov.responsable ? " de " + mov.responsable : "", " — período analizado: ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), hasta ? /*#__PURE__*/React.createElement(React.Fragment, null, " hasta ", /*#__PURE__*/React.createElement("strong", null, fmtDate(hasta)), " (siguiente entrega en Caja, no incluida)") : " en adelante (no hay una entrega posterior)"),
+  }, "Entrega del ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), mov.responsable ? " de " + mov.responsable : "", " — período analizado: ", /*#__PURE__*/React.createElement("strong", null, fmtDate(mov.fecha)), hasta ? /*#__PURE__*/React.createElement(React.Fragment, null, " hasta ", /*#__PURE__*/React.createElement("strong", null, fmtDate(hasta)), " (siguiente entrega en Caja, no incluida)") : " en adelante (no hay una entrega posterior)", primeraCaja && /*#__PURE__*/React.createElement("div", {
+    style: { marginTop: 4, color: "var(--text3)" }
+  }, "La cuenta arranca en la primera entrega de Caja de ", persona || "esta persona", " (", fmtDate(primeraCaja), "): lo anterior no se tiene en cuenta.")),
 
   // Resumen por divisa
   /*#__PURE__*/React.createElement("div", {
@@ -5224,19 +5236,30 @@ function Module2({
     // Tarjetas: cuanto tiene sin rendir cada persona. Recibido en Caja menos lo
     // que entrego a choferes y lo que gasto, con todo convertido a ARS.
     const TCc = tcDeDropdowns(dropdowns);
+    // Solo las personas que figuran en Caja, y contando desde su PRIMERA entrega
+    // de Caja: lo que hicieron antes de entrar al circuito no se tiene en cuenta.
+    const iso = f => { const dt = parseDate(f); return dt ? dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0") : ""; };
+    const desdeDe = {};
+    (entregas || []).forEach(m => {
+      const p = m.chofer;
+      const f = iso(m.fecha);
+      if (!p || !f) return;
+      if (!desdeDe[p] || f < desdeDe[p]) desdeDe[p] = f;
+    });
     const acum = {};
     const tocar = (p, c, v) => {
-      if (!p) return;
+      if (!p || !desdeDe[p]) return;
       acum[p] = acum[p] || { ARS: 0, CLP: 0, USD: 0 };
       acum[p][c] = (acum[p][c] || 0) + v;
     };
+    const cuenta = (p, f) => !!desdeDe[p] && !!iso(f) && iso(f) >= desdeDe[p];
     (entregas || []).forEach(m => tocar(m.chofer, m.moneda || "ARS", Number(m.monto || 0)));
-    (entregasChoferes || []).forEach(e => tocar(e.responsable, e.moneda || "ARS", -Number(e.monto || 0)));
-    (gastosGenerales || []).forEach(g => tocar(g.responsablePago, g.divisa || "ARS", -Number(g.monto || 0)));
+    (entregasChoferes || []).forEach(e => { if (cuenta(e.responsable, e.fecha)) tocar(e.responsable, e.moneda || "ARS", -Number(e.monto || 0)); });
+    (gastosGenerales || []).forEach(g => { if (cuenta(g.responsablePago, g.fechaGasto)) tocar(g.responsablePago, g.divisa || "ARS", -Number(g.monto || 0)); });
     const filas = Object.keys(acum).map(p => {
       const o = acum[p];
       const ars = CURRENCIES.reduce((s2, c) => s2 + convARS(TCc, o[c], c), 0);
-      return { persona: p, por: o, ars };
+      return { persona: p, por: o, ars, desde: desdeDe[p] };
     }).sort((a, b) => b.ars - a.ars);
     if (!filas.length) return null;
     return /*#__PURE__*/React.createElement("div", {
@@ -5250,7 +5273,7 @@ function Module2({
         key: f.persona,
         className: "card",
         style: { flex: "1 1 210px", minWidth: 190, margin: 0, padding: "10px 12px", borderLeft: "3px solid " + color },
-        title: detalle ? "Por divisa: " + detalle : "Sin saldo"
+        title: (detalle ? "Por divisa: " + detalle + "\n" : "") + "Cuenta desde la primera entrega de Caja: " + fmtDate(f.desde)
       }, /*#__PURE__*/React.createElement("div", {
         style: { fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
       }, f.persona), /*#__PURE__*/React.createElement("div", {
