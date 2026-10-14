@@ -3190,13 +3190,44 @@ function SeguimientoModal({
   const tipoActual = SEGUIMIENTO_TIPOS.find(tp => tp.key === tipo);
   const otras = SEGUIMIENTO_TIPOS.filter(tp => tp.key !== tipo);
 
+  // ── Columnas y filtros por columna (los mismos que el resto de las tablas) ──
+  // Cada columna que se puede filtrar define key + get: el texto por el que se
+  // agrupa y se compara, igual que en DataTable.
+  const columnas = [
+    { t: "Inicio" }, { t: "Llegada" }, { t: "Días", der: true },
+    { t: "Viaje", key: "_viaje", get: x => x._viaje || "" },
+    { t: "Tramo", key: "_tramo", get: x => (x.desde || "?") + " → " + (x.hasta || "?") },
+    ...otras.map(o => ({ t: o.label, key: o.key, get: x => x[o.key] || "" })),
+    { t: "Carga / Cliente", key: "_cc", get: x => [x._carga, x._cliente].filter(Boolean).join(" · ") },
+    { t: "KM", der: true },
+    { t: "Estado", key: "_estado", get: x => estadoFinal(x) },
+    { t: "Factura", key: "_fact", get: x => ((facturaDeViaje[String(x._viaje)] || []).map(f => f.nro).filter(Boolean).join(" / ")) || "Sin factura" }
+  ];
+  const [colFilt, setColFilt] = useState({});
+  const [filtroAbierto, setFiltroAbierto] = useState(null);
+  const hayFiltrosCol = Object.values(colFilt).some(v => Array.isArray(v));
+  const pasaFiltros = (x, excepto) => columnas.every(c => {
+    if (!c.key || c.key === excepto) return true;
+    const sel = colFilt[c.key];
+    return !Array.isArray(sel) || sel.includes(c.get(x));
+  });
+
   const delSujeto = useMemo(() => clave ? tramos.filter(x => claveDe(tipo, x[tipo]) === clave) : [], [tramos, tipo, clave]);
   const rangoInvalido = !!(desde && hasta && desde > hasta);
-  const resultado = useMemo(() => rangoInvalido ? [] : delSujeto
+  const resultadoBase = useMemo(() => rangoInvalido ? [] : delSujeto
     .filter(x => x._clave && (!desde || x._clave >= desde) && (!hasta || x._clave <= hasta))
     .sort((a, b) => (a._clave < b._clave ? -1 : a._clave > b._clave ? 1 : 0) || compararValores(a._viaje, b._viaje) || a._orden - b._orden),
     [delSujeto, desde, hasta, rangoInvalido]);
-  const sinUbicar = rangoInvalido ? [] : delSujeto.filter(x => !x._clave).sort((a, b) => compararValores(a._viaje, b._viaje) || a._orden - b._orden);
+  const sinUbicarBase = rangoInvalido ? [] : delSujeto.filter(x => !x._clave).sort((a, b) => compararValores(a._viaje, b._viaje) || a._orden - b._orden);
+  // Valores de cada filtro: los que quedan con los filtros de las DEMAS columnas
+  const valoresCol = key => {
+    const c = columnas.find(cl => cl.key === key);
+    if (!c) return [];
+    return [...new Set([...resultadoBase, ...sinUbicarBase].filter(x => pasaFiltros(x, key)).map(c.get).filter(v => v !== ""))]
+      .sort((a, b) => String(a).localeCompare(String(b), "es", { numeric: true }));
+  };
+  const resultado = resultadoBase.filter(x => pasaFiltros(x));
+  const sinUbicar = sinUbicarBase.filter(x => pasaFiltros(x));
   const todos = [...resultado, ...sinUbicar];
   const ubicadosPorOrden = resultado.filter(x => !x._ini).length;
   const kmTotal = todos.reduce((acc, x) => acc + (Number(x.kmPrevistos) || 0), 0);
@@ -3254,11 +3285,6 @@ function SeguimientoModal({
     }
   }, texto);
 
-  const columnas = [
-    { t: "Inicio" }, { t: "Llegada" }, { t: "Días", der: true }, { t: "Viaje" }, { t: "Tramo" },
-    ...otras.map(o => ({ t: o.label })),
-    { t: "Carga / Cliente" }, { t: "KM", der: true }, { t: "Estado" }, { t: "Factura" }
-  ];
   const estiloTh = { position: "sticky", top: 0, zIndex: 2, background: "var(--bg3)", padding: "8px 10px", boxShadow: "inset 0 -1px 0 var(--border)" };
 
   const filaTramo = (x, key) => el("tr", { key },
@@ -3342,7 +3368,8 @@ function SeguimientoModal({
           chip("Viajes", nViajes),
           chip("KM previstos", kmTotal > 0 ? kmTotal.toLocaleString("es-AR") : "\u2014"),
           periodo && chip("Período", periodo),
-          superposiciones > 0 && chip("Superposiciones", superposiciones, "var(--danger)")),
+          superposiciones > 0 && chip("Superposiciones", superposiciones, "var(--danger)"),
+          hayFiltrosCol && boton({ onClick: () => setColFilt({}), title: "Quitar los filtros de columna" }, "\u2715 Limpiar filtros")),
         (ubicadosPorOrden > 0 || sinUbicar.length > 0) && el("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 } },
           ubicadosPorOrden > 0 && aviso("info", `\u2139\uFE0F ${ubicadosPorOrden} tramo${ubicadosPorOrden === 1 ? "" : "s"} sin fecha de inicio: ubicado${ubicadosPorOrden === 1 ? "" : "s"} según el orden de su viaje.`),
           sinUbicar.length > 0 && aviso("warn", `\u26A0\uFE0F ${sinUbicar.length} tramo${sinUbicar.length === 1 ? "" : "s"} sin fecha en viajes que no tienen ningún tramo fechado: se listan al final.`)),
@@ -3350,7 +3377,19 @@ function SeguimientoModal({
           ? vacio("\u{1F4ED}", "Sin tramos en el período", "Probá con Todo el período.")
           : el("div", { style: { border: "1px solid var(--border)", borderRadius: "var(--radius)" } },
             el("table", { style: { width: "100%", fontSize: 13 } },
-              el("thead", null, el("tr", null, columnas.map((c, i) => el("th", { key: i, style: { ...estiloTh, textAlign: c.der ? "right" : "left" } }, c.t)))),
+              el("thead", null, el("tr", null, columnas.map((c, i) => c.key
+                ? el(FilterTh, {
+                    key: c.key,
+                    col: { key: c.key, label: c.t },
+                    values: valoresCol(c.key),
+                    selected: colFilt[c.key],
+                    onChangeSel: sel => setColFilt(p => ({ ...p, [c.key]: sel })),
+                    noSort: true, // la tabla es cronologica: ordenar la rompe
+                    open: filtroAbierto === c.key,
+                    onToggleOpen: k => setFiltroAbierto(k),
+                    thStyle: { ...estiloTh, textAlign: "left" }
+                  })
+                : el("th", { key: i, style: { ...estiloTh, textAlign: c.der ? "right" : "left" } }, c.t)))),
               el("tbody", null, filas))));
 
   // Sin onClick en el fondo: a propósito, el modal solo se cierra con su botón
@@ -3396,7 +3435,11 @@ function SeguimientoModal({
         el("div", { style: { display: "flex", gap: 8, marginLeft: "auto" } },
           boton({ onClick: () => { setDesde(primeraFecha); setHasta(hoy); }, title: "Desde el primer tramo cargado hasta hoy" }, "\u21BA Todo el período"),
           boton({ onClick: exportar, disabled: todos.length === 0, title: "Exportar a Excel" }, "\u{1F4E5} Exportar"))),
-      el("div", { style: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "auto", padding: "16px 20px 20px" } }, cuerpo)));
+      // El padding va en un div interno: si lo tuviera el contenedor que
+      // scrollea, el encabezado pegajoso quedaria 16px mas abajo y se verian
+      // las filas pasando por esa banda.
+      el("div", { style: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", overflowX: "auto", padding: "0 20px 20px" } },
+        el("div", { style: { paddingTop: 16 } }, cuerpo))));
 }
 
 function Module1({
@@ -3417,6 +3460,16 @@ function Module1({
   const [sortDir, setSortDir] = useState("asc");
   const [openFilter, setOpenFilter] = useState(null);
   const [seguimiento, setSeguimiento] = useState(false);
+  // Facturacion: en el historial, los viajes ya facturados van con fondo verde
+  const [facturas, setFacturas] = useState([]);
+  const facturado = useMemo(() => {
+    const m = {};
+    (facturas || []).forEach(f => {
+      if (!f.tripId) return;
+      if (moneyNum(f.montoFcCliente) > 0 || String(f.fcCliente || "").trim()) m[String(f.tripId)] = f;
+    });
+    return m;
+  }, [facturas]);
   const [tablaRef, tablaAlto] = useAltoHastaElPie();
   useEffect(() => {
     loadTrips();
@@ -3424,8 +3477,9 @@ function Module1({
   async function loadTrips() {
     setLoading(true);
     // Usa caché: si los datos ya están en memoria no hace llamada al servidor
-    const r = await cachedGet("getTrips", "trips");
+    const [r, f] = await Promise.all([cachedGet("getTrips", "trips"), cachedGet("getFacturacion", "facturacion")]);
     if (r.ok) setTrips(r.data);
+    if (f && f.ok) setFacturas(f.data || []);
     setLoading(false);
   }
   function handleSave(tripData) {
@@ -3708,8 +3762,12 @@ function Module1({
       carga: { fontSize: 12 },
       cliente: { fontSize: 12 }
     };
+    const fac = histView ? facturado[String(t.id)] : null;
     const filaPrincipal = /*#__PURE__*/React.createElement("tr", {
-      key: t.id
+      key: t.id,
+      // Verde tenue: el viaje ya tiene su factura al cliente cargada
+      style: fac ? { background: "rgba(46,160,67,.10)" } : undefined,
+      title: fac ? "Facturado" + (fac.fcCliente ? " · FC " + fac.fcCliente : "") + (fac.entidadFacturadora ? " · " + fac.entidadFacturadora : "") : undefined
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
       style: { display: "flex", gap: 4 }
     }, /*#__PURE__*/React.createElement("button", {
