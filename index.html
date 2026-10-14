@@ -1757,10 +1757,14 @@ function DataTable({
   onRowClick = null,
   // Por defecto el listado scrollea dentro de una caja que llega al pie de la
   // ventana. Pasar false cuando la tabla va debajo de otro contenido (RRHH).
-  llenarPantalla = true
+  llenarPantalla = true,
+  // Orden de arranque: { key, dir }. La regla general del sistema es mostrar
+  // primero lo mas reciente, asi que casi todas las tablas pasan su columna de
+  // fecha con dir "desc". La key puede ser un campo que no se muestre.
+  ordenInicial = null
 }) {
-  const [sortKey, setSortKey] = useState(null);
-  const [sortDir, setSortDir] = useState("asc"); // "asc" | "desc"
+  const [sortKey, setSortKey] = useState(ordenInicial ? ordenInicial.key : null);
+  const [sortDir, setSortDir] = useState(ordenInicial ? (ordenInicial.dir || "desc") : "asc");
   const [tablaRef, tablaAlto] = useAltoHastaElPie(llenarPantalla);
   // Filtros de columna estilo Excel: { key: [valores] }; null/ausente = sin filtro
   const [colFilters, setColFilters] = useState({});
@@ -3453,8 +3457,8 @@ function Module1({
   const [expandido, setExpandido] = useState(null); // FIX 4 — viaje con tramos desplegados
   // Filtros de columna estilo Excel: { colKey: [valores] } — [] = sin filtro
   const [colFilters, setColFilters] = useState({});
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState("asc");
+  const [sortCol, setSortCol] = useState("fecha"); // regla general: lo mas reciente primero
+  const [sortDir, setSortDir] = useState("desc"); // lo mas reciente primero
   const [openFilter, setOpenFilter] = useState(null);
   const [seguimiento, setSeguimiento] = useState(false);
   // Facturacion: en el historial, los viajes ya facturados van con fondo verde
@@ -5370,6 +5374,51 @@ function Module2({
     }
     return r;
   }
+  // Agrupado de entregas por _baseId (o fecha+chofer+responsable+forma de pago)
+  // y separacion entre lo pendiente de rendir y lo ya rendido. Vive aca arriba
+  // porque las solapas del encabezado necesitan los totales.
+  const { grouped, pendientes, rendidos } = useMemo(() => {
+    const grouped = [];
+    const seen = {};
+    (entregas || []).forEach(e => {
+      const key = e._baseId || `${e.fecha}__${e.chofer}__${e.responsable}__${e.formaPago}`;
+      if (!seen[key]) {
+        seen[key] = {
+          key,
+          fecha: e.fecha,
+          chofer: e.chofer,
+          responsable: e.responsable,
+          formaPago: e.formaPago,
+          concepto: esEntregaSueldo(e) ? "SUELDO" : "VIAJE",
+          obs: e.obs,
+          createdAt: e.createdAt,
+          ARS: "",
+          CLP: "",
+          USD: "",
+          _items: []
+        };
+        grouped.push(seen[key]);
+      }
+      // SUMAR por divisa (no pisar): si la BD tuviera dos registros de la misma
+      // moneda en el grupo, la pantalla muestra el total real — igual que lo
+      // que suman Rendición y RRHH sobre las filas crudas.
+      seen[key][e.moneda] = (Number(seen[key][e.moneda]) || 0) + Number(e.monto || 0);
+      seen[key]._items.push(e);
+      const rend = (clavesEntrega(e).map(k => rendidaPor[k]).find(Boolean)) || null;
+      if (rend && !seen[key]._rend) {
+        seen[key]._rend = rend;
+        seen[key]._rendId = rend.rendId || "";
+        seen[key]._liq = rend.liq ? "Liquidado" : "Pendiente";
+      }
+    });
+    // La plata ya rendida sale de la tabla principal y se consulta aparte
+    return {
+      grouped,
+      pendientes: isCaja ? grouped : grouped.filter(g => !g._rend),
+      rendidos: isCaja ? [] : grouped.filter(g => g._rend)
+    };
+  }, [entregas, rendidaPor, isCaja]);
+
   if (view === "form") return /*#__PURE__*/React.createElement(EntregaForm, {
     dropdowns: dropdowns,
     onSave: handleSave,
@@ -5385,10 +5434,19 @@ function Module2({
     className: "module-title"
   }, isCaja ? "🏦 Caja" : "💵 Plata a choferes"), /*#__PURE__*/React.createElement("div", {
     className: "module-subtitle"
-  }, entregas.length, isCaja ? " movimiento(s) registrado(s) — clic en una fila para ver el destino del dinero" : " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
+  }, entregas.length, isCaja ? " movimiento(s) registrado(s) — clic en una fila para ver el destino del dinero" : " entrega(s) registrada(s)")), /*#__PURE__*/React.createElement("div", {
+    className: "module-actions"
+  }, !isCaja && !loading && entregas.length > 0 && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm " + (rendidoView ? "btn-secondary" : "btn-primary"),
+    onClick: () => setRendidoView(false)
+  }, "Entregas (", pendientes.length, ")"), !isCaja && !loading && entregas.length > 0 && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-sm " + (rendidoView ? "btn-primary" : "btn-secondary"),
+    onClick: () => setRendidoView(true),
+    title: "Plata que ya entró en una rendición cerrada o en una liquidación"
+  }, "\u{1F4C1} Dinero rendido (", rendidos.length, ")"), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
     onClick: () => { setEditItem(null); setView("form"); }
-  }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega")), isCaja && !loading && (() => {
+  }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega"))), isCaja && !loading && (() => {
     // Tarjetas: cuanto tiene sin rendir cada persona. Recibido en Caja menos lo
     // que entrego a choferes y lo que gasto, con todo convertido a ARS.
     const TCc = tcDeDropdowns(dropdowns);
@@ -5455,43 +5513,6 @@ function Module2({
   }, /*#__PURE__*/React.createElement("div", {
     className: "empty-icon"
   }, "💵"), /*#__PURE__*/React.createElement("p", null, "No hay entregas registradas.")) : (() => {
-    // Consolidar entregas por _baseId (o por fecha+chofer+responsable si no hay _baseId)
-    const grouped = [];
-    const seen = {};
-    entregas.forEach(e => {
-      const key = e._baseId || `${e.fecha}__${e.chofer}__${e.responsable}__${e.formaPago}`;
-      if (!seen[key]) {
-        seen[key] = {
-          key,
-          fecha: e.fecha,
-          chofer: e.chofer,
-          responsable: e.responsable,
-          formaPago: e.formaPago,
-          concepto: esEntregaSueldo(e) ? "SUELDO" : "VIAJE",
-          obs: e.obs,
-          createdAt: e.createdAt,
-          ARS: "",
-          CLP: "",
-          USD: "",
-          _items: []
-        };
-        grouped.push(seen[key]);
-      }
-      // SUMAR por divisa (no pisar): si la BD tuviera dos registros de la misma
-      // moneda en el grupo, la pantalla muestra el total real — igual que lo
-      // que suman Rendición y RRHH sobre las filas crudas.
-      seen[key][e.moneda] = (Number(seen[key][e.moneda]) || 0) + Number(e.monto || 0);
-      seen[key]._items.push(e);
-      const rend = (clavesEntrega(e).map(k => rendidaPor[k]).find(Boolean)) || null;
-      if (rend && !seen[key]._rend) {
-        seen[key]._rend = rend;
-        seen[key]._rendId = rend.rendId || "";
-        seen[key]._liq = rend.liq ? "Liquidado" : "Pendiente";
-      }
-    });
-    // La plata ya rendida sale de la tabla principal y se consulta aparte
-    const pendientes = isCaja ? grouped : grouped.filter(g => !g._rend);
-    const rendidos = isCaja ? [] : grouped.filter(g => g._rend);
     const filas = rendidoView ? rendidos : pendientes;
     const cols = [{
       key: "fecha",
@@ -5615,21 +5636,13 @@ function Module2({
         }, "✏️")
       });
     }
-    return /*#__PURE__*/React.createElement(React.Fragment, null, !isCaja && /*#__PURE__*/React.createElement("div", {
-      style: { display: "flex", gap: 8, marginBottom: 12 }
-    }, /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-sm " + (rendidoView ? "btn-secondary" : "btn-primary"),
-      onClick: () => setRendidoView(false)
-    }, "Entregas (", pendientes.length, ")"), /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-sm " + (rendidoView ? "btn-primary" : "btn-secondary"),
-      onClick: () => setRendidoView(true),
-      title: "Plata que ya entró en una rendición cerrada"
-    }, "\u{1F4C1} Dinero rendido (", rendidos.length, ")")), /*#__PURE__*/React.createElement(DataTable, {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(DataTable, {
       columns: cols,
       data: filas,
       searchPlaceholder: isCaja ? "Buscar movimientos..." : "Buscar entregas...",
       emptyText: isCaja ? "No hay movimientos de caja." : rendidoView ? "Todavía no hay entregas dentro de rendiciones cerradas." : "No hay entregas pendientes de rendir.",
       exportFilename: isCaja ? "caja" : (rendidoView ? "entregas_rendidas" : "entregas"),
+      ordenInicial: { key: "fecha", dir: "desc" },
       // En Caja, click en la fila = ver a dónde se fue esa plata
       onRowClick: isCaja ? row => setDetalle(row) : null
     }));
@@ -6194,19 +6207,15 @@ function Module3({
       padding: "4px 9px",
       lineHeight: 1
     }
-  }, "📥")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      marginBottom: 12
-    }
+  }, "📥"), /*#__PURE__*/React.createElement("div", {
+    className: "module-actions"
   }, /*#__PURE__*/React.createElement("button", {
     className: `btn btn-sm ${!histView ? "btn-primary" : "btn-secondary"}`,
     onClick: () => setHistView(false)
   }, "En curso (", abiertas.length, ")"), /*#__PURE__*/React.createElement("button", {
     className: `btn btn-sm ${histView ? "btn-primary" : "btn-secondary"}`,
     onClick: () => setHistView(true)
-  }, "📁 Historial (", cerradas.length, ")")), (() => {
+  }, "📁 Historial (", cerradas.length, ")"))), (() => {
     // Mismo listado que el resto de los modulos: buscador, orden y filtros por
     // columna en el encabezado (DataTable). Las filas traen los datos ya
     // calculados para que el filtro y el orden trabajen sobre ellos.
@@ -6309,7 +6318,8 @@ function Module3({
       onRowClick: row => openRendicion(row),
       searchPlaceholder: histView ? "Buscar en el historial..." : "Buscar rendiciones en curso...",
       emptyText: "Sin rendiciones.",
-      exportFilename: histView ? "rendiciones_historial" : "rendiciones_en_curso"
+      exportFilename: histView ? "rendiciones_historial" : "rendiciones_en_curso",
+      ordenInicial: { key: "_fecha", dir: "desc" }
     }));
     })(), !histView && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -7755,6 +7765,9 @@ function Module5({
       factura: fac,
       tieneFactura: !!fac,
       _tripId: t.id,
+      // Fecha de referencia para ordenar (no se muestra): la de la factura al
+      // cliente y, si todavia no esta, la del primer tramo del viaje.
+      _fecha: toInputDate(fac?.fechaFcCliente) || toInputDate((t.segments || [])[0]?.fechaInicio) || toInputDate(t.finalizedAt) || "",
       _cliente: t.cliente || "",
       _carga: t.carga || "",
       _reserva: t.reserva || "",
@@ -8149,7 +8162,8 @@ function Module5({
     data: shownRows,
     searchPlaceholder: "Buscar por viaje, cliente, carga...",
     emptyText: "No hay viajes finalizados.",
-    exportFilename: "facturacion"
+    exportFilename: "facturacion",
+    ordenInicial: { key: "_fecha", dir: "desc" }
   }));
 }
 
@@ -8205,7 +8219,8 @@ function FacturacionHistorial({
     _carga: r.factura?.carga || "—",
     _fcFletero: (r.factura?.fleteros || [])[0]?.fcFletero || "—",
     _fcCliente: r.factura?.fcCliente || "—",
-    _fechaCobro: r.factura?.fechaCobro || ""
+    _fechaCobro: r.factura?.fechaCobro || "",
+    _fecha: toInputDate(r.factura?.fechaCobro) || toInputDate(r.factura?.fechaFcCliente) || ""
   }));
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
@@ -8223,7 +8238,8 @@ function FacturacionHistorial({
     data: data,
     searchPlaceholder: "Buscar historial...",
     emptyText: "Sin historial.",
-    exportFilename: "historial_facturacion"
+    exportFilename: "historial_facturacion",
+    ordenInicial: { key: "_fecha", dir: "desc" }
   }));
 }
 
@@ -9700,7 +9716,8 @@ function Module6({
           onRowClick: row => { setDocLiq(row); setView("doc"); },
           searchPlaceholder: "Buscar liquidaciones...",
           emptyText: "Sin liquidaciones.",
-          exportFilename: "liquidaciones_rrhh"
+          exportFilename: "liquidaciones_rrhh",
+          ordenInicial: { key: "createdAt", dir: "desc" }
         }), resumenRend && (() => {
     const r = resumenRend;
     const t = { ...(r.totals || {}), ...((r.cierre && r.cierre.totales) || {}) };
@@ -10032,7 +10049,8 @@ function Module7({
     data: gastos,
     searchPlaceholder: "Buscar gastos...",
     emptyText: "Sin gastos registrados.",
-    exportFilename: "gastos_generales"
+    exportFilename: "gastos_generales",
+    ordenInicial: { key: "fechaGasto", dir: "desc" }
   }));
 }
 function GastoGeneralForm({
@@ -10632,7 +10650,8 @@ function Module8({
     data: liqs,
     searchPlaceholder: "Buscar liquidaciones...",
     emptyText: "Sin liquidaciones de fleteros.",
-    exportFilename: "liquidaciones_fleteros"
+    exportFilename: "liquidaciones_fleteros",
+    ordenInicial: { key: "createdAt", dir: "desc" }
   }) : !selPatente ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, /*#__PURE__*/React.createElement("div", {
