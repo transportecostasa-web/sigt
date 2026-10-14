@@ -3363,13 +3363,10 @@ function SeguimientoModal({
     : rangoInvalido
       ? vacio("\u{1F4C5}", "Revisá el período", "La fecha Desde es posterior a Hasta.")
       : el(React.Fragment, null,
-        el("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 } },
-          chip("Tramos", todos.length),
-          chip("Viajes", nViajes),
-          chip("KM previstos", kmTotal > 0 ? kmTotal.toLocaleString("es-AR") : "\u2014"),
-          periodo && chip("Período", periodo),
-          superposiciones > 0 && chip("Superposiciones", superposiciones, "var(--danger)"),
-          hayFiltrosCol && boton({ onClick: () => setColFilt({}), title: "Quitar los filtros de columna" }, "\u2715 Limpiar filtros")),
+        // Sin los chips de resumen (tramos, viajes, km, período): el usuario los
+        // pidió fuera. Queda solo el botón para quitar los filtros de columna.
+        hayFiltrosCol && el("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 } },
+          boton({ onClick: () => setColFilt({}), title: "Quitar los filtros de columna" }, "✕ Limpiar filtros")),
         (ubicadosPorOrden > 0 || sinUbicar.length > 0) && el("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 } },
           ubicadosPorOrden > 0 && aviso("info", `\u2139\uFE0F ${ubicadosPorOrden} tramo${ubicadosPorOrden === 1 ? "" : "s"} sin fecha de inicio: ubicado${ubicadosPorOrden === 1 ? "" : "s"} según el orden de su viaje.`),
           sinUbicar.length > 0 && aviso("warn", `\u26A0\uFE0F ${sinUbicar.length} tramo${sinUbicar.length === 1 ? "" : "s"} sin fecha en viajes que no tienen ningún tramo fechado: se listan al final.`)),
