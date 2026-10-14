@@ -4937,11 +4937,32 @@ function CajaDetalle({
   const totEnt = sumaPorDivisa(entregasPeriodo, "monto", "moneda");
   const totGas = sumaPorDivisa(gastosPeriodo, "monto", "divisa");
   const recibido = { ARS: Number(mov.ARS || 0), CLP: Number(mov.CLP || 0), USD: Number(mov.USD || 0) };
+
+  // SALDO ANTERIOR: lo que esta persona ya tenia sin rendir antes de esta
+  // entrega. Es todo lo recibido en Caja antes de hoy menos lo que entrego a
+  // choferes y lo que gasto antes de hoy. Se arrastra: el saldo acumulado de
+  // este período es el saldo anterior de la próxima entrega.
+  const antes = f => { const iso = isoDe(f); return iso && desde && iso < desde; };
+  const saldoAnterior = useMemo(() => {
+    const rec = { ARS: 0, CLP: 0, USD: 0 };
+    (movimientos || []).forEach(m => {
+      if ((m.chofer || "") !== persona || !antes(m.fecha)) return;
+      CURRENCIES.forEach(c => { rec[c] += Number(m[c] || 0); });
+    });
+    const ent = sumaPorDivisa((entregas || []).filter(e => (e.responsable || "") === persona && antes(e.fecha)), "monto", "moneda");
+    const gas = sumaPorDivisa((gastos || []).filter(g => (g.responsablePago || "") === persona && antes(g.fechaGasto)), "monto", "divisa");
+    const out = {};
+    CURRENCIES.forEach(c => { out[c] = rec[c] - ent[c] - gas[c]; });
+    return out;
+  }, [movimientos, entregas, gastos, persona, desde]);
+
   const saldo = {};
   CURRENCIES.forEach(c => { saldo[c] = recibido[c] - totEnt[c] - totGas[c]; });
+  const saldoAcumulado = {};
+  CURRENCIES.forEach(c => { saldoAcumulado[c] = saldoAnterior[c] + saldo[c]; });
   const totalARS = o => CURRENCIES.reduce((s, c) => s + convARS(TC, o[c], c), 0);
   // Divisas a mostrar: las que tuvieron algo (entregado o gastado)
-  const divisas = CURRENCIES.filter(c => recibido[c] || totEnt[c] || totGas[c]);
+  const divisas = CURRENCIES.filter(c => recibido[c] || totEnt[c] || totGas[c] || saldoAnterior[c]);
   const mono = { fontFamily: "var(--mono)" };
 
   const filaResumen = (etiqueta, obj, color) => /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
@@ -4984,16 +5005,30 @@ function CajaDetalle({
     style: { textAlign: "right" }
   }, c)), /*#__PURE__*/React.createElement("th", {
     style: { textAlign: "right" }
-  }, "≈ ARS"))), /*#__PURE__*/React.createElement("tbody", null, filaResumen("Recibido en Caja", recibido), filaResumen("Entregado a choferes", totEnt), filaResumen("Gastos generales", totGas), /*#__PURE__*/React.createElement("tr", {
+  }, "≈ ARS"))), /*#__PURE__*/React.createElement("tbody", null,
+    filaResumen("Saldo anterior", saldoAnterior, "var(--text2)"),
+    filaResumen("Recibido en Caja", recibido),
+    filaResumen("Entregado a choferes", totEnt),
+    filaResumen("Gastos generales", totGas),
+    /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+      style: { fontWeight: 500 }
+    }, "Saldo del período"), divisas.map(c => /*#__PURE__*/React.createElement("td", {
+      key: c,
+      style: { ...mono, textAlign: "right", color: saldo[c] < 0 ? "var(--danger)" : saldo[c] > 0 ? "var(--warning)" : "var(--success)" }
+    }, fmtNum(saldo[c]))), /*#__PURE__*/React.createElement("td", {
+      style: { ...mono, textAlign: "right", color: "var(--text3)" }
+    }, fmtNum(Math.round(totalARS(saldo))))),
+    /*#__PURE__*/React.createElement("tr", {
     style: { borderTop: "2px solid var(--border2)" }
   }, /*#__PURE__*/React.createElement("td", {
-    style: { fontWeight: 700 }
-  }, "Saldo sin rendir"), divisas.map(c => /*#__PURE__*/React.createElement("td", {
+    style: { fontWeight: 700 },
+    title: "Saldo anterior + lo de este período. Es el saldo anterior de la próxima entrega."
+  }, "Saldo acumulado sin rendir"), divisas.map(c => /*#__PURE__*/React.createElement("td", {
     key: c,
-    style: { ...mono, textAlign: "right", fontWeight: 700, color: saldo[c] < 0 ? "var(--danger)" : saldo[c] > 0 ? "var(--warning)" : "var(--success)" }
-  }, fmtNum(saldo[c]))), /*#__PURE__*/React.createElement("td", {
+    style: { ...mono, textAlign: "right", fontWeight: 700, color: saldoAcumulado[c] < 0 ? "var(--danger)" : saldoAcumulado[c] > 0 ? "var(--warning)" : "var(--success)" }
+  }, fmtNum(saldoAcumulado[c]))), /*#__PURE__*/React.createElement("td", {
     style: { ...mono, textAlign: "right", fontWeight: 700 }
-  }, fmtNum(Math.round(totalARS(saldo)))))))),
+  }, fmtNum(Math.round(totalARS(saldoAcumulado)))))))),
 
   // Entregas a choferes
   /*#__PURE__*/React.createElement("div", {
@@ -5185,7 +5220,48 @@ function Module2({
   }, entregas.length, isCaja ? " movimiento(s) registrado(s) — clic en una fila para ver el destino del dinero" : " entrega(s) registrada(s)")), canEdit && /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary btn-sm",
     onClick: () => { setEditItem(null); setView("form"); }
-  }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega")), loading ? /*#__PURE__*/React.createElement("div", {
+  }, isCaja ? "+ Nuevo Movimiento" : "+ Nueva Entrega")), isCaja && !loading && (() => {
+    // Tarjetas: cuanto tiene sin rendir cada persona. Recibido en Caja menos lo
+    // que entrego a choferes y lo que gasto, con todo convertido a ARS.
+    const TCc = tcDeDropdowns(dropdowns);
+    const acum = {};
+    const tocar = (p, c, v) => {
+      if (!p) return;
+      acum[p] = acum[p] || { ARS: 0, CLP: 0, USD: 0 };
+      acum[p][c] = (acum[p][c] || 0) + v;
+    };
+    (entregas || []).forEach(m => tocar(m.chofer, m.moneda || "ARS", Number(m.monto || 0)));
+    (entregasChoferes || []).forEach(e => tocar(e.responsable, e.moneda || "ARS", -Number(e.monto || 0)));
+    (gastosGenerales || []).forEach(g => tocar(g.responsablePago, g.divisa || "ARS", -Number(g.monto || 0)));
+    const filas = Object.keys(acum).map(p => {
+      const o = acum[p];
+      const ars = CURRENCIES.reduce((s2, c) => s2 + convARS(TCc, o[c], c), 0);
+      return { persona: p, por: o, ars };
+    }).sort((a, b) => b.ars - a.ars);
+    if (!filas.length) return null;
+    return /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }
+    }, filas.map(f => {
+      const enContra = f.ars > 0.5;   // tiene plata de la empresa sin rendir
+      const aFavor = f.ars < -0.5;    // puso plata de su bolsillo
+      const color = enContra ? "var(--warning)" : aFavor ? "var(--success)" : "var(--text3)";
+      const detalle = CURRENCIES.filter(c => Math.round(f.por[c]) !== 0).map(c => fmtNum(Math.round(f.por[c])) + " " + c).join(" · ");
+      return /*#__PURE__*/React.createElement("div", {
+        key: f.persona,
+        className: "card",
+        style: { flex: "1 1 210px", minWidth: 190, margin: 0, padding: "10px 12px", borderLeft: "3px solid " + color },
+        title: detalle ? "Por divisa: " + detalle : "Sin saldo"
+      }, /*#__PURE__*/React.createElement("div", {
+        style: { fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+      }, f.persona), /*#__PURE__*/React.createElement("div", {
+        style: { fontFamily: "var(--mono)", fontSize: 17, fontWeight: 700, color }
+      }, fmtNum(Math.abs(Math.round(f.ars))), " ARS"), /*#__PURE__*/React.createElement("div", {
+        style: { fontSize: 10.5, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".04em" }
+      }, enContra ? "sin rendir" : aFavor ? "a favor de la persona" : "sin saldo"), detalle && /*#__PURE__*/React.createElement("div", {
+        style: { fontSize: 10.5, color: "var(--text3)", marginTop: 2, fontFamily: "var(--mono)" }
+      }, detalle));
+    }));
+  })(), loading ? /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 32
