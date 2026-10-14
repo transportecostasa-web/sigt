@@ -1761,7 +1761,10 @@ function DataTable({
   // Orden de arranque: { key, dir }. La regla general del sistema es mostrar
   // primero lo mas reciente, asi que casi todas las tablas pasan su columna de
   // fecha con dir "desc". La key puede ser un campo que no se muestre.
-  ordenInicial = null
+  ordenInicial = null,
+  // Campo que desempata cuando dos filas comparten la fecha: el momento de
+  // carga. Si la tabla lo guarda con otro nombre, se pasa por prop.
+  desempate = "createdAt"
 }) {
   const [sortKey, setSortKey] = useState(ordenInicial ? ordenInicial.key : null);
   const [sortDir, setSortDir] = useState(ordenInicial ? (ordenInicial.dir || "desc") : "asc");
@@ -1806,7 +1809,11 @@ function DataTable({
       // y el A->Z / Z->A no movia nada.
       rows.sort((a, b) => {
         const cmp = compararValores(a[sk] ?? "", b[sk] ?? "");
-        return sortDir === "asc" ? cmp : -cmp;
+        if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+        // Misma fecha: decide el momento en que se cargó el registro
+        if (!desempate || sk === desempate) return 0;
+        const t = compararValores(a[desempate] ?? "", b[desempate] ?? "");
+        return sortDir === "asc" ? t : -t;
       });
     }
     return rows;
@@ -3625,7 +3632,9 @@ function Module1({
       shown = [...shown].sort((a, b) => (((diasDeViaje(a) ?? -1) - (diasDeViaje(b) ?? -1)) || 0) * dir);
     } else {
       const col = M1COLS.find(cl => cl.key === sortCol);
-      if (col) shown = [...shown].sort((a, b) => compararValores(col.get(a), col.get(b)) * dir);
+      // Empate (misma fecha, por ejemplo): decide el momento de carga
+      if (col) shown = [...shown].sort((a, b) =>
+        (compararValores(col.get(a), col.get(b)) || compararValores(a.createdAt || "", b.createdAt || "")) * dir);
     }
   }
   return /*#__PURE__*/React.createElement("div", {
@@ -7768,6 +7777,7 @@ function Module5({
       // Fecha de referencia para ordenar (no se muestra): la de la factura al
       // cliente y, si todavia no esta, la del primer tramo del viaje.
       _fecha: toInputDate(fac?.fechaFcCliente) || toInputDate((t.segments || [])[0]?.fechaInicio) || toInputDate(t.finalizedAt) || "",
+      _ts: fac?.createdAt || t.finalizedAt || t.createdAt || "",
       _cliente: t.cliente || "",
       _carga: t.carga || "",
       _reserva: t.reserva || "",
@@ -8163,7 +8173,8 @@ function Module5({
     searchPlaceholder: "Buscar por viaje, cliente, carga...",
     emptyText: "No hay viajes finalizados.",
     exportFilename: "facturacion",
-    ordenInicial: { key: "_fecha", dir: "desc" }
+    ordenInicial: { key: "_fecha", dir: "desc" },
+    desempate: "_ts"
   }));
 }
 
@@ -8220,7 +8231,8 @@ function FacturacionHistorial({
     _fcFletero: (r.factura?.fleteros || [])[0]?.fcFletero || "—",
     _fcCliente: r.factura?.fcCliente || "—",
     _fechaCobro: r.factura?.fechaCobro || "",
-    _fecha: toInputDate(r.factura?.fechaCobro) || toInputDate(r.factura?.fechaFcCliente) || ""
+    _fecha: toInputDate(r.factura?.fechaCobro) || toInputDate(r.factura?.fechaFcCliente) || "",
+    _ts: r.factura?.updatedAt || r.factura?.createdAt || ""
   }));
   return /*#__PURE__*/React.createElement("div", {
     className: "module-container"
@@ -8239,7 +8251,8 @@ function FacturacionHistorial({
     searchPlaceholder: "Buscar historial...",
     emptyText: "Sin historial.",
     exportFilename: "historial_facturacion",
-    ordenInicial: { key: "_fecha", dir: "desc" }
+    ordenInicial: { key: "_fecha", dir: "desc" },
+    desempate: "_ts"
   }));
 }
 
