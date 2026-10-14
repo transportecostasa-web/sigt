@@ -4957,7 +4957,10 @@ function CajaDetalle({
     const rec = { ARS: 0, CLP: 0, USD: 0 };
     (movimientos || []).forEach(m => {
       if ((m.chofer || "") !== persona || !antes(m.fecha)) return;
-      CURRENCIES.forEach(c => { rec[c] += Number(m[c] || 0); });
+      // Las filas de Caja vienen crudas (monto + moneda). Si alguna vez llegan
+      // agrupadas (ARS/CLP/USD en columnas), tambien se contemplan.
+      if (m.monto !== undefined && m.moneda) rec[m.moneda] = (rec[m.moneda] || 0) + Number(m.monto || 0);
+      else CURRENCIES.forEach(c => { rec[c] += Number(m[c] || 0); });
     });
     const ent = sumaPorDivisa((entregas || []).filter(e => (e.responsable || "") === persona && antes(e.fecha)), "monto", "moneda");
     const gas = sumaPorDivisa((gastos || []).filter(g => (g.responsablePago || "") === persona && antes(g.fechaGasto)), "monto", "divisa");
