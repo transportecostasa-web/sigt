@@ -1564,22 +1564,33 @@ const DateInput = React.memo(function DateInput({
   const [display, setDisplay] = useState(() => value ? fmtDate(value) : "");
   const [error, setError] = useState("");
   const inputRef = useRef(null);
-  const nativeRef = useRef(null);
-  // El <input type="date"> nativo es pesado de instanciar; se monta sólo al
-  // pedir el calendario (evita renderizar decenas de pickers a la vez).
-  const [showNative, setShowNative] = useState(false);
-  // Abre el calendario del <input type="date"> oculto
+  const botonRef = useRef(null);
+  // Calendario propio. El <input type="date"> nativo abria el calendario en la
+  // esquina superior izquierda de la pantalla (y se cerraba al cambiar de mes),
+  // asi que se arma aca y se posiciona al lado del boton.
+  const [calAbierto, setCalAbierto] = useState(false);
+  const [calPos, setCalPos] = useState(null);
+  const [mesVista, setMesVista] = useState(null); // {a, m} mes que se esta mirando
   function abrirPicker() {
-    const n = nativeRef.current;
-    if (!n) return;
-    try {
-      if (n.showPicker) n.showPicker();
-      else n.focus();
-    } catch (e) { n.focus(); }
+    const b = botonRef.current;
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    const ancho = 268, alto = 320;
+    const x = Math.max(8, Math.min(r.right - ancho, window.innerWidth - ancho - 8));
+    // Debajo del botón si entra; si no, arriba; y si tampoco entra, pegado al
+    // borde de la ventana (nunca fuera de la pantalla).
+    const abajo = window.innerHeight - r.bottom - 8;
+    const arriba = r.top - 8;
+    let top;
+    if (abajo >= alto) top = r.bottom + 4;
+    else if (arriba >= alto) top = r.top - alto - 4;
+    else top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - alto - 8));
+    const pos = { x, top };
+    const base = parseDate(value) || new Date();
+    setMesVista({ a: base.getFullYear(), m: base.getMonth() });
+    setCalPos(pos);
+    setCalAbierto(true);
   }
-  useEffect(() => {
-    if (showNative) abrirPicker();
-  }, [showNative]);
 
   // Sincronizar cuando el valor externo cambia (ej: al resetear el formulario)
   useEffect(() => {
@@ -1646,18 +1657,6 @@ const DateInput = React.memo(function DateInput({
     setDisplay(fmtDate(iso));
   }
 
-  // El picker nativo llama onChange con "YYYY-MM-DD" directamente
-  function handleNativePick(e) {
-    const iso = e.target.value; // "YYYY-MM-DD"
-    if (!iso) {
-      setDisplay("");
-      onChange("");
-      return;
-    }
-    setDisplay(fmtDate(iso));
-    setError("");
-    onChange(iso);
-  }
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative"
@@ -1693,9 +1692,8 @@ const DateInput = React.memo(function DateInput({
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     disabled: disabled,
-    // Si el input nativo ya esta montado se le pide el calendario directo: el
-    // efecto solo corre cuando showNative cambia de false a true.
-    onClick: () => { if (disabled) return; if (nativeRef.current) abrirPicker(); else setShowNative(true); },
+    ref: botonRef,
+    onClick: () => { if (disabled) return; if (calAbierto) setCalAbierto(false); else abrirPicker(); },
     title: "Abrir calendario",
     style: {
       height: "100%",
@@ -1708,26 +1706,93 @@ const DateInput = React.memo(function DateInput({
       cursor: disabled ? "not-allowed" : "pointer",
       padding: 0
     }
-  }, "📅"), showNative && /*#__PURE__*/React.createElement("input", {
-    ref: nativeRef,
-    type: "date",
-    value: value || "",
-    onChange: handleNativePick,
-    // OJO: nada de cerrar el picker en onBlur. Al tocar las flechas de mes o el
-    // selector de año, el input pierde el foco y el calendario se cerraba solo.
-    // El input queda montado (invisible) y se reusa en la proxima apertura.
-    disabled: disabled,
-    style: {
-      position: "absolute",
-      inset: 0,
-      opacity: 0,
-      width: "100%",
-      height: "100%",
-      zIndex: 2,
-      pointerEvents: "none"
-    },
-    tabIndex: -1
-  }))), error && /*#__PURE__*/React.createElement("div", {
+  }, "📅"), calAbierto && mesVista && /*#__PURE__*/React.createElement(React.Fragment, null,
+    /*#__PURE__*/React.createElement("div", {
+      onClick: () => setCalAbierto(false),
+      style: { position: "fixed", inset: 0, zIndex: 998 }
+    }),
+    /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "fixed", left: calPos.x, top: calPos.top, bottom: calPos.bottom,
+        zIndex: 999, width: 268, background: "var(--bg2)", border: "1px solid var(--border2)",
+        borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", padding: 10
+      },
+      onClick: ev => ev.stopPropagation()
+    }, (() => {
+      const MESES_CAL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      const { a, m } = mesVista;
+      const mover = (da, dm) => setMesVista(p => {
+        const d = new Date(p.a + da, p.m + dm, 1);
+        return { a: d.getFullYear(), m: d.getMonth() };
+      });
+      const navBtn = (txt, onClick, title) => /*#__PURE__*/React.createElement("button", {
+        type: "button", onClick, title,
+        style: { background: "none", border: "1px solid var(--border2)", borderRadius: 6, color: "var(--text2)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "4px 7px" }
+      }, txt);
+      // Lunes a domingo
+      const primero = new Date(a, m, 1);
+      const offset = (primero.getDay() + 6) % 7;
+      const diasMes = new Date(a, m + 1, 0).getDate();
+      const hoyISO = toInputDate(new Date());
+      const celdas = [];
+      for (let i = 0; i < offset; i++) celdas.push(null);
+      for (let d = 1; d <= diasMes; d++) celdas.push(d);
+      const iso = d => `${a}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const elegir = d => {
+        const v = iso(d);
+        setDisplay(fmtDate(v));
+        setError("");
+        onChange(v);
+        setCalAbierto(false);
+      };
+      return /*#__PURE__*/React.createElement(React.Fragment, null,
+        /*#__PURE__*/React.createElement("div", {
+          style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginBottom: 8 }
+        },
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 3 } },
+            navBtn("«", () => mover(-1, 0), "Año anterior"),
+            navBtn("‹", () => mover(0, -1), "Mes anterior")),
+          /*#__PURE__*/React.createElement("div", {
+            style: { fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "capitalize" }
+          }, MESES_CAL[m], " ", a),
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 3 } },
+            navBtn("›", () => mover(0, 1), "Mes siguiente"),
+            navBtn("»", () => mover(1, 0), "Año siguiente"))),
+        /*#__PURE__*/React.createElement("div", {
+          style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }
+        }, ["L", "M", "M", "J", "V", "S", "D"].map((d, i) => /*#__PURE__*/React.createElement("div", {
+          key: i,
+          style: { fontSize: 10, textAlign: "center", color: "var(--text3)", fontWeight: 600 }
+        }, d))),
+        /*#__PURE__*/React.createElement("div", {
+          style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }
+        }, celdas.map((d, i) => d === null
+          ? /*#__PURE__*/React.createElement("div", { key: "v" + i })
+          : /*#__PURE__*/React.createElement("button", {
+              key: d,
+              type: "button",
+              onClick: () => elegir(d),
+              style: {
+                background: iso(d) === value ? "var(--accent)" : iso(d) === hoyISO ? "var(--bg4)" : "none",
+                color: iso(d) === value ? "#fff" : "var(--text)",
+                border: "1px solid " + (iso(d) === hoyISO && iso(d) !== value ? "var(--border2)" : "transparent"),
+                borderRadius: 6, cursor: "pointer", fontSize: 12, padding: "5px 0"
+              }
+            }, d))),
+        /*#__PURE__*/React.createElement("div", {
+          style: { display: "flex", justifyContent: "space-between", marginTop: 8 }
+        },
+          /*#__PURE__*/React.createElement("button", {
+            type: "button",
+            className: "btn btn-secondary btn-sm",
+            onClick: () => { const h = new Date(); setMesVista({ a: h.getFullYear(), m: h.getMonth() }); }
+          }, "Hoy"),
+          /*#__PURE__*/React.createElement("button", {
+            type: "button",
+            className: "btn btn-secondary btn-sm",
+            onClick: () => { setDisplay(""); onChange(""); setCalAbierto(false); }
+          }, "Borrar")));
+    })())))), error && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
       color: "var(--danger)",
@@ -10076,7 +10141,7 @@ function GastoGeneralForm({
   const [tipoGasto, setTipoGasto] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [monto, setMonto] = useState("");
-  const [divisa, setDivisa] = useState("USD");
+  const [divisa, setDivisa] = useState("ARS"); // casi todos los gastos son en pesos
   const [patente, setPatente] = useState("");
   const [chofer, setChofer] = useState("");
   const [responsablePago, setResponsablePago] = useState("");
@@ -10123,7 +10188,9 @@ function GastoGeneralForm({
   }, "← Volver")), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
-      maxWidth: 640
+      // Mas ancho para que los campos de cada fila queden alineados y no se
+      // apilen: fecha+tipo, monto+divisa, patente+chofer+responsable.
+      maxWidth: 980
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-body"
