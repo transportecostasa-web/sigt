@@ -432,6 +432,21 @@ function patenteCanonica(dropdowns, patente) {
 // escribe el nombre a mano en vez de tomarlo de la lista.
 const esOtros = v => /^otros?$/i.test(String(v || "").trim());
 
+// "YPF MASETTO - MENDOZA, ARGENTINA" -> { estacion, lugar, pais, moneda }
+// La estacion y el lugar se guardan separados para que una corrección de tipeo
+// en el catálogo no parta el historial en dos.
+function partirEstacion(texto) {
+  const t = String(texto || "").trim();
+  if (!t) return { estacion: "", lugar: "", pais: "", moneda: "" };
+  const corte = t.lastIndexOf(" - ");
+  const estacion = corte > 0 ? t.slice(0, corte) : t;
+  const lugar = corte > 0 ? t.slice(corte + 3) : "";
+  const L = (lugar || t).toUpperCase();
+  const pais = L.includes("CHILE") ? "CHILE" : L.includes("ARGENTINA") ? "ARGENTINA" : "";
+  return { estacion, lugar, pais, moneda: pais === "CHILE" ? "CLP" : pais === "ARGENTINA" ? "ARS" : "" };
+}
+const etiquetaEstacion = c => [c.estacion, c.lugar].filter(Boolean).join(" - ");
+
 function esTramoFletero(dropdowns, seg) {
   const d = duenoTractor(dropdowns, seg && seg.tractor);
   if (!d) return false;
@@ -6053,15 +6068,17 @@ function Module3({
   const [reabriendo, setReabriendo] = useState(false);
   const [liquidacionesRRHH, setLiquidacionesRRHH] = useState([]); // para "Estado liquidación"
   const [facturas, setFacturas] = useState([]); // el control de montos va contra la factura al cliente
+  const [combustible, setCombustible] = useState([]); // hoja COMBUSTIBLE, una fila por carga
 
   useEffect(() => {
     // Usa caché para las colecciones — sin llamadas duplicadas al servidor
-    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh"), cachedGet("getFacturacion", "facturacion")]).then(([t, e, r, l, f]) => {
+    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh"), cachedGet("getFacturacion", "facturacion"), cachedGet("getCombustible", "combustible")]).then(([t, e, r, l, f, cb]) => {
       if (t.ok) setTrips(t.data);
       if (e.ok) setEntregas(e.data);
       if (r.ok) setRendiciones(r.data);
       if (l && l.ok) setLiquidacionesRRHH(l.data || []);
       if (f && f.ok) setFacturas(f.data || []);
+      if (cb && cb.ok) setCombustible(cb.data || []);
       setLoading(false);
     });
   }, []);
@@ -6239,6 +6256,7 @@ function Module3({
       segs: formSegs,
       disponibles,
       facturas,
+      combustible,
       driver: driverForm,
       entregas: entregas,
       dropdowns: dropdowns,
@@ -6518,6 +6536,7 @@ function RendicionForm({
   segs: segsIniciales,
   disponibles = [],
   facturas = [],
+  combustible = [],
   driver,
   entregas,
   dropdowns,
@@ -6572,7 +6591,9 @@ function RendicionForm({
   // Se inicializa con las categorías del dropdown (o fallback) en cero.
   const [expenses, setExpenses] = useState(() => {
     if (isEdit && Array.isArray(rendicion.expenses) && rendicion.expenses.length) return rendicion.expenses;
-    const cats = dropdowns?.CATEGORIA_GASTOS || ["GAS-OIL", "PEAJES Y DESINFECCIÓN", "ADUANA", "LASTRE", "GOMERÍA", "TELÉFONO", "LAVADERO", "COIMAS", "ESTADÍA", "REVISIÓN TÉCNICA", "PARQUEADERO", "OTRO"];
+    // GAS-OIL ya no es una categoría de gasto: el gasoil se carga en Combustible
+    const cats = (dropdowns?.CATEGORIA_GASTOS || ["GAS-OIL", "PEAJES Y DESINFECCIÓN", "ADUANA", "LASTRE", "GOMERÍA", "TELÉFONO", "LAVADERO", "COIMAS", "ESTADÍA", "REVISIÓN TÉCNICA", "PARQUEADERO", "OTRO"])
+      .filter(c => !/GAS[\- ]?OIL/i.test(String(c)));
     return cats.map(cat => ({
       cat,
       ARS: "",
@@ -6580,6 +6601,69 @@ function RendicionForm({
       USD: ""
     }));
   });
+  // ── CARGAS DE COMBUSTIBLE ──
+  // Viven en la hoja COMBUSTIBLE (una fila por carga). Las de esta rendición se
+  // toman de ahí; si no hay ninguna, se leen las viejas de la rendición (columna
+  // "combustible"), que se conserva intacta como respaldo.
+  const [cargas, setCargas] = useState(() => {
+    const propias = (combustible || []).filter(c => String(c.rendicionId || "") === String(rendicion && rendicion.id || ""));
+    if (propias.length) return propias.map(c => ({ ...c }));
+    const viejas = isEdit && Array.isArray(rendicion.fuelRows) ? rendicion.fuelRows : [];
+    return viejas.filter(f => f.fecha || f.litros || f.total || f.proveedor).map(f => {
+      const p = partirEstacion(f.proveedor);
+      const litros = Number(f.litros) || "";
+      const importe = Number(f.total) > 1 ? Number(f.total) : "";
+      return {
+        id: "", fecha: toInputDate(f.fecha), ...p,
+        litros, importe, precioLitro: importe && litros ? Math.round(importe / litros * 100) / 100 : "",
+        pagadoCon: "", observaciones: ""
+      };
+    });
+  });
+  const estacionesCat = (dropdowns && dropdowns.ESTACIONES_COMBUSTIBLE) || [];
+  function setCarga(i, campo, valor) {
+    setCargas(p => p.map((c, j) => {
+      if (j !== i) return c;
+      const n = { ...c, [campo]: valor };
+      if (campo === "importe" || campo === "precioLitro") n._ult = campo;
+      // Litros + precio -> importe. Importe + litros -> precio. Nunca se pisa
+      // el dato que acaba de escribir el usuario.
+      const litros = moneyNum(n.litros), precio = moneyNum(n.precioLitro), importe = moneyNum(n.importe);
+      if (campo === "importe" && litros > 0 && importe > 0) n.precioLitro = Math.round(importe / litros * 100) / 100;
+      else if (campo === "precioLitro" && litros > 0 && precio > 0) n.importe = Math.round(precio * litros * 100) / 100;
+      else if (campo === "litros" && litros > 0) {
+        // Se recalcula el campo que el usuario NO escribio: si cargo el total del
+        // ticket, cambia el precio; si escribio el precio, cambia el total.
+        if (n._ult === "precioLitro" && precio > 0) n.importe = Math.round(precio * litros * 100) / 100;
+        else if (importe > 0) n.precioLitro = Math.round(importe / litros * 100) / 100;
+        else if (precio > 0) n.importe = Math.round(precio * litros * 100) / 100;
+      }
+      return n;
+    }));
+  }
+  // Precio de referencia por moneda: la mediana de lo ya cargado. Sirve para
+  // avisar cuando un importe quedó mil veces más grande (decimales pegados).
+  const precioRef = useMemo(() => {
+    const por = { ARS: [], CLP: [], USD: [] };
+    (combustible || []).forEach(c => {
+      const p = Number(c.precioLitro);
+      if (p > 0 && por[c.moneda]) por[c.moneda].push(p);
+    });
+    const med = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+    return { ARS: med(por.ARS), CLP: med(por.CLP), USD: med(por.USD) };
+  }, [combustible]);
+  const precioSospechoso = c => {
+    const p = moneyNum(c.precioLitro), ref = precioRef[c.moneda] || 0;
+    if (!p || !ref) return "";
+    if (p > ref * 3) return "El precio por litro da " + fmtNum(p) + " " + c.moneda + ", muy por encima de lo habitual (" + fmtNum(ref) + "). ¿Se pegaron los decimales del importe?";
+    if (p < ref / 3) return "El precio por litro da " + fmtNum(p) + " " + c.moneda + ", muy por debajo de lo habitual (" + fmtNum(ref) + "). Revisá litros e importe.";
+    return "";
+  };
+  const cargasConAviso = cargas.filter(c => precioSospechoso(c));
+  const cargasSinImporte = cargas.filter(c => !moneyNum(c.importe));
+  const cargasIncompletas = cargas.filter(c => !c.fecha || !c.estacion || !moneyNum(c.litros));
+
+  // Se conservan tal cual para no pisar la columna vieja de la rendición
   const [fuelRows, setFuelRows] = useState(() => isEdit && Array.isArray(rendicion.fuelRows) && rendicion.fuelRows.length ? rendicion.fuelRows : [{
     fecha: "",
     proveedor: "",
@@ -6775,6 +6859,11 @@ function RendicionForm({
   const viajesSinFactura = Object.values(controlViajes).filter(v => v.sinFactura);
 
   // Gastos — sumar por divisa a través de todas las categorías
+  const totalLitros = cargas.reduce((s, c) => s + moneyNum(c.litros), 0);
+  // El gasoil pagado EN EFECTIVO lo puso el chofer: es un gasto suyo y sale de
+  // acá, no de la categoría GAS-OIL (que se eliminó para no contarlo dos veces).
+  // El de cuenta corriente es costo de la empresa y no toca su saldo.
+  const combEfectivoARS = cargas.reduce((s, c) => s + (c.pagadoCon === "EFECTIVO" ? toARS(moneyNum(c.importe), c.moneda || "ARS") : 0), 0);
   const expTotal = {
     ARS: 0,
     CLP: 0,
@@ -6785,10 +6874,9 @@ function RendicionForm({
     expTotal.CLP += Number(e.CLP || 0);
     expTotal.USD += Number(e.USD || 0);
   });
-  const expTotalARS = expTotal.ARS + toARS(expTotal.CLP, "CLP") + toARS(expTotal.USD, "USD");
+  const expTotalARS = expTotal.ARS + toARS(expTotal.CLP, "CLP") + toARS(expTotal.USD, "USD") + combEfectivoARS;
 
   // Combustible
-  const totalLitros = fuelRows.reduce((s, r) => s + Number(r.litros || 0), 0);
   const totalKmPrev = segs.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0);
   // Km recorridos = odometro final - inicial. Si todavia no estan cargados, se
   // usan los km reales que tenga guardada la rendicion (dato viejo).
@@ -6867,7 +6955,12 @@ function RendicionForm({
       tcManual: { USD: moneyNum(tcEntrega.USD) > 0, CLP: moneyNum(tcEntrega.CLP) > 0 },
       tcUsado: { USD: tcEntUnitario("USD"), CLP: tcEntUnitario("CLP") * 100 },
       gastos: expenses,
-      combustible: fuelRows,
+      combustible: cargas.map(c => ({
+        fecha: c.fecha, estacion: c.estacion, lugar: c.lugar, pais: c.pais,
+        litros: moneyNum(c.litros), precioLitro: moneyNum(c.precioLitro),
+        importe: moneyNum(c.importe), moneda: c.moneda, pagadoCon: c.pagadoCon || ""
+      })),
+      combustibleEfectivoARS: combEfectivoARS,
       odometro: { inicial: odoIniN || "", final: odoFinN || "" },
       totales: {
         totalSegARS, porcChofer, anticipoSueldo, saldoChofer,
@@ -6876,6 +6969,26 @@ function RendicionForm({
         desvioPorc: desvioPorc === null ? "" : Number(desvioPorc.toFixed(1))
       }
     };
+    // Las cargas van a la hoja COMBUSTIBLE, su propia base. La columna vieja de
+    // la rendición no se toca: se sigue mandando tal como vino.
+    const rc = await gasCall("saveCombustible", {
+      rendicionId: rendId,
+      chofer: driver,
+      tractor: (segs[0] || {}).tractor || "",
+      cargas: cargas.map(c => ({
+        id: c.id || "", fecha: c.fecha, estacion: c.estacion, lugar: c.lugar, pais: c.pais,
+        litros: moneyNum(c.litros), precioLitro: moneyNum(c.precioLitro), importe: moneyNum(c.importe),
+        moneda: c.moneda, pagadoCon: c.pagadoCon || "", observaciones: c.observaciones || "",
+        chofer: driver, tractor: (segs[0] || {}).tractor || ""
+      }))
+    });
+    if (!rc.ok) {
+      setSaving(false);
+      alert("No se pudieron guardar las cargas de combustible: " + (rc.error || "error desconocido") + "\n\nNo se guardó la rendición.");
+      return;
+    }
+    invalidateCache("combustible");
+
     // expenses se guarda tal cual: [{ cat, ARS, CLP, USD }, ...]
     const respuesta = await onSave({
       cierre,
@@ -7321,11 +7434,9 @@ function RendicionForm({
     className: "card-title"
   }, "⛽ Combustible"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
-    onClick: () => setFuelRows(p => [...p, {
-      fecha: "",
-      proveedor: "",
-      litros: "",
-      total: ""
+    onClick: () => setCargas(p => [...p, {
+      id: "", fecha: "", estacion: "", lugar: "", pais: "", moneda: "",
+      litros: "", precioLitro: "", importe: "", pagadoCon: "", observaciones: ""
     }])
   }, "+ Carga")), /*#__PURE__*/React.createElement("div", {
     className: "card-body"
@@ -7343,92 +7454,76 @@ function RendicionForm({
       fontFamily: "var(--mono)",
       fontSize: 13
     }
-  }, fmtKm(totalKmPrev))), fuelRows.map((f, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "form-row",
-    style: {
-      alignItems: "flex-end",
-      marginBottom: 8
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Fecha"), /*#__PURE__*/React.createElement(DateInput, {
-    value: f.fecha,
-    onChange: v => {
-      const n = [...fuelRows];
-      n[i] = {
-        ...n[i],
-        fecha: v
-      };
-      setFuelRows(n);
-    },
-    required: true
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
-    style: {
-      flex: 2
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Proveedor"), /*#__PURE__*/React.createElement(SearchableSelect, {
-    options: (dropdowns?.ESTACIONES_COMBUSTIBLE || []).length > 0 ? dropdowns.ESTACIONES_COMBUSTIBLE : ["YPF", "SHELL", "AXION", "PUMA", "OTRO"],
-    value: f.proveedor,
-    onChange: v => {
-      const n = [...fuelRows];
-      n[i] = {
-        ...n[i],
-        proveedor: v
-      };
-      setFuelRows(n);
-    },
-    placeholder: "Buscar estación..."
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Litros"), /*#__PURE__*/React.createElement("input", {
-    className: "form-input",
-    type: "number",
-    value: f.litros,
-    onChange: e => {
-      const n = [...fuelRows];
-      n[i] = {
-        ...n[i],
-        litros: e.target.value
-      };
-      setFuelRows(n);
-    }
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group"
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "Total factura"), /*#__PURE__*/React.createElement(MoneyInput, {
-    value: f.total,
-    onChange: v => {
-      const n = [...fuelRows];
-      n[i] = {
-        ...n[i],
-        total: v
-      };
-      setFuelRows(n);
-    },
-    placeholder: "0"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "form-group",
-    style: {
-      maxWidth: 100
-    }
-  }, /*#__PURE__*/React.createElement("label", {
-    className: "form-label"
-  }, "$/L"), /*#__PURE__*/React.createElement("div", {
-    className: "field-readonly"
-  }, f.litros && f.total ? (Number(f.total) / Number(f.litros)).toFixed(2) : "—")),
-  /*#__PURE__*/React.createElement("button", {
-    className: "btn btn-danger btn-sm btn-icon",
-    onClick: () => setFuelRows(p => p.filter((_, idx) => idx !== i))
-  }, "✕"))), /*#__PURE__*/React.createElement("div", {
+  }, fmtKm(totalKmPrev))), cargas.map((c, i) => {
+    const aviso = precioSospechoso(c);
+    const moneda = c.moneda || "";
+    return /*#__PURE__*/React.createElement("div", {
+      key: c.id || i,
+      style: { borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 10 }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "form-row",
+      style: { alignItems: "flex-end", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Fecha"),
+      /*#__PURE__*/React.createElement(DateInput, { value: c.fecha, onChange: v => setCarga(i, "fecha", v) })),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "2 1 220px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Estación"),
+      /*#__PURE__*/React.createElement(SearchableSelect, {
+        options: estacionesCat,
+        value: etiquetaEstacion(c),
+        onChange: v => setCargas(p => p.map((x, j) => j === i ? { ...x, ...partirEstacion(v) } : x)),
+        placeholder: "Buscar estación..."
+      })),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "0 0 120px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Litros"),
+      /*#__PURE__*/React.createElement(MoneyInput, { value: c.litros, onChange: v => setCarga(i, "litros", v), placeholder: "0" })),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "0 0 130px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label", title: "Se calcula solo con los litros y el importe" }, "Precio por litro"),
+      /*#__PURE__*/React.createElement(MoneyInput, { value: c.precioLitro, onChange: v => setCarga(i, "precioLitro", v), placeholder: "0" })),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Importe ", moneda && /*#__PURE__*/React.createElement("span", {
+      style: { color: "var(--text3)", fontWeight: 400 }
+    }, moneda)),
+      /*#__PURE__*/React.createElement(MoneyInput, { value: c.importe, onChange: v => setCarga(i, "importe", v), placeholder: "0" })),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "0 0 210px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Pagado con"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 6 } },
+        [["EFECTIVO", "Efectivo del chofer"], ["CUENTA CORRIENTE", "Cuenta corriente"]].map(([v, etq]) =>
+          /*#__PURE__*/React.createElement("button", {
+            key: v,
+            type: "button",
+            className: "btn btn-sm " + (c.pagadoCon === v ? "btn-primary" : "btn-secondary"),
+            style: { flex: 1, justifyContent: "center", fontSize: 11 },
+            title: v === "EFECTIVO" ? "Lo puso el chofer: se descuenta de su rendición" : "Lo paga la empresa: no toca el saldo del chofer",
+            onClick: () => setCarga(i, "pagadoCon", c.pagadoCon === v ? "" : v)
+          }, etq)))),
+    /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-danger btn-sm btn-icon",
+      onClick: () => setCargas(p => p.filter((_, idx) => idx !== i))
+    }, "✕")),
+    aviso && /*#__PURE__*/React.createElement("div", {
+      className: "alert alert-warning",
+      style: { marginTop: 6, marginBottom: 0, fontSize: 12 }
+    }, "⚠️ ", aviso),
+    !c.pagadoCon && /*#__PURE__*/React.createElement("div", {
+      style: { marginTop: 4, fontSize: 11, color: "var(--text3)" }
+    }, "Falta indicar si lo pagó el chofer o va a cuenta corriente."));
+  }), cargas.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 12, color: "var(--text3)", fontStyle: "italic", marginBottom: 8 }
+  }, "Sin cargas. Usá \u201c+ Carga\u201d para agregar la primera."),
+  (cargasSinImporte.length > 0 || cargasIncompletas.length > 0) && /*#__PURE__*/React.createElement("div", {
+    className: "alert alert-info",
+    style: { fontSize: 12, marginTop: 4 }
+  }, cargasIncompletas.length > 0
+      ? cargasIncompletas.length + " carga(s) sin fecha, estación o litros."
+      : cargasSinImporte.length + " carga(s) sin importe: se puede guardar en stand by y completarlas con la cuenta corriente."),
+  /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 24,
