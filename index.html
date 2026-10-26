@@ -6072,13 +6072,14 @@ function Module3({
 
   useEffect(() => {
     // Usa caché para las colecciones — sin llamadas duplicadas al servidor
-    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh"), cachedGet("getFacturacion", "facturacion"), cachedGet("getCombustible", "combustible")]).then(([t, e, r, l, f, cb]) => {
+    Promise.all([cachedGet("getTrips", "trips"), cachedGet("getEntregas", "entregas"), cachedGet("getRendiciones", "rendiciones"), cachedGet("getRRHH", "rrhh"), cachedGet("getFacturacion", "facturacion"), cachedGet("getCombustible", "combustible"), cachedGet("getFleterosLiq", "fleterosLiq")]).then(([t, e, r, l, f, cb, fl]) => {
       if (t.ok) setTrips(t.data);
       if (e.ok) setEntregas(e.data);
       if (r.ok) setRendiciones(r.data);
       if (l && l.ok) setLiquidacionesRRHH(l.data || []);
       if (f && f.ok) setFacturas(f.data || []);
       if (cb && cb.ok) setCombustible(cb.data || []);
+      if (fl && fl.ok) setFleterosLiq(fl.data || []);
       setLoading(false);
     });
   }, []);
@@ -6256,6 +6257,7 @@ function Module3({
       segs: formSegs,
       disponibles,
       facturas,
+      fleterosLiq,
       combustible,
       driver: driverForm,
       entregas: entregas,
@@ -6536,6 +6538,7 @@ function RendicionForm({
   segs: segsIniciales,
   disponibles = [],
   facturas = [],
+  fleterosLiq = [],
   combustible = [],
   driver,
   entregas,
@@ -6846,6 +6849,15 @@ function RendicionForm({
       if (!v || v.segIds.includes(sg.segId)) return; // el mismo tramo no cuenta dos veces
       const sm = segM[sg.segId];
       if (sm && sm.monto) v.yaAsignado += aDivisa(sm.monto, sm.moneda || "USD", v.divisa);
+    });
+  });
+  // Lo ya pagado a un fletero por tramos del mismo viaje también ocupa lugar
+  // dentro de lo facturado al cliente.
+  (fleterosLiq || []).forEach(l => {
+    (l.tramos || []).forEach(t => {
+      const v = t.tripId ? controlViajes[t.tripId] : null;
+      if (!v || v.segIds.includes(t.segId)) return;
+      if (t.monto) v.yaAsignado += aDivisa(t.monto, t.divisa || "USD", v.divisa);
     });
   });
   Object.values(controlViajes).forEach(v => {
@@ -7192,7 +7204,7 @@ function RendicionForm({
         v.factura && v.factura.numeros.length ? " (FC " + v.factura.numeros.join(", ") + ")" : ""),
       h("div", { style: { color: "var(--text3)" } }, "Cotizado inicial: ", cotTxt, " \u2014 solo informativo"),
       h("div", null, v.segIds.length === 1 ? "Tramo " : "Tramos ", v.segIds.join(" + "), " en esta rendici\u00f3n: ", fuerte(v.estaRend)),
-      v.yaAsignado > 0 && h("div", null, "Ya asignado en otras rendiciones: ", fuerte(v.yaAsignado)),
+      v.yaAsignado > 0 && h("div", null, "Ya asignado en otras rendiciones y en liquidaciones de fleteros: ", fuerte(v.yaAsignado)),
       h("div", { style: { marginTop: 4, color: v.excede ? "var(--danger)" : "var(--text2)" } },
         "Total acumulado: ", fuerte(v.acumulado),
         v.excede ? " \u2014 excede lo facturado en " + f(v.acumulado - v.total) : " \u2014 disponible: " + f(v.total - v.acumulado)));
@@ -10433,6 +10445,8 @@ function Module8({
   const [descuentos, setDescuentos] = useState([]); // [{ fecha, tipo, detalle, chofer, semi, monto, divisa }]
   const [entregas, setEntregas] = useState([]);       // plata entregada a los choferes del fletero
   const [gastosGen, setGastosGen] = useState([]);     // gastos generales a nombre de sus patentes
+  const [rendiciones, setRendiciones] = useState([]); // lo que ya se asigno a tramos propios
+  const [facturas, setFacturas] = useState([]);       // factura al cliente: el techo del viaje
   const [incAuto, setIncAuto] = useState({});         // que entregas/gastos se descuentan en esta liquidacion
   // Cotizaciones para liquidar en ARS. Arrancan con el TC del sistema (hojas
   // USD/ARS y CLP/ARS CHOFERES) y se pueden pisar si con este fletero se nego-
@@ -10451,12 +10465,16 @@ function Module8({
       cachedGet("getTrips", "trips"),
       cachedGet("getFleterosLiq", "fleterosLiq"),
       cachedGet("getEntregas", "entregas"),
-      cachedGet("getGastosGenerales", "gastosGenerales")
-    ]).then(([t, l, e, g]) => {
+      cachedGet("getGastosGenerales", "gastosGenerales"),
+      cachedGet("getRendiciones", "rendiciones"),
+      cachedGet("getFacturacion", "facturacion")
+    ]).then(([t, l, e, g, r, f]) => {
       if (t.ok) setTrips(t.data);
       if (l.ok) setLiqs(l.data);
       if (e && e.ok) setEntregas(e.data || []);
       if (g && g.ok) setGastosGen(g.data || []);
+      if (r && r.ok) setRendiciones(r.data || []);
+      if (f && f.ok) setFacturas(f.data || []);
       setLoading(false);
     });
   }, []);
@@ -10481,7 +10499,9 @@ function Module8({
         if (settledIds.has(sg.segId)) return;
         out.push({
           ...sg,
-          tripId: tr.id
+          tripId: tr.id,
+          _carga: tr.carga || "",
+          _cliente: tr.cliente || ""
         });
       });
     });
@@ -10576,6 +10596,71 @@ function Module8({
   const tcDe = div => div === "USD" ? Number(tcUsd || 0) : div === "CLP" ? Number(tcClp || 0) / 100 : 1;
   const aARS = (monto, div) => Number(monto || 0) * tcDe(div);
   // ¿Qué divisas extranjeras están en juego? (para pedir sólo los TC necesarios)
+  // ── Control contra lo facturado al cliente, POR VIAJE ──
+  // Un viaje puede tener un tramo de un fletero y otro de un chofer propio: la
+  // suma de lo que se paga por los tramos (acá y en las rendiciones) no puede
+  // superar lo que se le factura al cliente por ese viaje.
+  const aDivisa = (monto, desde, hacia) => {
+    const n = Number(monto || 0);
+    if (!n) return 0;
+    if (desde === hacia) return n;
+    const enARS = aARS(n, desde);
+    const u = tcDe(hacia);
+    return u ? enARS / u : 0;
+  };
+  const controlViajes = useMemo(() => {
+    const ctrl = {};
+    const segsSel = new Set(selSegs.map(sg => sg.segId));
+    selSegs.forEach(sg => {
+      const id = sg.tripId || "";
+      if (ctrl[id]) return;
+      const fs = (facturas || []).filter(f => String(f.tripId) === String(id) && moneyNum(f.montoFcCliente) > 0);
+      const divisa = fs.length ? (fs[0].divisaCliente || "USD") : "USD";
+      ctrl[id] = {
+        tripId: id,
+        divisa,
+        factura: fs.length ? fs.reduce((a, f) => a + aDivisa(f.montoFcCliente, f.divisaCliente || "USD", divisa), 0) : null,
+        nros: fs.map(f => f.fcCliente).filter(Boolean),
+        carga: sg._carga || "",
+        estaLiq: 0,
+        enRendiciones: 0,
+        enOtrasLiq: 0
+      };
+    });
+    // Lo de esta liquidacion
+    selSegs.forEach(sg => {
+      const v = ctrl[sg.tripId || ""];
+      const d = datos[sg.segId] || {};
+      if (v && Number(d.monto || 0)) v.estaLiq += aDivisa(d.monto, d.divisa || "USD", v.divisa);
+    });
+    // Lo ya asignado a tramos propios en las rendiciones (abiertas y cerradas)
+    (rendiciones || []).forEach(r => {
+      const sm = r.segMonto || {};
+      (r.segments || []).forEach(sg => {
+        const v = sg.tripId ? ctrl[sg.tripId] : null;
+        if (!v || segsSel.has(sg.segId)) return;
+        const m = sm[sg.segId];
+        if (m && m.monto) v.enRendiciones += aDivisa(m.monto, m.moneda || "USD", v.divisa);
+      });
+    });
+    // Lo ya liquidado a otros fleteros del mismo viaje
+    (liqs || []).forEach(l => {
+      (l.tramos || []).forEach(t => {
+        const v = t.tripId ? ctrl[t.tripId] : null;
+        if (!v || segsSel.has(t.segId)) return;
+        if (t.monto) v.enOtrasLiq += aDivisa(t.monto, t.divisa || "USD", v.divisa);
+      });
+    });
+    Object.values(ctrl).forEach(v => {
+      v.acumulado = v.estaLiq + v.enRendiciones + v.enOtrasLiq;
+      v.excede = v.factura !== null && v.acumulado > v.factura + 0.005;
+      v.sinFactura = v.factura === null;
+    });
+    return ctrl;
+  }, [selSegs, datos, rendiciones, liqs, facturas, tcUsd, tcClp]);
+  const viajesExcedidos = Object.values(controlViajes).filter(v => v.excede);
+  const viajesSinFactura = Object.values(controlViajes).filter(v => v.sinFactura);
+
   const divisasEnJuego = useMemo(() => {
     const s = new Set();
     selSegs.forEach(sg => {
@@ -10680,6 +10765,11 @@ function Module8({
     // Cotizaciones obligatorias si hay montos en divisa extranjera
     if (necesitaUsd && !Number(tcUsd)) { alert("Ingresá la cotización del DÓLAR (USD → ARS) para liquidar."); return; }
     if (necesitaClp && !Number(tcClp)) { alert("Ingresá la cotización del PESO CHILENO (ARS por 100 CLP) para liquidar."); return; }
+    if (viajesExcedidos.length) {
+      alert("Los montos superan lo facturado al cliente en: " + viajesExcedidos.map(v => v.tripId).join(", ") +
+        ".\n\nRevisá el control que está debajo de los tramos.");
+      return;
+    }
     setSaving(true);
     const tramosPayload = selSegs.map(sg => {
       const d = datos[sg.segId] || {};
@@ -10846,7 +10936,7 @@ function Module8({
     className: "card-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Ruta"), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Semi / dueño"), /*#__PURE__*/React.createElement("th", null, "Caso"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Comisión"), /*#__PURE__*/React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Ruta"), /*#__PURE__*/React.createElement("th", null, "Carga"), /*#__PURE__*/React.createElement("th", null, "Fecha"), /*#__PURE__*/React.createElement("th", null, "Semi / dueño"), /*#__PURE__*/React.createElement("th", null, "Caso"), /*#__PURE__*/React.createElement("th", null, "Monto"), /*#__PURE__*/React.createElement("th", null, "Comisión"), /*#__PURE__*/React.createElement("th", {
     style: { textAlign: "right" }
   }, "Saldo"), /*#__PURE__*/React.createElement("th", {
     style: { textAlign: "right" }
@@ -10867,6 +10957,10 @@ function Module8({
     }, sg.tripId), /*#__PURE__*/React.createElement("td", null, sg.chofer), /*#__PURE__*/React.createElement("td", {
       style: { fontSize: 12 }
     }, sg.desde, " → ", sg.hasta), /*#__PURE__*/React.createElement("td", {
+      style: { whiteSpace: "normal", minWidth: 110 }
+    }, sg._carga || "—", sg._cliente && /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 10.5, color: "var(--text3)", marginTop: 2 }
+    }, sg._cliente)), /*#__PURE__*/React.createElement("td", {
       style: { fontSize: 12 }
     }, fmtDate(sg.fechaInicio)), /*#__PURE__*/React.createElement("td", {
       style: { fontSize: 11 }
@@ -10914,7 +11008,40 @@ function Module8({
     }, sel && d.monto ? fmtNum(saldoTramo(sg)) + " " + (d.divisa || "USD") : "—"), /*#__PURE__*/React.createElement("td", {
       style: { fontFamily: "var(--mono)", textAlign: "right", fontWeight: 600, color: "var(--text2)" }
     }, sel && d.monto ? (tcDe(d.divisa || "USD") ? fmtNum(aARS(saldoTramo(sg), d.divisa || "USD")) + " ARS" : "TC?") : "—"));
-  })))))), (() => {
+  })))))), selSegs.length > 0 && (() => {
+    // Control contra lo facturado al cliente. Un viaje puede repartirse entre un
+    // fletero y un chofer propio, asi que se suma todo: esta liquidacion, lo
+    // asignado en rendiciones y lo de otras liquidaciones de fleteros.
+    const lista = Object.values(controlViajes);
+    if (!lista.length) return null;
+    const f = (x, div) => fmtNum(x) + " " + div;
+    return h("div", { className: "card", style: { marginBottom: 16 } },
+      h("div", { className: "card-header" },
+        h("div", { className: "card-title" }, "\u2696\uFE0F Control contra lo facturado al cliente")),
+      h("div", { className: "card-body", style: { display: "flex", flexDirection: "column", gap: 10 } },
+        lista.map(v => h("div", {
+          key: v.tripId,
+          className: "alert " + (v.excede ? "alert-danger" : v.sinFactura ? "alert-warning" : "alert-info"),
+          style: { margin: 0, fontSize: 12, lineHeight: 1.6 }
+        },
+          h("div", { style: { fontWeight: 600, marginBottom: 4 } },
+            v.excede ? "\u26A0\uFE0F Se pasa de lo facturado · viaje " : v.sinFactura ? "\u26A0\uFE0F Sin factura al cliente · viaje " : "Viaje ",
+            h("span", { style: { fontFamily: "var(--mono)" } }, v.tripId),
+            v.carga ? " · " + v.carga : ""),
+          v.sinFactura
+            ? h("div", null, "Todavía no está cargada la factura de este viaje, así que no hay contra qué controlar. Se puede guardar igual.")
+            : h(React.Fragment, null,
+                h("div", null, "Facturado al cliente: ", h("strong", null, f(v.factura, v.divisa)),
+                  v.nros.length ? " (FC " + v.nros.join(", ") + ")" : ""),
+                h("div", null, "En esta liquidación: ", h("strong", null, f(v.estaLiq, v.divisa))),
+                v.enRendiciones > 0 && h("div", null, "Asignado en rendiciones de choferes propios: ", h("strong", null, f(v.enRendiciones, v.divisa))),
+                v.enOtrasLiq > 0 && h("div", null, "En otras liquidaciones de fleteros: ", h("strong", null, f(v.enOtrasLiq, v.divisa))),
+                h("div", { style: { marginTop: 4, color: v.excede ? "var(--danger)" : "var(--text2)" } },
+                  "Total acumulado: ", h("strong", null, f(v.acumulado, v.divisa)),
+                  v.excede
+                    ? " — excede lo facturado en " + f(v.acumulado - v.factura, v.divisa)
+                    : " — disponible: " + f(v.factura - v.acumulado, v.divisa)))))));
+  })(), (() => {
     // Lo que ya esta cargado en otros modulos y le corresponde a este fletero:
     // plata entregada a sus choferes (modulo 2) y gastos de sus patentes (modulo 7).
     const chk = (clave) => h("input", {
