@@ -6068,6 +6068,7 @@ function Module3({
   const [reabriendo, setReabriendo] = useState(false);
   const [liquidacionesRRHH, setLiquidacionesRRHH] = useState([]); // para "Estado liquidación"
   const [facturas, setFacturas] = useState([]); // el control de montos va contra la factura al cliente
+  const [fleterosLiq, setFleterosLiq] = useState([]); // lo ya pagado a fleteros del mismo viaje
   const [combustible, setCombustible] = useState([]); // hoja COMBUSTIBLE, una fila por carga
 
   useEffect(() => {
