@@ -3594,13 +3594,27 @@ function Module1({
     gasCall("saveTrip", {
       trip: tripData,
       user: session.username
-    }).then(r => {
+    }).then(async r => {
       if (!r.ok) {
         // El guardado falló: avisar fuerte y re-sincronizar con el servidor
         notif.add(`⚠ ${tripData.id} NO se guardó en el servidor: ${r.error || "error desconocido"}. Reabrí el viaje y guardá de nuevo.`, "error");
         invalidateCache("trips");
         loadTrips();
+        return;
       }
+      // El ID se corrige solo: si el recorrido pasó a cruzar la frontera (o al
+      // revés), el servidor le da el próximo número libre de ese prefijo y
+      // arrastra tramos, facturación y rendiciones abiertas.
+      const prefijo = prefijoSegunTramos(tripData.segments, dropdowns.LUGARES || []);
+      if (!prefijo || String(tripData.id).slice(0, 3) === prefijo) return;
+      const rn = await gasCall("renameTrip", { from: tripData.id, prefijo });
+      if (rn.ok && rn.to && rn.to !== tripData.id) {
+        notif.add(`El ID pasó de ${tripData.id} a ${rn.to}: el recorrido es ${prefijo === "INT" ? "internacional" : "nacional"}.`);
+      } else if (!rn.ok) {
+        notif.add(`El viaje se guardó, pero el ID no se pudo corregir: ${rn.error || "error"}`, "warn");
+      }
+      invalidateCache("trips", "facturacion", "rendiciones");
+      loadTrips();
     });
     return Promise.resolve({ ok: true });
   }
@@ -4165,21 +4179,6 @@ function TripForm({
   // ID no se cambia solo porque arrastra tramos, facturacion y rendiciones.
   const prefijoOk = isNew ? null : prefijoSegunTramos(segments, lugares);
   const idDesajustado = !isNew && !!prefijoOk && prefijoOk !== String(id).slice(0, 3);
-  const idCorregido = idDesajustado ? prefijoOk + String(id).slice(3) : "";
-  const [corrigiendoId, setCorrigiendoId] = useState(false);
-  async function corregirId() {
-    if (corrigiendoId) return;
-    if (!confirm("Cambiar el ID del viaje\n\n" + id + "  \u2192  " + idCorregido +
-      "\n\nSe actualiza el viaje, sus tramos, su facturación y las rendiciones abiertas que lo incluyan. " +
-      "Las rendiciones cerradas no se tocan: si alguna lo incluye, el cambio se rechaza.")) return;
-    setCorrigiendoId(true);
-    const r = await gasCall("renameTrip", { from: id, to: idCorregido });
-    setCorrigiendoId(false);
-    if (!r.ok) { alert(r.error || "No se pudo cambiar el ID"); return; }
-    alert("Listo: " + id + " ahora es " + idCorregido +
-      (r.detalle ? "\n\n" + r.detalle : ""));
-    onRenombrado ? onRenombrado() : onBack();
-  }
 
   // KM total reactivo
   const totalKm = useMemo(() => segments.reduce((s, sg) => s + Number(sg.kmPrevistos || 0), 0), [segments]);
@@ -4454,16 +4453,10 @@ function TripForm({
     style: idDesajustado ? { borderColor: "var(--warning)", color: "var(--warning)" } : null
   }, id)), idDesajustado && /*#__PURE__*/React.createElement("div", {
     className: "alert alert-warning",
-    style: { flex: "1 1 320px", marginBottom: 0, fontSize: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }
-  }, /*#__PURE__*/React.createElement("span", null,
-    "\u26A0\uFE0F El ID dice ", /*#__PURE__*/React.createElement("strong", null, String(id).slice(0, 3)),
+    style: { flex: "1 1 320px", marginBottom: 0, fontSize: 12 }
+  }, "\u26A0\uFE0F El ID dice ", /*#__PURE__*/React.createElement("strong", null, String(id).slice(0, 3)),
     " pero el recorrido es ", /*#__PURE__*/React.createElement("strong", null, prefijoOk),
-    ". Deber\u00eda ser ", /*#__PURE__*/React.createElement("span", { style: { fontFamily: "var(--mono)" } }, idCorregido), "."),
-    canEdit && /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-secondary btn-sm",
-      onClick: corregirId,
-      disabled: corrigiendoId
-    }, corrigiendoId ? "Corrigiendo..." : "Corregir ID"))), /*#__PURE__*/React.createElement("div", {
+    ". Al guardar se corrige solo, con el número que siga. Si el viaje está en una rendición cerrada, el ID no se puede cambiar.")), /*#__PURE__*/React.createElement("div", {
     className: "form-row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
