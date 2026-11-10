@@ -717,6 +717,7 @@ function htmlResumenRendicion(c) {
 
   (combustible ? '<h2>Combustible</h2><table><thead>' + fila([th("Fecha"), th("Proveedor"), th("Litros", true), th("Total factura", true)]) + '</thead><tbody>' + combustible + '</tbody></table>' +
     '<div class="sub">Litros: ' + escHtml(fmtNum(t.totalLitros)) +
+      (t.totalM3 ? ' · GNC: ' + escHtml(fmtNum(t.totalM3)) + ' m³' : '') +
       (c.odometro && c.odometro.inicial ? ' · Odómetro: ' + escHtml(fmtNum(c.odometro.inicial)) + ' → ' + escHtml(fmtNum(c.odometro.final)) : '') +
       ' · Km recorridos: ' + escHtml(fmtNum(t.totalKmReales)) +
       (t.desvioPorc === "" || t.desvioPorc == null ? '' : ' · Desvío: ' + escHtml((t.gapKm > 0 ? '+' : '') + fmtNum(t.gapKm) + ' km (' + t.desvioPorc + '%)')) +
@@ -6618,6 +6619,11 @@ function RendicionForm({
     });
   });
   const estacionesCat = (dropdowns && dropdowns.ESTACIONES_COMBUSTIBLE) || [];
+  // El GNC se mide en m3 y el gasoil en litros. La cantidad viaja siempre en el
+  // campo "litros" (y el precio en "precioLitro"): lo que cambia es la unidad
+  // que se muestra y como se suman los totales.
+  const esGNC = c => String(c.tipo || "GASOIL").toUpperCase() === "GNC";
+  const unidadDe = c => esGNC(c) ? "m\u00b3" : "L";
   function setCarga(i, campo, valor) {
     setCargas(p => p.map((c, j) => {
       if (j !== i) return c;
@@ -6641,19 +6647,26 @@ function RendicionForm({
   // Precio de referencia por moneda: la mediana de lo ya cargado. Sirve para
   // avisar cuando un importe quedó mil veces más grande (decimales pegados).
   const precioRef = useMemo(() => {
-    const por = { ARS: [], CLP: [], USD: [] };
+    // La referencia se calcula por moneda Y por tipo: el m3 de GNC y el litro de
+    // gasoil no se comparan entre si.
+    const por = {};
     (combustible || []).forEach(c => {
       const p = Number(c.precioLitro);
-      if (p > 0 && por[c.moneda]) por[c.moneda].push(p);
+      const k = (c.moneda || "") + "|" + String(c.tipo || "GASOIL").toUpperCase();
+      if (p > 0 && c.moneda) (por[k] = por[k] || []).push(p);
     });
     const med = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
-    return { ARS: med(por.ARS), CLP: med(por.CLP), USD: med(por.USD) };
+    const out = {};
+    Object.keys(por).forEach(k => { out[k] = med(por[k]); });
+    return out;
   }, [combustible]);
   const precioSospechoso = c => {
-    const p = moneyNum(c.precioLitro), ref = precioRef[c.moneda] || 0;
+    const p = moneyNum(c.precioLitro);
+    const ref = precioRef[(c.moneda || "") + "|" + String(c.tipo || "GASOIL").toUpperCase()] || 0;
     if (!p || !ref) return "";
-    if (p > ref * 3) return "El precio por litro da " + fmtNum(p) + " " + c.moneda + ", muy por encima de lo habitual (" + fmtNum(ref) + "). ¿Se pegaron los decimales del importe?";
-    if (p < ref / 3) return "El precio por litro da " + fmtNum(p) + " " + c.moneda + ", muy por debajo de lo habitual (" + fmtNum(ref) + "). Revisá litros e importe.";
+    const u = "precio por " + (esGNC(c) ? "m\u00b3" : "litro");
+    if (p > ref * 3) return "El " + u + " da " + fmtNum(p) + " " + c.moneda + ", muy por encima de lo habitual (" + fmtNum(ref) + "). ¿Se pegaron los decimales del importe?";
+    if (p < ref / 3) return "El " + u + " da " + fmtNum(p) + " " + c.moneda + ", muy por debajo de lo habitual (" + fmtNum(ref) + "). Revisá la cantidad y el importe.";
     return "";
   };
   const cargasConAviso = cargas.filter(c => precioSospechoso(c));
@@ -6865,7 +6878,8 @@ function RendicionForm({
   const viajesSinFactura = Object.values(controlViajes).filter(v => v.sinFactura);
 
   // Gastos — sumar por divisa a través de todas las categorías
-  const totalLitros = cargas.reduce((s, c) => s + moneyNum(c.litros), 0);
+  const totalLitros = cargas.reduce((s, c) => s + (esGNC(c) ? 0 : moneyNum(c.litros)), 0);
+  const totalM3 = cargas.reduce((s, c) => s + (esGNC(c) ? moneyNum(c.litros) : 0), 0);
   // El gasoil pagado EN EFECTIVO lo puso el chofer: es un gasto suyo y sale de
   // acá, no de la categoría GAS-OIL (que se eliminó para no contarlo dos veces).
   // El de cuenta corriente es costo de la empresa y no toca su saldo.
@@ -6963,6 +6977,7 @@ function RendicionForm({
       gastos: expenses,
       combustible: cargas.map(c => ({
         fecha: c.fecha, estacion: c.estacion, lugar: c.lugar, pais: c.pais,
+        tipo: String(c.tipo || "GASOIL").toUpperCase(),
         litros: moneyNum(c.litros), precioLitro: moneyNum(c.precioLitro),
         importe: moneyNum(c.importe), moneda: c.moneda, pagadoCon: c.pagadoCon || ""
       })),
@@ -6971,7 +6986,7 @@ function RendicionForm({
       totales: {
         totalSegARS, porcChofer, anticipoSueldo, saldoChofer,
         entBruto, entNeto, entTotalARS, expTotal, expTotalARS,
-        totalLitros, totalKmPrev, totalKmReales, gapKm, consumo,
+        totalLitros, totalM3, totalKmPrev, totalKmReales, gapKm, consumo,
         desvioPorc: desvioPorc === null ? "" : Number(desvioPorc.toFixed(1))
       }
     };
@@ -6983,6 +6998,7 @@ function RendicionForm({
       tractor: (segs[0] || {}).tractor || "",
       cargas: cargas.map(c => ({
         id: c.id || "", fecha: c.fecha, estacion: c.estacion, lugar: c.lugar, pais: c.pais,
+        tipo: String(c.tipo || "GASOIL").toUpperCase(), // GASOIL en litros | GNC en m3
         litros: moneyNum(c.litros), precioLitro: moneyNum(c.precioLitro), importe: moneyNum(c.importe),
         moneda: c.moneda, pagadoCon: c.pagadoCon || "", observaciones: c.observaciones || "",
         chofer: driver, tractor: (segs[0] || {}).tractor || ""
@@ -7474,7 +7490,20 @@ function RendicionForm({
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Fecha"),
       /*#__PURE__*/React.createElement(DateInput, { value: c.fecha, onChange: v => setCarga(i, "fecha", v) })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "2 1 220px", marginBottom: 0 }
+      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Tipo"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 4 } },
+        [["GASOIL", "Gasoil"], ["GNC", "GNC"]].map(([v, etq]) =>
+          /*#__PURE__*/React.createElement("button", {
+            key: v,
+            type: "button",
+            className: "btn btn-sm " + ((String(c.tipo || "GASOIL").toUpperCase() === v) ? "btn-primary" : "btn-secondary"),
+            style: { flex: 1, justifyContent: "center", fontSize: 11 },
+            title: v === "GNC" ? "Se carga en metros cúbicos" : "Se carga en litros",
+            onClick: () => setCarga(i, "tipo", v)
+          }, etq)))),
+    /*#__PURE__*/React.createElement("div", {
+      className: "form-group", style: { flex: "1 1 170px", minWidth: 0, marginBottom: 0 }
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Estación"),
       /*#__PURE__*/React.createElement(SearchableSelect, {
         options: estacionesCat,
@@ -7484,11 +7513,11 @@ function RendicionForm({
       })),
     /*#__PURE__*/React.createElement("div", {
       className: "form-group", style: { flex: "0 0 120px", marginBottom: 0 }
-    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Litros"),
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, esGNC(c) ? "Metros cúbicos" : "Litros"),
       /*#__PURE__*/React.createElement(MoneyInput, { value: c.litros, onChange: v => setCarga(i, "litros", v), placeholder: "0" })),
     /*#__PURE__*/React.createElement("div", {
       className: "form-group", style: { flex: "0 0 130px", marginBottom: 0 }
-    }, /*#__PURE__*/React.createElement("label", { className: "form-label", title: "Se calcula solo con los litros y el importe" }, "Precio por litro"),
+    }, /*#__PURE__*/React.createElement("label", { className: "form-label", title: "Se calcula solo con la cantidad y el importe" }, esGNC(c) ? "Precio por m³" : "Precio por litro"),
       /*#__PURE__*/React.createElement(MoneyInput, { value: c.precioLitro, onChange: v => setCarga(i, "precioLitro", v), placeholder: "0" })),
     /*#__PURE__*/React.createElement("div", {
       className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
@@ -7511,6 +7540,8 @@ function RendicionForm({
           }, etq)))),
     /*#__PURE__*/React.createElement("button", {
       className: "btn btn-danger btn-sm btn-icon",
+      style: { flex: "0 0 auto", alignSelf: "flex-end", marginBottom: 2 },
+      title: "Quitar esta carga",
       onClick: () => setCargas(p => p.filter((_, idx) => idx !== i))
     }, "✕")),
     aviso && /*#__PURE__*/React.createElement("div", {
@@ -7544,7 +7575,8 @@ function RendicionForm({
       fontSize: 13,
       color: "var(--text2)"
     }
-  }, "Total litros: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalLitros))), /*#__PURE__*/React.createElement("span", {
+  }, "Total litros: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalLitros)),
+    totalM3 > 0 && /*#__PURE__*/React.createElement("span", null, " · GNC: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalM3), " m³"))), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       color: "var(--text2)"
@@ -7579,7 +7611,7 @@ function RendicionForm({
       color: "var(--text3)",
       marginTop: 2
     }
-  }, fmtNum(totalLitros), " L ÷ ", fmtKm(totalKmReales))), /*#__PURE__*/React.createElement("span", {
+  }, fmtNum(totalLitros), " L", totalM3 > 0 ? " de gasoil" : "", " ÷ ", fmtKm(totalKmReales))), /*#__PURE__*/React.createElement("span", {
     style: {
       fontFamily: "var(--mono)",
       fontSize: 22,
