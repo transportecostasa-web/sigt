@@ -6612,7 +6612,7 @@ function RendicionForm({
       const litros = Number(f.litros) || "";
       const importe = Number(f.total) > 1 ? Number(f.total) : "";
       return {
-        id: "", fecha: toInputDate(f.fecha), ...p,
+        id: "", fecha: toInputDate(f.fecha), tipo: "GASOIL", ...p,
         litros, importe, precioLitro: importe && litros ? Math.round(importe / litros * 100) / 100 : "",
         pagadoCon: "", observaciones: ""
       };
@@ -7457,7 +7457,7 @@ function RendicionForm({
   }, "⛽ Combustible"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-secondary btn-sm",
     onClick: () => setCargas(p => [...p, {
-      id: "", fecha: "", estacion: "", lugar: "", pais: "", moneda: "",
+      id: "", fecha: "", tipo: "GASOIL", estacion: "", lugar: "", pais: "", moneda: "",
       litros: "", precioLitro: "", importe: "", pagadoCon: "", observaciones: ""
     }])
   }, "+ Carga")), /*#__PURE__*/React.createElement("div", {
