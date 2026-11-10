@@ -6938,24 +6938,20 @@ function RendicionForm({
   async function handleSave(estado) {
     if (savingRef.current) return; // ya hay un guardado en curso
     if (estado === "cerrada") {
-      for (var fi = 0; fi < fuelRows.length; fi++) {
-        const f = fuelRows[fi];
-        const algoCargado = f.fecha || f.proveedor || f.litros || f.total;
-        if (!algoCargado) continue; // fila totalmente vacía: se ignora
-        if (!f.fecha) {
-          alert(`Combustible ${fi + 1}: falta FECHA.`);
-          return;
-        }
-        if (!f.proveedor) {
-          alert(`Combustible ${fi + 1}: falta PROVEEDOR.`);
-          return;
-        }
-        if (!f.litros) {
-          alert(`Combustible ${fi + 1}: falta LITROS.`);
-          return;
-        }
-        if (!f.total) {
-          alert(`Combustible ${fi + 1}: falta TOTAL FACTURA.`);
+      // Se validan las cargas que se ven en pantalla (hoja COMBUSTIBLE), no la
+      // lista vieja "fuelRows", que quedo solo como respaldo y ya no se edita.
+      for (var fi = 0; fi < cargas.length; fi++) {
+        const f = cargas[fi];
+        const falta = !f.fecha ? "la FECHA"
+          : !f.estacion ? "la ESTACIÓN"
+          : !moneyNum(f.litros) ? (esGNC(f) ? "los METROS CÚBICOS" : "los LITROS")
+          : !moneyNum(f.importe) ? "el IMPORTE"
+          : !f.pagadoCon ? "indicar con qué se PAGÓ (efectivo del chofer o cuenta corriente)"
+          : "";
+        if (falta) {
+          alert(`Combustible, carga ${fi + 1}: falta ${falta}.
+
+Podés guardar en stand by y completarla después.`);
           return;
         }
       }
