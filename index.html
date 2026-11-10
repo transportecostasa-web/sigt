@@ -198,6 +198,13 @@ tr:hover td{background:var(--bg3);}
 .ss-option:hover,.ss-option.focused{background:var(--bg4);color:var(--text);}
 .ss-option.selected{color:var(--accent);}
 .ss-empty{padding:9px 12px;font-size:12px;color:var(--text3);font-style:italic;}
+/* Fila de carga de combustible: grilla, todos los campos del mismo alto y el boton de quitar en su propia columna */
+.comb-fila{display:grid;grid-template-columns:minmax(135px,.9fr) minmax(100px,.7fr) minmax(160px,1.8fr) minmax(90px,.8fr) minmax(100px,.9fr) minmax(110px,1fr) minmax(150px,1.2fr) 38px;gap:10px;align-items:end;}
+.comb-fila .form-group{margin-bottom:0;min-width:0;}
+.comb-fila .form-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.comb-fila .form-input,.comb-fila .form-select,.comb-fila .ss-input,.comb-fila .form-input + button,.comb-fila .comb-quitar{height:38px;}
+.comb-fila .comb-quitar{width:38px;padding:0;justify-content:center;}
+@media (max-width:1100px){.comb-fila{grid-template-columns:repeat(4,minmax(0,1fr));}.comb-fila .comb-quitar{justify-self:end;}}
 .form-input-error{border-color:var(--danger) !important;box-shadow:0 0 0 3px rgba(229,72,77,.15);}
 /* Modal overlay — bloquea el fondo */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .15s ease;}
@@ -7483,27 +7490,23 @@ function RendicionForm({
       key: c.id || i,
       style: { borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 10 }
     }, /*#__PURE__*/React.createElement("div", {
-      className: "form-row",
-      style: { alignItems: "flex-end", marginBottom: 0 }
+      className: "comb-fila"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Fecha"),
       /*#__PURE__*/React.createElement(DateInput, { value: c.fecha, onChange: v => setCarga(i, "fecha", v) })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Tipo"),
-      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 4 } },
-        [["GASOIL", "Gasoil"], ["GNC", "GNC"]].map(([v, etq]) =>
-          /*#__PURE__*/React.createElement("button", {
-            key: v,
-            type: "button",
-            className: "btn btn-sm " + ((String(c.tipo || "GASOIL").toUpperCase() === v) ? "btn-primary" : "btn-secondary"),
-            style: { flex: 1, justifyContent: "center", fontSize: 11 },
-            title: v === "GNC" ? "Se carga en metros cúbicos" : "Se carga en litros",
-            onClick: () => setCarga(i, "tipo", v)
-          }, etq)))),
+      /*#__PURE__*/React.createElement("select", {
+        className: "form-select",
+        value: String(c.tipo || "GASOIL").toUpperCase(),
+        title: "Gasoil se carga en litros; GNC en metros cúbicos",
+        onChange: e => setCarga(i, "tipo", e.target.value)
+      }, /*#__PURE__*/React.createElement("option", { value: "GASOIL" }, "Gasoil"),
+         /*#__PURE__*/React.createElement("option", { value: "GNC" }, "GNC"))),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "1 1 170px", minWidth: 0, marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Estación"),
       /*#__PURE__*/React.createElement(SearchableSelect, {
         options: estacionesCat,
@@ -7512,35 +7515,34 @@ function RendicionForm({
         placeholder: "Buscar estación..."
       })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 120px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, esGNC(c) ? "Metros cúbicos" : "Litros"),
       /*#__PURE__*/React.createElement(MoneyInput, { value: c.litros, onChange: v => setCarga(i, "litros", v), placeholder: "0" })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 130px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label", title: "Se calcula solo con la cantidad y el importe" }, esGNC(c) ? "Precio por m³" : "Precio por litro"),
       /*#__PURE__*/React.createElement(MoneyInput, { value: c.precioLitro, onChange: v => setCarga(i, "precioLitro", v), placeholder: "0" })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 150px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Importe ", moneda && /*#__PURE__*/React.createElement("span", {
       style: { color: "var(--text3)", fontWeight: 400 }
     }, moneda)),
       /*#__PURE__*/React.createElement(MoneyInput, { value: c.importe, onChange: v => setCarga(i, "importe", v), placeholder: "0" })),
     /*#__PURE__*/React.createElement("div", {
-      className: "form-group", style: { flex: "0 0 210px", marginBottom: 0 }
+      className: "form-group"
     }, /*#__PURE__*/React.createElement("label", { className: "form-label" }, "Pagado con"),
-      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 6 } },
-        [["EFECTIVO", "Efectivo del chofer"], ["CUENTA CORRIENTE", "Cuenta corriente"]].map(([v, etq]) =>
-          /*#__PURE__*/React.createElement("button", {
-            key: v,
-            type: "button",
-            className: "btn btn-sm " + (c.pagadoCon === v ? "btn-primary" : "btn-secondary"),
-            style: { flex: 1, justifyContent: "center", fontSize: 11 },
-            title: v === "EFECTIVO" ? "Lo puso el chofer: se descuenta de su rendición" : "Lo paga la empresa: no toca el saldo del chofer",
-            onClick: () => setCarga(i, "pagadoCon", c.pagadoCon === v ? "" : v)
-          }, etq)))),
+      /*#__PURE__*/React.createElement("select", {
+        className: "form-select",
+        value: c.pagadoCon || "",
+        style: c.pagadoCon ? undefined : { color: "var(--text3)" },
+        title: "Efectivo del chofer: se descuenta de su rendición. Cuenta corriente: lo paga la empresa y no toca el saldo del chofer.",
+        onChange: e => setCarga(i, "pagadoCon", e.target.value)
+      }, /*#__PURE__*/React.createElement("option", { value: "" }, "Elegir..."),
+         /*#__PURE__*/React.createElement("option", { value: "EFECTIVO" }, "Efectivo del chofer"),
+         /*#__PURE__*/React.createElement("option", { value: "CUENTA CORRIENTE" }, "Cuenta corriente"))),
     /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-danger btn-sm btn-icon",
-      style: { flex: "0 0 auto", alignSelf: "flex-end", marginBottom: 2 },
+      type: "button",
+      className: "btn btn-danger comb-quitar",
       title: "Quitar esta carga",
       onClick: () => setCargas(p => p.filter((_, idx) => idx !== i))
     }, "✕")),
