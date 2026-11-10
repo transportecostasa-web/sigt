@@ -723,12 +723,13 @@ function htmlResumenRendicion(c) {
     fila([td("Total en ARS"), td(fmtNum(t.expTotalARS), true), td(""), td("")]) + '</tbody></table>' : '') +
 
   (combustible ? '<h2>Combustible</h2><table><thead>' + fila([th("Fecha"), th("Proveedor"), th("Litros", true), th("Total factura", true)]) + '</thead><tbody>' + combustible + '</tbody></table>' +
-    '<div class="sub">Litros: ' + escHtml(fmtNum(t.totalLitros)) +
-      (t.totalM3 ? ' · GNC: ' + escHtml(fmtNum(t.totalM3)) + ' m³' : '') +
+    '<div class="sub">' + [(t.totalLitros || !t.totalM3) ? 'Litros: ' + escHtml(fmtNum(t.totalLitros)) : '',
+      t.totalM3 ? 'GNC: ' + escHtml(fmtNum(t.totalM3)) + ' m³' : ''].filter(Boolean).join(' · ') +
       (c.odometro && c.odometro.inicial ? ' · Odómetro: ' + escHtml(fmtNum(c.odometro.inicial)) + ' → ' + escHtml(fmtNum(c.odometro.final)) : '') +
       ' · Km recorridos: ' + escHtml(fmtNum(t.totalKmReales)) +
       (t.desvioPorc === "" || t.desvioPorc == null ? '' : ' · Desvío: ' + escHtml((t.gapKm > 0 ? '+' : '') + fmtNum(t.gapKm) + ' km (' + t.desvioPorc + '%)')) +
-      ' · Consumo: ' + escHtml(t.consumo) + ' L/100km</div>' : '') +
+      ' · Consumo: ' + [(t.consumo && t.consumo !== "—") || !t.consumoGNC ? escHtml(t.consumo) + ' L/100km' : '',
+        t.consumoGNC ? escHtml(t.consumoGNC) + ' m³/100km' : ''].filter(Boolean).join(' · ') + '</div>' : '') +
 
   '<h2>Liquidación</h2><table><tbody>' +
   fila([td("Total montos de tramo (ARS)"), td(fmtNum(t.totalSegARS), true)]) +
@@ -6915,7 +6916,11 @@ function RendicionForm({
   const totalKmReales = hayOdo && !odoInvertido ? odoFinN - odoIniN : kmRealesViejos;
   const gapKm = totalKmReales - totalKmPrev;
   const desvioPorc = totalKmPrev > 0 && totalKmReales > 0 ? (gapKm / totalKmPrev * 100) : null;
-  const consumo = totalKmReales > 0 ? (totalLitros / totalKmReales * 100).toFixed(2) : "—";
+  // Consumo por combustible: el gasoil en L/100km y el GNC en m3/100km. Si el
+  // viaje fue solo a GNC no se informa un "0 L/100km" que no significa nada.
+  const soloGNC = totalM3 > 0 && !(totalLitros > 0);
+  const consumo = totalKmReales > 0 && !soloGNC ? (totalLitros / totalKmReales * 100).toFixed(2) : "—";
+  const consumoGNC = totalKmReales > 0 && totalM3 > 0 ? (totalM3 / totalKmReales * 100).toFixed(2) : "";
 
   // FIX #3 + #4 — Liquidación correcta según spec:
   // PORCENTAJE CHOFER = 13% del total montos tramo (en ARS)
@@ -6993,7 +6998,7 @@ function RendicionForm({
       totales: {
         totalSegARS, porcChofer, anticipoSueldo, saldoChofer,
         entBruto, entNeto, entTotalARS, expTotal, expTotalARS,
-        totalLitros, totalM3, totalKmPrev, totalKmReales, gapKm, consumo,
+        totalLitros, totalM3, totalKmPrev, totalKmReales, gapKm, consumo, consumoGNC,
         desvioPorc: desvioPorc === null ? "" : Number(desvioPorc.toFixed(1))
       }
     };
@@ -7577,8 +7582,8 @@ function RendicionForm({
       fontSize: 13,
       color: "var(--text2)"
     }
-  }, "Total litros: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalLitros)),
-    totalM3 > 0 && /*#__PURE__*/React.createElement("span", null, " · GNC: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalM3), " m³"))), /*#__PURE__*/React.createElement("span", {
+  }, !soloGNC && /*#__PURE__*/React.createElement("span", null, "Total litros: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalLitros))),
+    totalM3 > 0 && /*#__PURE__*/React.createElement("span", null, soloGNC ? "Total GNC: " : " · Total GNC: ", /*#__PURE__*/React.createElement("strong", null, fmtNum(totalM3), " m³"))), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       color: "var(--text2)"
@@ -7613,7 +7618,10 @@ function RendicionForm({
       color: "var(--text3)",
       marginTop: 2
     }
-  }, fmtNum(totalLitros), " L", totalM3 > 0 ? " de gasoil" : "", " ÷ ", fmtKm(totalKmReales))), /*#__PURE__*/React.createElement("span", {
+  }, [!soloGNC ? fmtNum(totalLitros) + " L" + (totalM3 > 0 ? " de gasoil" : "") : "",
+      totalM3 > 0 ? fmtNum(totalM3) + " m³ de GNC" : ""].filter(Boolean).join(" · "), " ÷ ", fmtKm(totalKmReales))), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 24, alignItems: "baseline" }
+  }, !soloGNC && /*#__PURE__*/React.createElement("span", {
     style: {
       fontFamily: "var(--mono)",
       fontSize: 22,
@@ -7625,7 +7633,19 @@ function RendicionForm({
       fontSize: 13,
       fontWeight: 400
     }
-  }, "L/100km"))))), /*#__PURE__*/React.createElement("div", {
+  }, "L/100km")), totalM3 > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "var(--mono)",
+      fontSize: 22,
+      fontWeight: 700,
+      color: consumoGNC ? "var(--text)" : "var(--text3)"
+    }
+  }, consumoGNC || "—", " ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 400
+    }
+  }, "m³/100km")))))), /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 80
@@ -9979,7 +9999,7 @@ function Module6({
       className: "form-label"
     }, "Consumo"), /*#__PURE__*/React.createElement("div", {
       className: "field-readonly"
-    }, t.consumo || "—", " ", t.consumo && t.consumo !== "—" ? "L/100km" : "")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, [t.consumo && t.consumo !== "—" ? t.consumo + " L/100km" : "", t.consumoGNC ? t.consumoGNC + " m³/100km" : ""].filter(Boolean).join(" · ") || "—")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "form-label"
     }, "Plata entregada (anticipo)"), /*#__PURE__*/React.createElement("div", {
       className: "field-readonly"
