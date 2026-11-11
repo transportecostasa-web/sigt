@@ -6290,8 +6290,8 @@ function Module3({
   }, "Seleccioná tramos para liquidar")), selDriver && filtered.length > 0 && /*#__PURE__*/React.createElement("button", {
     title: "Exportar tramos a Excel",
     onClick: () => {
-      const headers = ["Tramo", "Viaje", "Chofer", "Desde", "Hasta", "Fecha inicio viaje", "Estado"];
-      const rows = filtered.map(s => [s.segId, s.tripId, s.chofer || "", s.desde || "", s.hasta || "", fmtDate(s.fechaInicio), s.status || ""]);
+      const headers = ["Tramo", "Viaje", "Chofer", "Desde", "Hasta", "Carga", "Fecha inicio viaje", "Estado"];
+      const rows = filtered.map(s => [s.segId, s.tripId, s.chofer || "", s.desde || "", s.hasta || "", s.tripCarga || "", fmtDate(s.fechaInicio), s.status || ""]);
       exportToCSV(`tramos_${selDriver}`, headers, rows);
     },
     style: {
@@ -6466,7 +6466,7 @@ function Module3({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "table-wrap"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Desde"), /*#__PURE__*/React.createElement("th", null, "Hasta"), /*#__PURE__*/React.createElement("th", null, "Fecha inicio viaje"), /*#__PURE__*/React.createElement("th", null, "Estado"))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(s => /*#__PURE__*/React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null), /*#__PURE__*/React.createElement("th", null, "Tramo"), /*#__PURE__*/React.createElement("th", null, "Viaje"), /*#__PURE__*/React.createElement("th", null, "Chofer"), /*#__PURE__*/React.createElement("th", null, "Desde"), /*#__PURE__*/React.createElement("th", null, "Hasta"), /*#__PURE__*/React.createElement("th", null, "Carga"), /*#__PURE__*/React.createElement("th", null, "Fecha inicio viaje"), /*#__PURE__*/React.createElement("th", null, "Estado"))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(s => /*#__PURE__*/React.createElement("tr", {
     key: s.segId
   }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -6482,7 +6482,7 @@ function Module3({
       fontFamily: "var(--mono)",
       fontSize: 11
     }
-  }, s.tripId), /*#__PURE__*/React.createElement("td", null, s.chofer), /*#__PURE__*/React.createElement("td", null, s.desde), /*#__PURE__*/React.createElement("td", null, s.hasta), /*#__PURE__*/React.createElement("td", null, fmtDate(s.fechaInicio)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(StatusBadge, {
+  }, s.tripId), /*#__PURE__*/React.createElement("td", null, s.chofer), /*#__PURE__*/React.createElement("td", null, s.desde), /*#__PURE__*/React.createElement("td", null, s.hasta), /*#__PURE__*/React.createElement("td", null, s.tripCarga || "—"), /*#__PURE__*/React.createElement("td", null, fmtDate(s.fechaInicio)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(StatusBadge, {
     status: s.status
   })))))))), !histView && canEdit && selSegIds.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "liquidar-bar"
@@ -7771,7 +7771,7 @@ Podés guardar en stand by y completarla después.`);
           filas.length === 0
             ? h("div", { style: { fontSize: 13, color: "var(--text3)" } }, "No hay tramos pendientes para agregar.")
             : h("div", { className: "table-wrap" }, h("table", null,
-                h("thead", null, h("tr", null, h("th", { style: { width: 50 } }), h("th", null, "Tramo"), h("th", null, "Viaje"), h("th", null, "Desde"), h("th", null, "Hasta"), h("th", null, "Fecha inicio viaje"), h("th", null, "Estado"))),
+                h("thead", null, h("tr", null, h("th", { style: { width: 50 } }), h("th", null, "Tramo"), h("th", null, "Viaje"), h("th", null, "Desde"), h("th", null, "Hasta"), h("th", null, "Carga"), h("th", null, "Fecha inicio viaje"), h("th", null, "Estado"))),
                 h("tbody", null, filas.map(sg => h("tr", {
                   key: sg.segId,
                   style: segsAAgregar.includes(sg.segId) ? { background: "rgba(79,127,255,.07)" } : null
@@ -7786,6 +7786,7 @@ Podés guardar en stand by y completarla después.`);
                   h("td", { style: { fontFamily: "var(--mono)", fontSize: 11 } }, sg.tripId),
                   h("td", { style: { fontSize: 12 } }, sg.desde),
                   h("td", { style: { fontSize: 12 } }, sg.hasta),
+                  h("td", { style: { fontSize: 12 } }, sg.tripCarga || "—"),
                   h("td", { style: { whiteSpace: "nowrap" } }, fmtDate(sg.fechaInicio)),
                   h("td", null, h(StatusBadge, { status: sg.status }))))))),
         h("div", { className: "modal-footer" },
