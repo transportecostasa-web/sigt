@@ -6754,18 +6754,33 @@ function RendicionForm({
   }
 
   // Filtro correcto: chofer === driver + rango de fechas normalizado a ISO
+  // Entregas que ya se descontaron en OTRA rendicion cerrada. Una entrega se
+  // descuenta una sola vez: aunque las fechas de dos viajes se superpongan, no
+  // vuelve a aparecer. El cruce es por id + divisa, contra la copia fija del cierre.
+  const yaRendidas = useMemo(() => {
+    const m = {};
+    const propia = String(rendicion && rendicion.id || "");
+    (todasRendiciones || []).forEach(r => {
+      if (r.estado !== "cerrada" || !r.cierre || String(r.id) === propia) return;
+      (r.cierre.entregas || []).forEach(e => {
+        if (e && e.id) m[String(e.id) + "|" + String(e.moneda || "ARS")] = r.id;
+      });
+    });
+    return m;
+  }, [todasRendiciones, rendicion]);
   const driverEntregas = useMemo(() => {
     if (!driver || !dateFrom) return [];
     const from = toISO(dateFrom);
     return entregas.filter(e => {
       if (e.chofer !== driver) return false;
       if (esEntregaSueldo(e)) return false; // sueldo: va a RRHH, no a la rendicion
+      if (yaRendidas[String(e.id) + "|" + String(e.moneda || "ARS")]) return false; // ya descontada en otra rendicion cerrada
       const eFecha = toISO(e.fecha);
       if (from && eFecha < from) return false;
       if (dateToMinus1 && eFecha > dateToMinus1) return false;
       return true;
     });
-  }, [entregas, driver, dateFrom, dateToMinus1]);
+  }, [entregas, driver, dateFrom, dateToMinus1, yaRendidas]);
   const entByCur = {
     ARS: [],
     CLP: [],
