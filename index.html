@@ -1041,6 +1041,22 @@ function maxSegSeqEnDatos() {
   }));
   return max;
 }
+// Busca OTRO viaje (activo o del historial) con el mismo numero de MIC.
+// Compara sin espacios y sin distinguir mayusculas. Devuelve el viaje o null.
+function viajeConMismoMIC(mic, idPropio) {
+  const norm = v => String(v == null ? "" : v).replace(/\s+/g, "").toUpperCase();
+  const m = norm(mic);
+  if (!m) return null;
+  return ((_cache && _cache.trips) || []).find(t => String(t.id) !== String(idPropio) && norm(t.numMIC) === m) || null;
+}
+function confirmarMICDuplicado(mic, idPropio) {
+  const d = viajeConMismoMIC(mic, idPropio);
+  if (!d) return true;
+  return confirm("\u26A0\uFE0F POSIBLE VIAJE DUPLICADO\n\nEl MIC " + String(mic).trim() + " ya está cargado en el viaje " + d.id +
+    " (" + (d.status === "finalizado" ? "historial" : "activo") + ")" +
+    (d.cliente ? "\nCliente: " + d.cliente : "") + (d.carga ? "\nCarga: " + d.carga : "") +
+    "\n\nAceptar = guardar igual.  Cancelar = volver a revisar.");
+}
 function nextGlobalSegSeq() {
   const next = Math.max(Number(lsGet("sigt_seg_seq", 0)), maxSegSeqEnDatos()) + 1;
   lsSet("sigt_seg_seq", next);
@@ -1376,6 +1392,37 @@ function mockApi(action, payload) {
     }, 180);
   });
 }
+
+// Los permisos de arriba son el valor de fabrica. Los vigentes se guardan en la
+// hoja PERMISOS de la base y se editan desde el panel "Permisos" (solo el
+// administrador). Lo leido del servidor pisa lo de fabrica.
+const PERMISOS_ADMIN = "SOL";
+const MOD_PERMISOS = 99; // id del panel de permisos en el menu
+function rolSegunPermisos(mods, edit) {
+  if (!mods.length) return "Sin acceso";
+  if (!edit.length) return "Solo lectura";
+  return mods.length === MODULES.length && edit.length === MODULES.length ? "Editor global" : "Editor parcial";
+}
+function normalizarPermiso(p) {
+  const nums = v => (Array.isArray(v) ? v.map(Number) : (String(v == null ? "" : v).match(/\d+/g) || []).map(Number));
+  const enOrden = l => MODULES.map(m => m.id).filter(id => l.includes(id));
+  const mods = enOrden(nums(p.mods));
+  const edit = enOrden(nums(p.edit)).filter(id => mods.includes(id));
+  return { role: rolSegunPermisos(mods, edit), mods, edit };
+}
+function aplicarPermisos(lista) {
+  if (!Array.isArray(lista) || !lista.length) return false;
+  lista.forEach(p => {
+    const u = String(p && p.username || "").toUpperCase().trim();
+    if (u) PERMISSIONS[u] = normalizarPermiso(p);
+  });
+  // El administrador nunca pierde acceso (no puede dejarse afuera a si mismo).
+  const todos = MODULES.map(m => m.id);
+  PERMISSIONS[PERMISOS_ADMIN] = { role: "Editor global", mods: todos, edit: todos };
+  return true;
+}
+// Arranque: se usan los ultimos permisos conocidos mientras responde el servidor.
+try { aplicarPermisos(JSON.parse(localStorage.getItem("sigt_permisos_v1") || "null")); } catch (ePerm) {}
 
 // Crea la base de datos vacía que usa el mock la primera vez que se abre la app.
 // Si ya existen datos en el navegador, NO se llama — se usan los datos guardados.
@@ -2328,6 +2375,21 @@ function App() {
   const [selPatenteFletero, setSelPatenteFletero] = useState("");
   const [lightMode, setLightMode] = useState(() => lsGet("sigt_theme") === "light");
   const notif = useNotifications();
+  // Se incrementa cuando cambian los permisos, para volver a dibujar el menu.
+  const [, setPermVer] = useState(0);
+  const refrescarPermisos = () => setPermVer(v => v + 1);
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      try {
+        const r = await gasCall("getPermisos");
+        if (r && r.ok && aplicarPermisos(r.data)) {
+          try { localStorage.setItem("sigt_permisos_v1", JSON.stringify(r.data)); } catch (eLs) {}
+          refrescarPermisos();
+        }
+      } catch (eP) {}
+    })();
+  }, [session]);
 
   // Aplicar clase "light" al body según el modo
   useEffect(() => {
@@ -2518,8 +2580,12 @@ function App() {
     mods: [],
     edit: []
   };
-  const visibleMods = MODULES.filter(m => perms.mods.includes(m.id));
-  const canEdit = modId => perms.edit.includes(modId); // devuelve true/false por módulo
+  const esAdminPermisos = session.username === PERMISOS_ADMIN;
+  const visibleMods = MODULES.filter(m => perms.mods.includes(m.id))
+    .concat(esAdminPermisos ? [{ id: MOD_PERMISOS, icon: "\uD83D\uDD10", label: "Permisos", short: "Permisos" }] : []);
+  const canEdit = modId => modId === MOD_PERMISOS ? esAdminPermisos : perms.edit.includes(modId); // devuelve true/false por módulo
+  // Si al usuario le sacaron el modulo que tenia abierto, pasa al primero que le quede.
+  const moduloActivo = visibleMods.some(m => m.id === activeModule) ? activeModule : (visibleMods[0] ? visibleMods[0].id : 0);
 
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
@@ -2531,7 +2597,7 @@ function App() {
     open: sidebarOpen,
     onToggle: () => setSidebarOpen(!sidebarOpen),
     modules: visibleMods,
-    active: activeModule,
+    active: moduloActivo,
     onSelect: setActiveModule,
     username: session.username,
     role: perms.role,
@@ -2546,9 +2612,10 @@ function App() {
   }), /*#__PURE__*/React.createElement("main", {
     className: "main"
   }, dropdowns ? /*#__PURE__*/React.createElement(ModuleRenderer, {
-    moduleId: activeModule,
+    moduleId: moduloActivo,
+    onPermisosCambiados: refrescarPermisos,
     session: session,
-    canEdit: canEdit(activeModule),
+    canEdit: canEdit(moduloActivo),
     dropdowns: dropdowns,
     notif: notif,
     selPatenteFletero: selPatenteFletero,
@@ -2922,6 +2989,106 @@ function ChangePasswordScreen({
 //   dropdowns — todas las listas de opciones para los desplegables
 //   notif     — función para mostrar mensajes emergentes
 // Los módulos 4 al 7 todavía no están implementados → muestran un cartel "próximamente".
+// ─── PANEL DE PERMISOS (solo el administrador) ─────────────────────────────
+// Matriz usuario x modulo. Cada celda: sin acceso / solo lectura / edicion.
+// Se guarda en la hoja PERMISOS; cada usuario lo toma al abrir o recargar la app.
+function PanelPermisos({ session, notif, onCambio }) {
+  const h = React.createElement;
+  const [usuarios, setUsuarios] = useState([]);
+  const [mat, setMat] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [sucio, setSucio] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const nivelDe = (u, id) => {
+    const p = PERMISSIONS[u];
+    if (!p || !p.mods.includes(id)) return "none";
+    return p.edit.includes(id) ? "edit" : "read";
+  };
+  function armar(lista) {
+    const us = Array.from(new Set(lista.map(u => String(u || "").toUpperCase().trim()).filter(Boolean)));
+    us.sort((a, b) => a === PERMISOS_ADMIN ? -1 : b === PERMISOS_ADMIN ? 1 : a.localeCompare(b));
+    const m = {};
+    us.forEach(u => { m[u] = {}; MODULES.forEach(md => { m[u][md.id] = nivelDe(u, md.id); }); });
+    setUsuarios(us); setMat(m); setSucio(false);
+  }
+  async function cargar() {
+    setLoading(true); setError("");
+    let r = null;
+    try { r = await gasCall("getPermisos"); } catch (e) { r = { ok: false, error: String(e) }; }
+    if (r && r.ok) {
+      aplicarPermisos(r.data);
+      armar([].concat(r.usuarios || [], (r.data || []).map(p => p.username), Object.keys(PERMISSIONS)));
+    } else {
+      setError((r && r.error) || "No se pudieron leer los permisos del servidor.");
+      armar(Object.keys(PERMISSIONS));
+    }
+    setLoading(false);
+  }
+  useEffect(() => { cargar(); }, []);
+  const poner = (u, id, v) => { setMat(p => ({ ...p, [u]: { ...p[u], [id]: v } })); setSucio(true); };
+  const ponerFila = (u, v) => { if (!v) return; setMat(p => ({ ...p, [u]: MODULES.reduce((a, md) => ({ ...a, [md.id]: v }), {}) })); setSucio(true); };
+  async function guardar() {
+    if (guardando) return;
+    const permisos = usuarios.map(u => ({
+      username: u,
+      mods: MODULES.map(md => md.id).filter(id => u === PERMISOS_ADMIN || mat[u][id] !== "none"),
+      edit: MODULES.map(md => md.id).filter(id => u === PERMISOS_ADMIN || mat[u][id] === "edit")
+    }));
+    setGuardando(true);
+    let r = null;
+    try { r = await gasCall("savePermisos", { permisos }); } catch (e) { r = { ok: false, error: String(e) }; }
+    setGuardando(false);
+    if (!r || !r.ok) { notif.add((r && r.error) || "No se pudieron guardar los permisos", "error"); return; }
+    aplicarPermisos(permisos);
+    try { localStorage.setItem("sigt_permisos_v1", JSON.stringify(permisos)); } catch (eLs) {}
+    setSucio(false);
+    notif.add("Permisos guardados. Cada usuario los toma al recargar la app.");
+    onCambio && onCambio();
+  }
+  const COLOR = { none: "var(--text3)", read: "var(--warning)", edit: "var(--success)" };
+  const FONDO = { none: "", read: "rgba(245,166,35,.10)", edit: "rgba(46,204,113,.10)" };
+  const estiloSel = v => ({ minWidth: 118, padding: "6px 26px 6px 8px", fontSize: 12, fontWeight: 600, color: COLOR[v] || "var(--text2)", backgroundColor: FONDO[v] || undefined });
+  const selector = (valor, onChange, disabled) => h("select", {
+    className: "form-select",
+    value: valor,
+    disabled,
+    onChange: e => onChange(e.target.value),
+    style: estiloSel(valor)
+  }, h("option", { value: "none" }, "Sin acceso"), h("option", { value: "read" }, "Solo lectura"), h("option", { value: "edit" }, "Edición"));
+  return h("div", { className: "module-container" },
+    h("div", { className: "module-header" },
+      h("div", null,
+        h("div", { className: "module-title" }, "\uD83D\uDD10 Permisos"),
+        h("div", { className: "module-subtitle" }, "Qué módulos ve y en cuáles puede editar cada usuario")),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("button", { className: "btn btn-secondary", onClick: cargar, disabled: loading || guardando }, "Descartar cambios"),
+        h("button", { className: "btn btn-primary", onClick: guardar, disabled: !sucio || guardando || loading }, guardando ? "Guardando..." : "\uD83D\uDCBE Guardar permisos"))),
+    error && h("div", { className: "alert alert-warning", style: { fontSize: 12 } },
+      "\u26A0\uFE0F ", error, " Se muestran los permisos que tiene cargados esta pantalla; si el servidor todavía no tiene la versión nueva, no se van a poder guardar."),
+    h("div", { className: "alert alert-info", style: { fontSize: 12 } },
+      "Sin acceso: el módulo no aparece en el menú. Solo lectura: lo ve pero no puede cargar ni modificar. Edición: puede cargar y modificar. ",
+      "Los cambios rigen para cada usuario cuando vuelve a abrir o recarga la aplicación. ", PERMISOS_ADMIN, " siempre tiene acceso total."),
+    loading ? h("div", { className: "empty" }, h("p", null, "Cargando permisos...")) :
+    h("div", { className: "card" }, h("div", { className: "table-wrap" }, h("table", null,
+      h("thead", null, h("tr", null,
+        h("th", null, "Usuario"),
+        MODULES.map(md => h("th", { key: md.id, style: { whiteSpace: "nowrap" } }, md.icon, " ", md.short || md.label)),
+        h("th", null, "Toda la fila"))),
+      h("tbody", null, usuarios.map(u => {
+        const fijo = u === PERMISOS_ADMIN;
+        return h("tr", { key: u },
+          h("td", { style: { fontWeight: 700, whiteSpace: "nowrap" } }, u, fijo && h("span", { style: { fontWeight: 400, color: "var(--text3)", fontSize: 11 } }, "  (administrador)")),
+          MODULES.map(md => h("td", { key: md.id }, selector(fijo ? "edit" : (mat[u] && mat[u][md.id]) || "none", v => poner(u, md.id, v), fijo))),
+          h("td", null, fijo ? "—" : h("select", {
+            className: "form-select",
+            value: "",
+            onChange: e => ponerFila(u, e.target.value),
+            style: { minWidth: 118, padding: "6px 26px 6px 8px", fontSize: 12 }
+          }, h("option", { value: "" }, "Aplicar a todos..."), h("option", { value: "none" }, "Sin acceso"), h("option", { value: "read" }, "Solo lectura"), h("option", { value: "edit" }, "Edición"))));
+      }))))));
+}
+
 function ModuleRenderer({
   moduleId,
   session,
@@ -2929,7 +3096,8 @@ function ModuleRenderer({
   dropdowns,
   notif,
   selPatenteFletero,
-  onFleteroPatentes
+  onFleteroPatentes,
+  onPermisosCambiados
 }) {
   const props = {
     session,
@@ -2937,6 +3105,13 @@ function ModuleRenderer({
     dropdowns,
     notif
   };
+  if (moduleId === MOD_PERMISOS && session.username === PERMISOS_ADMIN) return /*#__PURE__*/React.createElement(PanelPermisos, { ...props, onCambio: onPermisosCambiados });
+  if (moduleId === 0) return /*#__PURE__*/React.createElement("div", {
+    className: "module-container"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", { className: "empty-icon" }, "\uD83D\uDD12"),
+     /*#__PURE__*/React.createElement("p", null, "Tu usuario no tiene módulos habilitados. Pedile acceso a " + PERMISOS_ADMIN + ".")));
   if (moduleId === 1) return /*#__PURE__*/React.createElement(Module1, props);
   if (moduleId === 2) return /*#__PURE__*/React.createElement(Module2, { ...props, key: "mod2-entregas", mode: "entregas" });
   if (moduleId === 4) return /*#__PURE__*/React.createElement(Module2, { ...props, key: "mod4-caja", mode: "caja" });
@@ -4386,6 +4561,7 @@ function TripForm({
       alert("Hay campos obligatorios incompletos (marcados en rojo).");
       return;
     }
+    if (!confirmarMICDuplicado(numMIC, id)) return;
     setSaving(true);
     await onSave(buildData());
     clearDraft(); // borrar borrador tras guardar exitosamente
@@ -4398,6 +4574,7 @@ function TripForm({
       return;
     }
     if (!validateSegments()) return;
+    if (!confirmarMICDuplicado(numMIC, id)) return;
     setSaving(true);
     // UNA sola llamada: el status "finalizado" viaja dentro del saveTrip y el
     // backend sella finalizedAt/finalizedBy. Antes eran 2 llamadas en serie.
