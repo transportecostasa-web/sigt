@@ -1057,6 +1057,26 @@ function confirmarMICDuplicado(mic, idPropio) {
     (d.cliente ? "\nCliente: " + d.cliente : "") + (d.carga ? "\nCarga: " + d.carga : "") +
     "\n\nAceptar = guardar igual.  Cancelar = volver a revisar.");
 }
+// Facturas de OTROS viajes que usan el mismo numero. Compara solo letras y
+// numeros (ignora espacios, guiones y mayusculas). tipo "cliente" mira el N° FC
+// Cliente; tipo "fletero" mira las facturas de fletero del mismo fletero.
+function facturasConMismoNumero(nro, tripIdPropio, tipo, fletero) {
+  const norm = v => String(v == null ? "" : v).replace(/[^0-9a-z]/gi, "").toUpperCase();
+  const n = norm(nro);
+  if (!n) return [];
+  const out = [];
+  ((_cache && _cache.facturacion) || []).forEach(f => {
+    if (!f || String(f.tripId) === String(tripIdPropio)) return;
+    if (tipo === "fletero") {
+      (f.fleteros || []).forEach(x => {
+        if (norm(x.fcFletero) === n && norm(x.fletero) === norm(fletero)) out.push({ tripId: f.tripId, quien: x.fletero || "" });
+      });
+    } else if (norm(f.fcCliente) === n) {
+      out.push({ tripId: f.tripId, quien: f.entidadFacturadora || "" });
+    }
+  });
+  return out;
+}
 function nextGlobalSegSeq() {
   const next = Math.max(Number(lsGet("sigt_seg_seq", 0)), maxSegSeqEnDatos()) + 1;
   lsSet("sigt_seg_seq", next);
@@ -8903,11 +8923,21 @@ function FacturaForm({
     });
     setSaving(false);
   }
+  // Otros viajes con el mismo N° FC Cliente (se muestra mientras se escribe)
+  const fcDuplicada = facturasConMismoNumero(fcCliente, G("tripId"), "cliente");
   async function handleSave() {
     if (!validate()) {
       alert("Hay campos obligatorios incompletos o los egresos superan la factura al cliente.");
       return;
     }
+    // Aviso (no bloqueo): numero de factura que ya figura en otro viaje.
+    const avisos = [];
+    if (fcDuplicada.length) avisos.push("La FC cliente " + String(fcCliente).trim() + " ya está cargada en: " + fcDuplicada.map(d => d.tripId + (d.quien ? " (" + d.quien + ")" : "")).join(", "));
+    fleteros.forEach(fl => {
+      const d = facturasConMismoNumero(fl.fcFletero, G("tripId"), "fletero", fl.fletero);
+      if (d.length) avisos.push("La FC " + String(fl.fcFletero).trim() + " del fletero " + (fl.fletero || "—") + " ya está cargada en: " + d.map(x => x.tripId).join(", "));
+    });
+    if (avisos.length && !confirm("\u26A0\uFE0F NÚMERO DE FACTURA REPETIDO\n\n" + avisos.join("\n\n") + "\n\nAceptar = guardar igual.  Cancelar = volver a revisar.")) return;
     // FIX 1 — si el monto facturado difiere de la cotización inicial, pedir justificación
     if (hayDifMonto) {
       setShowJustifModal(true);
@@ -9184,8 +9214,11 @@ function FacturaForm({
     className: "form-input",
     value: fcCliente,
     onChange: e => setFcCliente(e.target.value),
-    disabled: readonly
-  })), /*#__PURE__*/React.createElement("div", {
+    disabled: readonly,
+    style: fcDuplicada.length ? { borderColor: "var(--warning)" } : undefined
+  }), fcDuplicada.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: { marginTop: 4, fontSize: 11, color: "var(--warning)", fontWeight: 600 }
+  }, "\u26A0\uFE0F Este número ya está en ", fcDuplicada.map(d => d.tripId + (d.quien ? " (" + d.quien + ")" : "")).join(", "))), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
     className: "form-label"
