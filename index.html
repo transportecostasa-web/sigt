@@ -3809,11 +3809,28 @@ function Module1({
       // El ID se corrige solo: si el recorrido pasó a cruzar la frontera (o al
       // revés), el servidor le da el próximo número libre de ese prefijo y
       // arrastra tramos, facturación y rendiciones abiertas.
+      // Cambia el ID en pantalla YA, sin esperar la recarga: mientras la lista
+      // siguiera mostrando el ID viejo, reabrir y guardar duplicaba el viaje.
+      const cambiarIdLocal = (viejo, nuevo) => setTrips(prev => {
+        const sinViejo = prev.some(t => t.id === nuevo) ? prev.filter(t => t.id !== viejo) : prev.map(t => t.id === viejo ? { ...t, id: nuevo } : t);
+        _cache.trips = sinViejo;
+        return sinViejo;
+      });
+      // El servidor reconoció un ID viejo (viaje ya renombrado) y guardó encima
+      // del viaje correcto en vez de crear otro.
+      const idServidor = r.id && r.id !== tripData.id ? r.id : tripData.id;
+      if (idServidor !== tripData.id) {
+        cambiarIdLocal(tripData.id, idServidor);
+        notif.add(`Este viaje ya había pasado a ${idServidor}: los cambios se guardaron ahí.`);
+        invalidateCache("trips", "facturacion", "rendiciones");
+        loadTrips();
+      }
       const prefijo = prefijoSegunTramos(tripData.segments, dropdowns.LUGARES || []);
-      if (!prefijo || String(tripData.id).slice(0, 3) === prefijo) return;
-      const rn = await gasCall("renameTrip", { from: tripData.id, prefijo });
-      if (rn.ok && rn.to && rn.to !== tripData.id) {
-        notif.add(`El ID pasó de ${tripData.id} a ${rn.to}: el recorrido es ${prefijo === "INT" ? "internacional" : "nacional"}.`);
+      if (!prefijo || String(idServidor).slice(0, 3) === prefijo) return;
+      const rn = await gasCall("renameTrip", { from: idServidor, prefijo });
+      if (rn.ok && rn.to && rn.to !== idServidor) {
+        cambiarIdLocal(idServidor, rn.to);
+        notif.add(`El ID pasó de ${idServidor} a ${rn.to}: el recorrido es ${prefijo === "INT" ? "internacional" : "nacional"}.`);
       } else if (!rn.ok) {
         notif.add(`El viaje se guardó, pero el ID no se pudo corregir: ${rn.error || "error"}`, "warn");
       }
