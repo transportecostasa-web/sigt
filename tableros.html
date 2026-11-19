@@ -425,14 +425,19 @@ function Barras({ items, fmt, color, max }) {
 
 // Columnas por mes (SVG). meses: ["2026-08"...], series: [{n, c, vals:[]}]
 function Columnas({ meses, series, fmt, linea }) {
-  const W = 760, H = 260, pl = 64, pr = 12, pt = 14, pb = 30;
+  const W = 900, H = 240, pl = 64, pr = 12, pt = 14, pb = 30;
   const todos = series.flatMap(s => s.vals).concat(linea ? linea.vals : []);
-  const max = Math.max(...todos, 0), min = Math.min(...todos, 0);
+  // escala con cortes redondos (0, 25k, 50k…)
+  const crudoMax = Math.max(...todos, 0), crudoMin = Math.min(...todos, 0);
+  const bruto = ((crudoMax - crudoMin) || 1) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const paso = [1, 2, 2.5, 5, 10].map(f => f * mag).find(p => p >= bruto);
+  const min = Math.floor(crudoMin / paso) * paso, max = Math.ceil(crudoMax / paso) * paso;
   const rango = (max - min) || 1;
   const y = v => pt + (max - v) / rango * (H - pt - pb);
   const gw = (W - pl - pr) / Math.max(meses.length, 1);
   const bw = Math.min(28, (gw - 10) / series.length);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => min + f * rango);
+  const ticks = []; for (let t = min; t <= max + paso / 2; t += paso) ticks.push(t);
   return html`<div class="chart">
     <div class="leg">${series.map(s => html`<span style=${{ "--c": s.c }}>${s.n}</span>`)}${linea && html`<span style=${{ "--c": linea.c }}>${linea.n} (línea)</span>`}</div>
     <svg viewBox=${`0 0 ${W} ${H}`} role="img">
