@@ -7120,7 +7120,12 @@ function RendicionForm({
   // El gasoil pagado EN EFECTIVO lo puso el chofer: es un gasto suyo y sale de
   // acá, no de la categoría GAS-OIL (que se eliminó para no contarlo dos veces).
   // El de cuenta corriente es costo de la empresa y no toca su saldo.
-  const combEfectivoARS = cargas.reduce((s, c) => s + (c.pagadoCon === "EFECTIVO" ? toARS(moneyNum(c.importe), c.moneda || "ARS") : 0), 0);
+  // Rendiciones viejas: el gasoil se rindió en la categoría GAS-OIL y esas
+  // cargas quedaron marcadas yaEnGastosRendicion = SI. Si la rendición todavía
+  // tiene GAS-OIL en gastos (p. ej. al reabrirla), esas cargas no se suman otra vez.
+  const gasoilEnGastos = expenses.some(e => /GAS[\- ]?OIL/i.test(String(e.cat)) && (Number(e.ARS) || Number(e.CLP) || Number(e.USD)));
+  const yaEnGastos = c => gasoilEnGastos && String(c.yaEnGastosRendicion || "").toUpperCase() === "SI";
+  const combEfectivoARS = cargas.reduce((s, c) => s + (c.pagadoCon === "EFECTIVO" && !yaEnGastos(c) ? toARS(moneyNum(c.importe), c.moneda || "ARS") : 0), 0);
   const expTotal = {
     ARS: 0,
     CLP: 0,
