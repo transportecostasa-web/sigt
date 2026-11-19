@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGT Tableros</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0f11;--bg2:#16181c;--bg3:#1e2128;--bg4:#252830;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);
+  --text:#e8eaf0;--text2:#9aa0b0;--text3:#6a7080;
+  --accent:#4f7fff;--success:#34c776;--warning:#f5a623;--danger:#e5484d;
+  --s1:#4f7fff;--s2:#f5a623;--s3:#34c776;--s4:#c06bff;--s5:#4fc3c7;--s6:#e5484d;
+  --font:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+:root[data-theme="light"]{
+  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#e8eaed;--bg4:#dde0e5;
+  --border:rgba(0,0,0,0.09);--border2:rgba(0,0,0,0.16);
+  --text:#1a1c22;--text2:#444858;--text3:#7a8092;
+  --accent:#2d5fe8;--s1:#2d5fe8;--s2:#d98a0b;--s3:#1f9d5a;--s4:#8a3fd1;--s5:#178f93;--s6:#c8323a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px}
+button,select,input{font-family:inherit;font-size:13px;color:var(--text)}
+.top{position:sticky;top:0;z-index:20;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.brand{font-weight:600;letter-spacing:.3px}
+.brand small{color:var(--text3);font-weight:400;margin-left:6px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{background:none;border:1px solid transparent;border-radius:7px;padding:6px 11px;cursor:pointer;color:var(--text2)}
+.tab:hover{background:var(--bg3)}
+.tab.on{background:var(--bg3);border-color:var(--border2);color:var(--text);font-weight:500}
+.sp{flex:1}
+.ctl{display:flex;gap:6px;align-items:center;color:var(--text2);font-size:12px}
+select,input[type=text]{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 8px}
+.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+main{padding:18px 20px 60px;max-width:1500px;margin:0 auto}
+.aviso{background:color-mix(in srgb,var(--warning) 12%,transparent);border:1px solid color-mix(in srgb,var(--warning) 40%,transparent);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:14px}
+.nota{color:var(--text3);font-size:12px;margin:4px 0 14px}
+h2{font-size:17px;margin:4px 0 12px;font-weight:600}
+h3{font-size:14px;margin:0 0 10px;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.kpi .l{color:var(--text2);font-size:12px}
+.kpi .v{font-size:21px;font-weight:600;font-family:var(--mono);margin-top:4px}
+.kpi .s{color:var(--text3);font-size:11px;margin-top:3px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
+.grid2 .card{margin-bottom:0}
+.tw{overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+thead th{position:sticky;top:0;background:var(--bg3);text-align:left;font-weight:500;color:var(--text2);padding:7px 9px;white-space:nowrap;cursor:pointer;user-select:none;border-bottom:1px solid var(--border2)}
+tbody td{padding:6px 9px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr:hover{background:var(--bg3)}
+tbody tr.click{cursor:pointer}
+tfoot td{padding:7px 9px;font-weight:600;background:var(--bg3);position:sticky;bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.neg{color:var(--danger)}.pos{color:var(--success)}.dim{color:var(--text3)}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:9px;background:var(--bg4);color:var(--text2);margin-left:4px}
+.tag.w{background:color-mix(in srgb,var(--warning) 22%,transparent);color:var(--warning)}
+.hb{display:grid;grid-template-columns:minmax(120px,240px) 1fr auto;gap:6px 10px;align-items:center;font-size:12px}
+.hb .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.hb .bar{height:14px;background:var(--bg3);border-radius:3px;position:relative;overflow:hidden}
+.hb .bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.hb .val{font-family:var(--mono);text-align:right}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin:6px 0}
+.leg span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:var(--c);vertical-align:-1px}
+.chart svg{width:100%;height:auto;display:block}
+.chart text{fill:var(--text2);font-size:11px;font-family:var(--font)}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.center{display:flex;align-items:center;justify-content:center;min-height:70vh;flex-direction:column;gap:12px;color:var(--text2)}
+.login{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:26px;width:320px;display:flex;flex-direction:column;gap:10px}
+.login input{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px}
+.err{color:var(--danger);font-size:12px}
+.heat td{padding:3px 4px;text-align:center;font-size:11px;font-family:var(--mono)}
+.qlist li{margin:3px 0}
+details summary{cursor:pointer;color:var(--text2);margin:6px 0}
+@media (max-width:700px){main{padding:12px}.top{padding:8px 12px}.grid2{grid-template-columns:1fr}.hb{grid-template-columns:110px 1fr auto}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// SIGT — TABLEROS DE CONTROL (solo lectura)
+// App aparte de SIGT: lee los mismos datos con la misma sesión (localStorage
+// "sigt_session", mismo dominio) y no escribe nada.
+// Todo se expresa en USD con la cotización de la fecha de cada monto:
+//   ARS -> USD: dólar blue, promedio compra/venta (api.argentinadatos.com)
+//   CLP -> USD: dólar observado del Banco Central de Chile (mindicador.cl)
+// Por ahora solo lo PROPIO: los tramos con tractor de un fletero quedan fuera.
+// ═════════════════════════════════════════════════════════════════════════════
+const { useState, useEffect, useMemo } = React;
+const html = htm.bind(React.createElement);
+
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxUIYOzeBEnaXWlhtOBd8wOMXwMcCXbyVWHcQ2vXnK3S5o0xv2ycFRMcb77Z0ZbJmK9/exec";
+const USUARIOS_TABLEROS = ["SOL", "JAVIER"];
+const EMPRESAS_PROPIAS = ["JAVIER COSTA", "SOCELPA"];
+
+// ─── utilidades ──────────────────────────────────────────────────────────────
+function lsGet(k, d = null) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+const J = v => { if (typeof v === "string") { try { return JSON.parse(v); } catch (e) { return v; } } return v; };
+const arr = v => { const x = J(v); return Array.isArray(x) ? x : []; };
+const obj = v => { const x = J(v); return x && typeof x === "object" && !Array.isArray(x) ? x : {}; };
+
+function moneyNum(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  let s = String(v).trim().replace(/[^\d.,-]/g, "");
+  if (!s) return 0;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  else { const d = (s.match(/\./g) || []).length; if (d > 1) s = s.replace(/\./g, ""); else if (d === 1 && s.split(".")[1].length === 3) s = s.replace(".", ""); }
+  const n = parseFloat(s); return isNaN(n) ? 0 : n;
+}
+// Cualquier fecha del sistema -> "YYYY-MM-DD" ("" si no se entiende)
+function iso(d) {
+  if (!d) return "";
+  const s = String(d).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m && !/T\d\d:.*Z$/.test(s)) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const dt = new Date(s);
+  if (isNaN(dt)) return "";
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+function dt(d) { // fecha y hora (para auditoría)
+  const s = String(d || "");
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s*-\s*(\d{2}):(\d{2}):(\d{2}))?/);
+  if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4] || "00"}:${m[5] || "00"}:${m[6] || "00"}`);
+  const x = new Date(s); return isNaN(x) ? null : x;
+}
+const mesDe = f => (f || "").slice(0, 7);
+const MESES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+const MES_C = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const mesLabel = m => m ? MES_C[Number(m.slice(5, 7)) - 1] + " " + m.slice(2, 4) : "—";
+function periodoAMes(p) { // "AGOSTO 2026" (o fecha) -> "2026-08"
+  const s = String(p || "").toUpperCase().trim();
+  const i = MESES.findIndex(x => s.startsWith(x));
+  const y = (s.match(/\d{4}/) || [])[0];
+  if (i >= 0 && y) return `${y}-${String(i + 1).padStart(2, "0")}`;
+  return mesDe(iso(p));
+}
+const diasEntre = (a, b) => (a && b) ? Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000) : null;
+const hoyISO = () => iso(new Date());
+const normPat = p => String(p || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const corto = l => String(l || "").split(",")[0].trim() || "—";
+const nf0 = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usd = v => (v == null || isNaN(v)) ? "—" : (v < 0 ? "-" : "") + "US$ " + nf0.format(Math.abs(v));
+const pct = v => (v == null || !isFinite(v)) ? "—" : nf1.format(v) + " %";
+const num = v => (v == null || isNaN(v)) ? "—" : nf0.format(v);
+const sum = (a, f) => a.reduce((s, x) => s + (f ? f(x) : x), 0);
+function agrupar(lista, clave) { const m = new Map(); lista.forEach(x => { const k = clave(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }); return m; }
+
+// ─── servidor ────────────────────────────────────────────────────────────────
+async function gasCall(action, payload = {}) {
+  const ses = lsGet("sigt_session");
+  const p = btoa(unescape(encodeURIComponent(JSON.stringify({ action, ...payload }))));
+  const url = `${GAS_URL}?p=${encodeURIComponent(p)}&t=${encodeURIComponent((ses && ses.token) || "")}`;
+  try {
+    const r = await fetch(url, { redirect: "follow" });
+    const t = await r.text();
+    if (!t || t.trim().startsWith("<")) return { ok: false, error: "Respuesta inesperada del servidor." };
+    const j = JSON.parse(t);
+    if (j && j.sessionExpired) { lsSet("sigt_session", null); j.expired = true; }
+    return j;
+  } catch (e) { return { ok: false, error: "Sin conexión con el servidor: " + e.message }; }
+}
+
+// ─── cotizaciones ────────────────────────────────────────────────────────────
+// Se guardan en el navegador 12 h. Para una fecha sin cotización (fin de
+// semana, feriado) se usa la del último día hábil anterior.
+async function cargarCotizaciones(anios) {
+  const cache = lsGet("tab_fx_v1", null);
+  const fresco = cache && (Date.now() - cache.ts < 12 * 3600 * 1000) && anios.every(a => cache.clpAnios.includes(a));
+  if (fresco) return cache;
+  const out = { ts: Date.now(), ars: [], clp: [], clpAnios: [], errores: [] };
+  try {
+    const r = await fetch("https://api.argentinadatos.com/v1/cotizaciones/dolares/blue");
+    const j = await r.json();
+    out.ars = j.filter(x => x.fecha >= "2024-01-01" && x.compra && x.venta).map(x => [x.fecha, (Number(x.compra) + Number(x.venta)) / 2]);
+  } catch (e) { out.errores.push("dólar blue (ArgentinaDatos)"); }
+  for (const a of anios) {
+    try {
+      const r = await fetch("https://mindicador.cl/api/dolar/" + a);
+      const j = await r.json();
+      (j.serie || []).forEach(x => out.clp.push([String(x.fecha).slice(0, 10), Number(x.valor)]));
+      out.clpAnios.push(a);
+    } catch (e) { out.errores.push("dólar observado " + a + " (mindicador.cl)"); }
+  }
+  out.ars.sort((a, b) => a[0] < b[0] ? -1 : 1);
+  out.clp.sort((a, b) => a[0] < b[0] ? -1 : 1);
+  if (!out.errores.length) lsSet("tab_fx_v1", out);
+  else if (cache) { // si falla una fuente se sigue con lo último que se bajó
+    if (!out.ars.length) out.ars = cache.ars;
+    if (!out.clp.length) out.clp = cache.clp;
+  }
+  return out;
+}
+function tasaEn(serie, f) {
+  if (!serie.length) return 0;
+  if (!f || f < serie[0][0]) return serie[0][1];
+  let lo = 0, hi = serie.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (serie[mid][0] <= f) lo = mid; else hi = mid - 1; }
+  return serie[lo][1];
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MODELO: arma una fila por TRAMO PROPIO con su ingreso y sus costos en USD.
+//   Ingreso: el monto asignado al tramo en la rendición; lo que reste de la
+//     factura del viaje se reparte por km entre los tramos sin monto asignado.
+//   Chofer: el % de la rendición (porcChofer / totalSegARS) sobre el ingreso.
+//     Tramo sin rendición: el % promedio de las rendiciones (estimado).
+//   Gastos de ruta y combustible: los de la rendición, repartidos por km entre
+//     sus tramos. El combustible sale de la hoja COMBUSTIBLE (efectivo y cuenta
+//     corriente); la categoría GAS-OIL de gastos se ignora para no contarlo dos
+//     veces, salvo en una rendición sin ninguna carga en COMBUSTIBLE.
+//   Extra costos de la factura: repartidos por km entre los tramos del viaje.
+// ═════════════════════════════════════════════════════════════════════════════
+function construirModelo(raw, fx) {
+  const dd = raw.dropdowns || {};
+  const duenos = dd.CAMIONES_DUENO || {};
+  const esFletero = seg => { const d = String(duenos[normPat(seg.tractor)] || "").toUpperCase(); return !!d && !EMPRESAS_PROPIAS.some(e => d.includes(e)); };
+  const TC = { USD: Number(dd.TC_USD) || 1200, CLP: Number(dd.TC_CLP) || 160 };
+  const fallos = new Set();
+  const toUSD = (monto, moneda, fecha) => {
+    const n = moneyNum(monto); if (!n) return 0;
+    const m = String(moneda || "ARS").toUpperCase();
+    if (m === "USD") return n;
+    if (m === "CLP") { const t = tasaEn(fx.clp, fecha); if (t) return n / t; fallos.add("CLP"); return n * TC.CLP / 100 / TC.USD; }
+    const t = tasaEn(fx.ars, fecha); if (t) return n / t; fallos.add("ARS"); return n / TC.USD;
+  };
+
+  const trips = raw.trips || [];
+  const facPorViaje = agrupar(raw.facturacion || [], f => String(f.tripId));
+  const combPorRend = agrupar(raw.combustible || [], c => String(c.rendicionId));
+
+  // Rendiciones -> datos por segId
+  const segRend = {};
+  const rends = (raw.rendiciones || []).map(r => {
+    const cierre = r.estado === "cerrada" ? obj(r.cierre) : {};
+    const cerrada = r.estado === "cerrada" && !!cierre.totales;
+    const tot = cerrada ? cierre.totales : obj(r.totals);
+    const segMonto = obj(r.segMonto);
+    const tramos = cerrada ? arr(cierre.tramos) : arr(r.segments).map(s => typeof s === "string" ? { segId: s } : s);
+    const gastos = cerrada ? arr(cierre.gastos) : arr(r.expenses);
+    const fechas = tramos.map(t => iso(t.fechaInicio)).filter(Boolean).sort();
+    const fecha = iso(obj(cierre.periodo).desde) || fechas[0] || iso(r.createdAt);
+    const rate = moneyNum(tot.totalSegARS) > 0 ? moneyNum(tot.porcChofer) / moneyNum(tot.totalSegARS) : null;
+    const cargas = combPorRend.get(String(r.id)) || [];
+    const R = { id: String(r.id), chofer: r.driver || "", estado: cerrada ? "cerrada" : "abierta", fecha, rate, tot, gastos, cargas, tramos,
+      cerradaAt: cerrada ? cierre.cerradaAt : "", cerradaPor: cerrada ? cierre.cerradaPor : "",
+      odo: cerrada ? obj(cierre.odometro) : { inicial: r.odoInicial, final: r.odoFinal }, kmViejos: obj(r.kmReales) };
+    tramos.forEach(t => {
+      const sm = t.monto != null ? { monto: t.monto, moneda: t.moneda } : (typeof segMonto[t.segId] === "object" ? segMonto[t.segId] : { monto: segMonto[t.segId], moneda: "USD" });
+      // si un tramo figura en dos rendiciones, manda la cerrada
+      if (!segRend[t.segId] || (R.estado === "cerrada" && segRend[t.segId].rend.estado !== "cerrada")) segRend[t.segId] = { rend: R, monto: sm && sm.monto, moneda: (sm && sm.moneda) || "USD" };
+    });
+    return R;
+  });
+  const ratesCerr = rends.filter(r => r.estado === "cerrada" && r.rate != null);
+  const ratePromedio = ratesCerr.length ? sum(ratesCerr, r => r.rate) / ratesCerr.length : 0.13;
+
+  // ── Tramos con ingreso ────────────────────────────────────────────────────
+  const tramos = [];
+  const calidad = { viajesSinFactura: [], tramosSinRendir: [], duplicados: [] };
+  trips.forEach(t => {
+    const segs = (t.segments || []).filter(s => s && s.segId);
+    if (!segs.length) return;
+    const facs = facPorViaje.get(String(t.id)) || [];
+    const fIni = segs.map(s => iso(s.fechaInicio)).filter(Boolean).sort()[0] || iso(t.createdAt);
+    const fFac = facs.map(f => iso(f.fechaFcCliente)).filter(Boolean)[0] || "";
+    const facUSD = sum(facs, f => toUSD(f.montoFcCliente, f.divisaCliente || "USD", iso(f.fechaFcCliente) || fIni));
+    let extraUSD = 0;
+    facs.forEach(f => arr(f.extraCostos).forEach(ec => { extraUSD += toUSD(ec.monto, ec.divisa || "USD", iso(f.fechaFcCliente) || fIni); }));
+    const km = s => Number(s.kmPrevistos || 0);
+    const kmTotal = sum(segs, km);
+    // monto asignado por la rendición
+    const asign = segs.map(s => { const sr = segRend[s.segId]; return sr && moneyNum(sr.monto) ? toUSD(sr.monto, sr.moneda, fFac || iso(s.fechaInicio) || fIni) : null; });
+    const asignado = sum(asign.filter(x => x != null));
+    const sinAsig = segs.filter((s, i) => asign[i] == null);
+    const kmSin = sum(sinAsig, km);
+    const resto = Math.max(facUSD - asignado, 0);
+    const propios = segs.filter(s => !esFletero(s));
+    if (propios.length && !facs.some(f => moneyNum(f.montoFcCliente))) calidad.viajesSinFactura.push({ tripId: t.id, fecha: fIni, cliente: t.cliente, tramos: propios.length, status: t.status });
+    segs.forEach((s, i) => {
+      if (esFletero(s)) return;
+      const sr = segRend[s.segId];
+      let ingreso, fuente;
+      if (asign[i] != null) { ingreso = asign[i]; fuente = "rendición"; }
+      else if (resto > 0) { ingreso = resto * (kmSin > 0 ? km(s) / kmSin : 1 / sinAsig.length); fuente = "factura prorrateada"; }
+      else { ingreso = 0; fuente = facUSD ? "factura ya asignada" : "sin factura"; }
+      const f = iso(s.fechaInicio) || fIni;
+      const row = {
+        segId: s.segId, tripId: String(t.id), fecha: f, mes: mesDe(f), desde: corto(s.desde), hasta: corto(s.hasta),
+        ruta: corto(s.desde) + " → " + corto(s.hasta), chofer: s.chofer || "—", tractor: s.tractor || "—", semi: s.semi || "—",
+        carga: t.carga || "—", cliente: t.cliente || "—", km: km(s), status: t.status,
+        rendId: sr ? sr.rend.id : "", rendEstado: sr ? sr.rend.estado : "sin rendir",
+        ingreso, fuente, extra: kmTotal > 0 ? extraUSD * km(s) / kmTotal : extraUSD / segs.length,
+        chofer$: 0, choferEst: false, gastos: 0, comb: 0, litros: 0, m3: 0
+      };
+      const rate = sr && sr.rend.rate != null ? sr.rend.rate : null;
+      row.chofer$ = ingreso * (rate != null ? rate : ratePromedio);
+      row.choferEst = rate == null;
+      if (!sr && f && f <= hoyISO()) calidad.tramosSinRendir.push(row);
+      tramos.push(row);
+    });
+  });
+
+  // ── Gastos de ruta y combustible por rendición, repartidos por km ─────────
+  const porRend = agrupar(tramos.filter(x => x.rendId), x => x.rendId);
+  const fuelRend = {};
+  rends.forEach(R => {
+    const ts = porRend.get(R.id) || [];
+    const hayCargas = R.cargas.length > 0;
+    let gastos = 0, gasoilCat = 0;
+    R.gastos.forEach(g => {
+      const v = toUSD(g.ARS, "ARS", R.fecha) + toUSD(g.CLP, "CLP", R.fecha) + toUSD(g.USD, "USD", R.fecha);
+      if (/GAS[\- ]?OIL/i.test(String(g.cat))) gasoilCat += v; else gastos += v;
+    });
+    let comb = 0, litros = 0, m3 = 0, efectivo = 0;
+    R.cargas.forEach(c => {
+      const v = toUSD(c.importe, c.moneda, iso(c.fecha) || R.fecha);
+      comb += v; if (c.pagadoCon === "EFECTIVO") efectivo += v;
+      if (String(c.tipo || "GASOIL").toUpperCase() === "GNC") m3 += moneyNum(c.litros); else litros += moneyNum(c.litros);
+    });
+    if (!hayCargas) comb = gasoilCat;
+    // km recorridos: odómetro; si no, los km reales viejos; si no, el total de la rendición
+    const oi = moneyNum(R.odo && R.odo.inicial), of = moneyNum(R.odo && R.odo.final);
+    let kmReal = oi > 0 && of > oi ? of - oi : sum(Object.values(R.kmViejos), v => moneyNum(v));
+    if (!kmReal) kmReal = moneyNum(R.tot && R.tot.totalKmReales);
+    const kmPrev = sum(ts, x => x.km) || moneyNum(R.tot && R.tot.totalKmPrev);
+    R.gastosUSD = gastos; R.combUSD = comb; R.litros = litros; R.m3 = m3; R.efectivoUSD = efectivo; R.kmReal = kmReal; R.kmPrev = kmPrev;
+    R.tractor = (R.tramos[0] || {}).tractor || (ts[0] || {}).tractor || (R.cargas[0] || {}).tractor || "—";
+    R.sinCargas = !hayCargas && gasoilCat > 0;
+    fuelRend[R.id] = R;
+    const kmT = sum(ts, x => x.km);
+    ts.forEach(x => {
+      const w = kmT > 0 ? x.km / kmT : 1 / ts.length;
+      x.gastos = gastos * w; x.comb = comb * w; x.litros = litros * w; x.m3 = m3 * w;
+    });
+  });
+  tramos.forEach(x => { x.costo = x.chofer$ + x.gastos + x.comb + x.extra; x.margen = x.ingreso - x.costo; });
+
+  // ── Básicos (RRHH) y gastos generales ─────────────────────────────────────
+  const basicos = (raw.rrhh || []).filter(h => h.estado !== "anulada" && !h.anuladaAt).map(h => {
+    const mes = periodoAMes(h.periodo);
+    return { chofer: h.chofer, mes, ars: moneyNum(h.basicoMensual), usd: toUSD(h.basicoMensual, "ARS", mes ? mes + "-15" : "") };
+  }).filter(b => b.mes);
+  const gg = (raw.gastosGenerales || []).map(g => {
+    const f = iso(g.fechaGasto) || iso(g.createdAt);
+    return { id: g.id, fecha: f, mes: mesDe(f), tipo: String(g.tipoGasto || "").trim().toUpperCase() || "(sin tipo)", obs: g.observaciones || "",
+      monto: moneyNum(g.monto), divisa: g.divisa || "ARS", usd: toUSD(g.monto, g.divisa || "ARS", f),
+      patente: String(g.patente || "").trim().toUpperCase(), chofer: String(g.chofer || "").trim(), responsable: String(g.responsablePago || "").trim() || "—" };
+  });
+  const cargas = (raw.combustible || []).map(c => {
+    const f = iso(c.fecha);
+    const R = fuelRend[String(c.rendicionId)];
+    return { ...c, fecha: f, mes: mesDe(f), usd: toUSD(c.importe, c.moneda, f), cant: moneyNum(c.litros), tipo: String(c.tipo || "GASOIL").toUpperCase(),
+      chofer: c.chofer || (R && R.chofer) || "—", tractor: c.tractor || (R && R.tractor) || "—", estacion: c.estacion || "—", pais: c.pais || "—" };
+  });
+
+  // ── Calidad de datos ──────────────────────────────────────────────────────
+  const firma = t => [t.cliente, t.carga, t.numMIC, t.numCRT, (t.segments || []).map(s => s.desde + ">" + s.hasta + "@" + iso(s.fechaInicio) + "/" + s.chofer).join("|")].join("#");
+  agrupar(trips.filter(t => (t.segments || []).length), firma).forEach(v => { if (v.length > 1) calidad.duplicados.push(v.map(t => t.id)); });
+  calidad.cargasSinPago = cargas.filter(c => !c.pagadoCon);
+  const camionRe = /CUBIERT|NEUM|GOMER|REPUEST|RECAP|ACEITE|FILTRO|MECAN|TALLER|FRENO|SERVICE|LUBRIC|BATER|LONA|ELASTIC|EMBRAG/i;
+  calidad.ggSinPatente = gg.filter(g => !g.patente && camionRe.test(g.tipo + " " + g.obs));
+  calidad.rendSinKm = rends.filter(r => r.estado === "cerrada" && !r.kmReal);
+  calidad.rendSinCargas = rends.filter(r => r.sinCargas);
+  calidad.tramosSinRendir.sort((a, b) => a.fecha < b.fecha ? -1 : 1);
+  calidad.fallosFx = [...fallos];
+  const mesesBasico = new Set(basicos.map(b => b.mes));
+
+  return { tramos, rends, basicos, gg, cargas, calidad, ratePromedio, mesesBasico, esFletero };
+}
+
+// ─── componentes chicos ──────────────────────────────────────────────────────
+function Kpi({ l, v, s, cls }) { return html`<div class="kpi"><div class="l">${l}</div><div class=${"v " + (cls || "")}>${v}</div>${s && html`<div class="s">${s}</div>`}</div>`; }
+
+function aCSV(nombre, cols, filas) {
+  const esc = v => { const s = v == null ? "" : String(v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lineas = [cols.map(c => esc(c.t)).join(";")].concat(filas.map(f => cols.map(c => { const v = c.v ? c.v(f) : f[c.k]; return typeof v === "number" ? String(Math.round(v * 100) / 100).replace(".", ",") : esc(v); }).join(";")));
+  const blob = new Blob(["﻿" + lineas.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre + ".csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// Tabla ordenable. cols: [{k, t, v?(fila), f?(valor,fila), n?(numérica)}]
+function Tabla({ cols, filas, orden, total, onRow, csv, alto }) {
+  const [o, setO] = useState(orden || null);
+  const lista = useMemo(() => {
+    if (!o) return filas;
+    const c = cols.find(x => x.k === o.k); if (!c) return filas;
+    const val = f => c.v ? c.v(f) : f[c.k];
+    return [...filas].sort((a, b) => { const x = val(a), y = val(b); const r = (typeof x === "number" && typeof y === "number") ? x - y : String(x ?? "").localeCompare(String(y ?? ""), "es"); return o.d === "asc" ? r : -r; });
+  }, [filas, o, cols]);
+  return html`<div>
+    ${csv && html`<div style=${{ textAlign: "right", marginBottom: 6 }}><button class="btn" onClick=${() => aCSV(csv, cols, lista)}>Exportar CSV</button></div>`}
+    <div class="tw" style=${alto ? { maxHeight: alto } : null}><table>
+      <thead><tr>${cols.map(c => html`<th class=${c.n ? "n" : ""} onClick=${() => setO(o && o.k === c.k ? { k: c.k, d: o.d === "asc" ? "desc" : "asc" } : { k: c.k, d: c.n ? "desc" : "asc" })}>${c.t}${o && o.k === c.k ? (o.d === "asc" ? " ▲" : " ▼") : ""}</th>`)}</tr></thead>
+      <tbody>${lista.length === 0 ? html`<tr><td colspan=${cols.length} class="dim">Sin datos en el período.</td></tr>` :
+        lista.map((f, i) => html`<tr key=${i} class=${onRow ? "click" : ""} onClick=${onRow ? () => onRow(f) : null}>${cols.map(c => { const v = c.v ? c.v(f) : f[c.k]; return html`<td class=${(c.n ? "n " : "") + (c.cls ? c.cls(v, f) : "")}>${c.f ? c.f(v, f) : (v ?? "—")}</td>`; })}</tr>`)}</tbody>
+      ${total && html`<tfoot><tr>${cols.map(c => html`<td class=${c.n ? "n" : ""}>${total[c.k] != null ? (c.f ? c.f(total[c.k], total) : total[c.k]) : ""}</td>`)}</tr></tfoot>`}
+    </table></div></div>`;
+}
+
+// Barras horizontales (rankings). items: [{l, v, s?}]
+function Barras({ items, fmt, color, max }) {
+  const m = max || Math.max(...items.map(i => Math.abs(i.v)), 1);
+  return html`<div class="hb">${items.map(i => html`
+    <div class="lab" title=${i.l}>${i.l}</div>
+    <div class="bar"><i style=${{ left: 0, width: Math.max(Math.abs(i.v) / m * 100, 0.5) + "%", background: i.v < 0 ? "var(--danger)" : (i.c || color || "var(--s1)") }}></i></div>
+    <div class="val">${fmt ? fmt(i.v) : num(i.v)}${i.s ? html` <span class="dim">${i.s}</span>` : ""}</div>`)}</div>`;
+}
+
+// Columnas por mes (SVG). meses: ["2026-08"...], series: [{n, c, vals:[]}]
+function Columnas({ meses, series, fmt, linea }) {
+  const W = 760, H = 260, pl = 64, pr = 12, pt = 14, pb = 30;
+  const todos = series.flatMap(s => s.vals).concat(linea ? linea.vals : []);
+  const max = Math.max(...todos, 0), min = Math.min(...todos, 0);
+  const rango = (max - min) || 1;
+  const y = v => pt + (max - v) / rango * (H - pt - pb);
+  const gw = (W - pl - pr) / Math.max(meses.length, 1);
+  const bw = Math.min(28, (gw - 10) / series.length);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => min + f * rango);
+  return html`<div class="chart">
+    <div class="leg">${series.map(s => html`<span style=${{ "--c": s.c }}>${s.n}</span>`)}${linea && html`<span style=${{ "--c": linea.c }}>${linea.n} (línea)</span>`}</div>
+    <svg viewBox=${`0 0 ${W} ${H}`} role="img">
+      ${ticks.map(t => html`<g><line x1=${pl} x2=${W - pr} y1=${y(t)} y2=${y(t)} stroke="var(--border)" /><text x=${pl - 6} y=${y(t) + 4} text-anchor="end">${fmt ? fmt(t) : nf0.format(t)}</text></g>`)}
+      <line x1=${pl} x2=${W - pr} y1=${y(0)} y2=${y(0)} stroke="var(--border2)" />
+      ${meses.map((m, i) => html`<g>
+        ${series.map((s, j) => { const v = s.vals[i] || 0; const x = pl + i * gw + (gw - bw * series.length) / 2 + j * bw; return html`<rect x=${x} width=${bw - 2} y=${Math.min(y(v), y(0))} height=${Math.max(Math.abs(y(v) - y(0)), 0.5)} fill=${s.c} rx="2"><title>${s.n} ${mesLabel(m)}: ${fmt ? fmt(v) : v}</title></rect>`; })}
+        <text x=${pl + i * gw + gw / 2} y=${H - 10} text-anchor="middle">${mesLabel(m)}</text></g>`)}
+      ${linea && html`<polyline fill="none" stroke=${linea.c} stroke-width="2.5" points=${meses.map((m, i) => `${pl + i * gw + gw / 2},${y(linea.vals[i] || 0)}`).join(" ")} />`}
+      ${linea && meses.map((m, i) => html`<circle cx=${pl + i * gw + gw / 2} cy=${y(linea.vals[i] || 0)} r="3.5" fill=${linea.c}><title>${linea.n} ${mesLabel(m)}: ${fmt ? fmt(linea.vals[i]) : linea.vals[i]}</title></circle>`)}
+    </svg></div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLERO 1 — RESUMEN (rentabilidad general)
+// ═════════════════════════════════════════════════════════════════════════════
+function Resumen({ M, enRango, meses, inclAbiertas }) {
+  const tr = M.tramos.filter(x => enRango(x.mes) && (x.rendEstado === "cerrada" || (inclAbiertas && x.rendEstado === "abierta")));
+  const filas = meses.map(m => {
+    const t = tr.filter(x => x.mes === m);
+    const r = { mes: m, ingreso: sum(t, x => x.ingreso), chofer: sum(t, x => x.chofer$), comb: sum(t, x => x.comb), gastos: sum(t, x => x.gastos), extra: sum(t, x => x.extra), km: sum(t, x => x.km), tramos: t.length };
+    r.directos = r.chofer + r.comb + r.gastos + r.extra;
+    r.margen = r.ingreso - r.directos;
+    r.basicos = sum(M.basicos.filter(b => b.mes === m), b => b.usd);
+    r.sinBasico = !M.mesesBasico.has(m);
+    r.gg = sum(M.gg.filter(g => g.mes === m), g => g.usd);
+    r.resultado = r.margen - r.basicos - r.gg;
+    return r;
+  });
+  const T = {}; ["ingreso", "chofer", "comb", "gastos", "extra", "directos", "margen", "basicos", "gg", "resultado", "km", "tramos"].forEach(k => T[k] = sum(filas, f => f[k]));
+  T.mes = "Total";
+  const sinRendir = M.calidad.tramosSinRendir.filter(x => enRango(x.mes)).length;
+  const mesesSinBasico = filas.filter(f => f.sinBasico && f.tramos).map(f => mesLabel(f.mes));
+  return html`<div>
+    <h2>Rentabilidad general — operación propia</h2>
+    <div class="nota">Toma los tramos propios de rendiciones ${inclAbiertas ? "cerradas y abiertas" : "cerradas"}, por mes de inicio del tramo. ${sinRendir ? html`<b>${sinRendir} tramos propios del período todavía no están en ninguna rendición</b> y no suman (ver Calidad de datos).` : ""}</div>
+    <div class="kpis">
+      <${Kpi} l="Ingresos" v=${usd(T.ingreso)} s=${num(T.tramos) + " tramos · " + num(T.km) + " km"} />
+      <${Kpi} l="Costos directos de viaje" v=${usd(T.directos)} s="chofer + combustible + ruta + extra costos" />
+      <${Kpi} l="Margen de viajes" v=${usd(T.margen)} s=${pct(T.ingreso ? T.margen / T.ingreso * 100 : null) + " del ingreso"} cls=${T.margen < 0 ? "neg" : ""} />
+      <${Kpi} l="Básicos choferes" v=${usd(T.basicos)} s=${mesesSinBasico.length ? "sin liquidar: " + mesesSinBasico.join(", ") : "de las liquidaciones de RRHH"} />
+      <${Kpi} l="Gastos generales" v=${usd(T.gg)} s="módulo 7, todo junto" />
+      <${Kpi} l="Resultado" v=${usd(T.resultado)} s=${pct(T.ingreso ? T.resultado / T.ingreso * 100 : null) + " del ingreso"} cls=${T.resultado < 0 ? "neg" : "pos"} />
+      <${Kpi} l="Ingreso por km" v=${T.km ? "US$ " + nf2.format(T.ingreso / T.km) : "—"} s=${"costo directo por km: " + (T.km ? "US$ " + nf2.format(T.directos / T.km) : "—")} />
+    </div>
+    <div class="card"><h3>Ingresos, costos y resultado por mes</h3>
+      <${Columnas} meses=${meses} fmt=${v => nf0.format(v / 1000) + "k"} series=${[
+        { n: "Ingresos", c: "var(--s1)", vals: filas.map(f => f.ingreso) },
+        { n: "Costos directos", c: "var(--s2)", vals: filas.map(f => f.directos) },
+        { n: "Básicos + gastos generales", c: "var(--s4)", vals: filas.map(f => f.basicos + f.gg) }]}
+        linea=${{ n: "Resultado", c: "var(--s3)", vals: filas.map(f => f.resultado) }} />
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>En qué se va el ingreso</h3>
+        <${Barras} fmt=${usd} items=${[
+          { l: "Chofer (% de viaje)", v: T.chofer, c: "var(--s2)", s: pct(T.ingreso ? T.chofer / T.ingreso * 100 : null) },
+          { l: "Combustible", v: T.comb, c: "var(--s2)", s: pct(T.ingreso ? T.comb / T.ingreso * 100 : null) },
+          { l: "Gastos de ruta", v: T.gastos, c: "var(--s2)", s: pct(T.ingreso ? T.gastos / T.ingreso * 100 : null) },
+          { l: "Extra costos de factura", v: T.extra, c: "var(--s2)", s: pct(T.ingreso ? T.extra / T.ingreso * 100 : null) },
+          { l: "Básicos choferes", v: T.basicos, c: "var(--s4)", s: pct(T.ingreso ? T.basicos / T.ingreso * 100 : null) },
+          { l: "Gastos generales", v: T.gg, c: "var(--s4)", s: pct(T.ingreso ? T.gg / T.ingreso * 100 : null) },
+          { l: "Resultado", v: T.resultado, c: "var(--s3)", s: pct(T.ingreso ? T.resultado / T.ingreso * 100 : null) }]} />
+      </div>
+      <div class="card"><h3>Cómo se calcula</h3>
+        <ul class="qlist dim" style=${{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+          <li>Ingreso del tramo: el monto asignado en la rendición; si no tiene, la parte de la factura que queda, repartida por km.</li>
+          <li>Chofer: el % de la rendición sobre el ingreso. Los anticipos no son costo (son adelanto de ese %).</li>
+          <li>Combustible: todas las cargas de la hoja COMBUSTIBLE (efectivo y cuenta corriente), repartidas por km.</li>
+          <li>Básicos: columna básico de RRHH, al mes de la liquidación. Meses sin liquidar no restan básicos.</li>
+          <li>Gastos generales: todos los del módulo 7 por fecha del gasto.</li>
+          <li>ARS a USD con blue promedio; CLP a USD con dólar observado; de la fecha de cada monto.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card"><h3>Detalle por mes</h3>
+      <${Tabla} csv="resumen_mensual" filas=${filas} total=${T} cols=${[
+        { k: "mes", t: "Mes", f: (v, r) => r.mes === "Total" ? "Total" : html`${mesLabel(v)}${r.sinBasico && r.tramos ? html`<span class="tag w">sin básicos</span>` : ""}` },
+        { k: "tramos", t: "Tramos", n: 1, f: num }, { k: "km", t: "Km", n: 1, f: num },
+        { k: "ingreso", t: "Ingresos", n: 1, f: usd }, { k: "chofer", t: "Chofer", n: 1, f: usd }, { k: "comb", t: "Combustible", n: 1, f: usd },
+        { k: "gastos", t: "Ruta", n: 1, f: usd }, { k: "extra", t: "Extra c.", n: 1, f: usd }, { k: "margen", t: "Margen viajes", n: 1, f: usd, cls: v => v < 0 ? "neg" : "" },
+        { k: "basicos", t: "Básicos", n: 1, f: usd }, { k: "gg", t: "Gastos grales.", n: 1, f: usd }, { k: "resultado", t: "Resultado", n: 1, f: usd, cls: v => v < 0 ? "neg" : "pos" }]} />
+    </div>
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLERO 2 — RENTABILIDAD POR VIAJE
+// ═════════════════════════════════════════════════════════════════════════════
+const DIMENSIONES = [
+  { k: "ruta", t: "Tramo (origen → destino)" }, { k: "cliente", t: "Cliente" }, { k: "carga", t: "Carga" },
+  { k: "tractor", t: "Tractor" }, { k: "semi", t: "Semi" }, { k: "chofer", t: "Chofer" }, { k: "tripId", t: "Viaje" }];
+function Viajes({ M, enRango, inclAbiertas }) {
+  const [dim, setDim] = useState("ruta");
+  const [sel, setSel] = useState(null);
+  const [ggUnidad, setGgUnidad] = useState(true);
+  const tr = M.tramos.filter(x => enRango(x.mes) && (x.rendEstado === "cerrada" || (inclAbiertas && x.rendEstado === "abierta")));
+  const clave = x => dim === "tractor" || dim === "semi" ? (normPat(x[dim]) ? x[dim].toUpperCase() : "—") : x[dim];
+  // gastos generales con patente: se suman al tractor o semi
+  const ggPorPat = {};
+  if (ggUnidad && (dim === "tractor" || dim === "semi")) M.gg.filter(g => enRango(g.mes) && g.patente).forEach(g => { const k = normPat(g.patente); ggPorPat[k] = (ggPorPat[k] || 0) + g.usd; });
+  const grupos = [...agrupar(tr, clave)].map(([k, l]) => {
+    const r = { g: k, tramos: l.length, viajes: new Set(l.map(x => x.tripId)).size, km: sum(l, x => x.km), ingreso: sum(l, x => x.ingreso), chofer: sum(l, x => x.chofer$),
+      comb: sum(l, x => x.comb), gastos: sum(l, x => x.gastos), extra: sum(l, x => x.extra), est: l.some(x => x.choferEst || x.fuente !== "rendición"), lista: l };
+    r.unidad = ggPorPat[normPat(k)] || 0;
+    r.costo = r.chofer + r.comb + r.gastos + r.extra + r.unidad;
+    r.margen = r.ingreso - r.costo; r.mpct = r.ingreso ? r.margen / r.ingreso * 100 : null; r.mkm = r.km ? r.margen / r.km : null;
+    return r;
+  });
+  const T = { g: "Total" }; ["tramos", "km", "ingreso", "chofer", "comb", "gastos", "extra", "unidad", "costo", "margen"].forEach(k => T[k] = sum(grupos, g => g[k]));
+  T.viajes = new Set(tr.map(x => x.tripId)).size; T.mpct = T.ingreso ? T.margen / T.ingreso * 100 : null; T.mkm = T.km ? T.margen / T.km : null;
+  const ranking = [...grupos].filter(g => g.ingreso > 0).sort((a, b) => b.margen - a.margen);
+  const peores = [...ranking].reverse().slice(0, 10);
+  const conUnidad = dim === "tractor" || dim === "semi";
+  const cols = [{ k: "g", t: DIMENSIONES.find(d => d.k === dim).t, f: (v, r) => html`${v}${r.est ? html`<span class="tag" title="Incluye % chofer estimado o ingreso prorrateado de la factura">≈</span>` : ""}` },
+    { k: "viajes", t: "Viajes", n: 1, f: num }, { k: "tramos", t: "Tramos", n: 1, f: num }, { k: "km", t: "Km", n: 1, f: num },
+    { k: "ingreso", t: "Ingreso", n: 1, f: usd }, { k: "chofer", t: "Chofer", n: 1, f: usd }, { k: "comb", t: "Combustible", n: 1, f: usd },
+    { k: "gastos", t: "Ruta", n: 1, f: usd }, { k: "extra", t: "Extra c.", n: 1, f: usd }]
+    .concat(conUnidad && ggUnidad ? [{ k: "unidad", t: "G. grales. de la unidad", n: 1, f: usd }] : [])
+    .concat([{ k: "margen", t: "Margen", n: 1, f: usd, cls: v => v < 0 ? "neg" : "" }, { k: "mpct", t: "Margen %", n: 1, f: pct, cls: v => v < 0 ? "neg" : "" },
+      { k: "mkm", t: "Margen/km", n: 1, f: v => v == null ? "—" : "US$ " + nf2.format(v), cls: v => v < 0 ? "neg" : "" }]);
+  return html`<div>
+    <h2>Rentabilidad por viaje — operación propia</h2>
+    <div class="toolbar">
+      <span class="ctl">Agrupar por</span>
+      ${DIMENSIONES.map(d => html`<button class=${"tab" + (dim === d.k ? " on" : "")} onClick=${() => { setDim(d.k); setSel(null); }}>${d.t}</button>`)}
+      ${conUnidad && html`<label class="ctl"><input type="checkbox" checked=${ggUnidad} onChange=${e => setGgUnidad(e.target.checked)} /> restar gastos generales cargados con su patente</label>`}
+    </div>
+    <div class="nota">Margen = ingreso − chofer − combustible − gastos de ruta − extra costos${conUnidad && ggUnidad ? " − gastos generales con esa patente" : ""}. Antes de básicos y gastos generales de la empresa. <span class="tag">≈</span> = incluye algún valor estimado. Click en una fila para ver sus tramos.</div>
+    <div class="kpis">
+      <${Kpi} l="Ingreso" v=${usd(T.ingreso)} s=${num(T.viajes) + " viajes · " + num(T.tramos) + " tramos"} />
+      <${Kpi} l="Margen" v=${usd(T.margen)} s=${pct(T.mpct)} cls=${T.margen < 0 ? "neg" : ""} />
+      <${Kpi} l="Margen por km" v=${T.mkm == null ? "—" : "US$ " + nf2.format(T.mkm)} s=${num(T.km) + " km"} />
+      <${Kpi} l="Con margen negativo" v=${num(grupos.filter(g => g.margen < 0).length)} s=${"de " + grupos.length + " " + DIMENSIONES.find(d => d.k === dim).t.toLowerCase()} cls=${grupos.some(g => g.margen < 0) ? "neg" : ""} />
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Mejores márgenes</h3><${Barras} fmt=${usd} color="var(--s3)" items=${ranking.slice(0, 10).map(g => ({ l: g.g, v: g.margen, s: pct(g.mpct) }))} /></div>
+      <div class="card"><h3>Peores márgenes</h3><${Barras} fmt=${usd} color="var(--s2)" items=${peores.map(g => ({ l: g.g, v: g.margen, s: pct(g.mpct) }))} /></div>
+    </div>
+    <div class="card" style=${{ marginTop: 16 }}><h3>Detalle</h3>
+      <${Tabla} key=${dim} csv=${"rentabilidad_por_" + dim} filas=${grupos} total=${T} orden=${{ k: "margen", d: "desc" }} onRow=${r => setSel(r)} cols=${cols} />
+    </div>
+    ${sel && html`<div class="card"><div class="toolbar"><h3 style=${{ margin: 0 }}>Tramos de ${sel.g}</h3><span class="sp"></span><button class="btn" onClick=${() => setSel(null)}>Cerrar</button></div>
+      <${Tabla} csv="tramos" filas=${sel.lista} orden=${{ k: "fecha", d: "desc" }} cols=${[
+        { k: "fecha", t: "Fecha" }, { k: "tripId", t: "Viaje" }, { k: "ruta", t: "Tramo" }, { k: "chofer", t: "Chofer" }, { k: "tractor", t: "Tractor" }, { k: "semi", t: "Semi" },
+        { k: "carga", t: "Carga" }, { k: "km", t: "Km", n: 1, f: num }, { k: "ingreso", t: "Ingreso", n: 1, f: (v, r) => html`${usd(v)}${r.fuente !== "rendición" ? html`<span class="tag w" title=${r.fuente}>≈</span>` : ""}` },
+        { k: "chofer$", t: "Chofer", n: 1, f: (v, r) => html`${usd(v)}${r.choferEst ? html`<span class="tag w" title="% promedio">≈</span>` : ""}` },
+        { k: "comb", t: "Comb.", n: 1, f: usd }, { k: "gastos", t: "Ruta", n: 1, f: usd }, { k: "extra", t: "Extra", n: 1, f: usd },
+        { k: "margen", t: "Margen", n: 1, f: usd, cls: v => v < 0 ? "neg" : "" }, { k: "rendId", t: "Rendición" }, { k: "rendEstado", t: "Estado" }]} />
+    </div>`}
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLERO 3 — COMBUSTIBLE
+// ═════════════════════════════════════════════════════════════════════════════
+function Combustible({ M, enRango, meses }) {
+  const [tipo, setTipo] = useState("GASOIL");
+  const u = tipo === "GNC" ? "m³" : "L";
+  const cs = M.cargas.filter(c => enRango(c.mes) && c.tipo === tipo);
+  const cant = sum(cs, c => c.cant), gasto = sum(cs, c => c.usd);
+  const ef = sum(cs.filter(c => c.pagadoCon === "EFECTIVO"), c => c.usd);
+  // Consumo: por rendición (cantidad del tipo / km recorridos)
+  const rs = M.rends.filter(r => enRango(mesDe(r.fecha)) && r.kmReal > 0 && (tipo === "GNC" ? r.m3 : r.litros) > 0).map(r => {
+    const q = tipo === "GNC" ? r.m3 : r.litros;
+    return { id: r.id, fecha: r.fecha, chofer: r.chofer, tractor: r.tractor, estado: r.estado, km: r.kmReal, kmPrev: r.kmPrev, q, cons: q / r.kmReal * 100,
+      desvio: r.kmPrev ? (r.kmReal - r.kmPrev) / r.kmPrev * 100 : null, usdKm: r.combUSD / r.kmReal };
+  });
+  const consProm = sum(rs, r => r.km) ? sum(rs, r => r.q) / sum(rs, r => r.km) * 100 : null;
+  const porGrupo = (clave) => [...agrupar(rs, clave)].map(([k, l]) => ({ g: k, n: l.length, km: sum(l, x => x.km), q: sum(l, x => x.q), cons: sum(l, x => x.q) / sum(l, x => x.km) * 100 })).sort((a, b) => b.cons - a.cons);
+  const porTractor = porGrupo(r => String(r.tractor).toUpperCase()), porChofer = porGrupo(r => r.chofer);
+  const estaciones = [...agrupar(cs, c => c.estacion + "|" + c.pais + "|" + (c.moneda || ""))].map(([k, l]) => {
+    const [est, pais, mon] = k.split("|"); const q = sum(l, c => c.cant);
+    return { est, pais, mon, n: l.length, q, usd: sum(l, c => c.usd), pUSD: q ? sum(l, c => c.usd) / q : null, pLoc: q ? sum(l, c => moneyNum(c.importe)) / q : null };
+  });
+  const porPais = [...agrupar(cs, c => c.pais)].map(([k, l]) => ({ l: k, v: sum(l, c => c.cant) ? sum(l, c => c.usd) / sum(l, c => c.cant) : 0, s: num(sum(l, c => c.cant)) + " " + u }));
+  const mensual = meses.map(m => { const l = cs.filter(c => c.mes === m); return { q: sum(l, c => c.cant), usd: sum(l, c => c.usd) }; });
+  const fueraRango = tipo === "GASOIL" ? rs.filter(r => r.cons < 20 || r.cons > 60) : [];
+  return html`<div>
+    <h2>Consumo de combustible</h2>
+    <div class="toolbar"><button class=${"tab" + (tipo === "GASOIL" ? " on" : "")} onClick=${() => setTipo("GASOIL")}>Gasoil (litros)</button>
+      <button class=${"tab" + (tipo === "GNC" ? " on" : "")} onClick=${() => setTipo("GNC")}>GNC (m³)</button></div>
+    <div class="nota">Cargas de la hoja COMBUSTIBLE por fecha de carga. El consumo se calcula por rendición: ${u} cargados ÷ km recorridos (odómetro; si falta, km reales cargados) × 100.</div>
+    <div class="kpis">
+      <${Kpi} l=${"Cantidad cargada"} v=${num(cant) + " " + u} s=${cs.length + " cargas"} />
+      <${Kpi} l="Gasto" v=${usd(gasto)} s=${"efectivo del chofer: " + pct(gasto ? ef / gasto * 100 : null)} />
+      <${Kpi} l=${"Precio promedio por " + u} v=${cant ? "US$ " + nf2.format(gasto / cant) : "—"} />
+      <${Kpi} l=${"Consumo promedio"} v=${consProm == null ? "—" : nf1.format(consProm) + " " + u + "/100 km"} s=${rs.length + " rendiciones con km"} />
+      <${Kpi} l="Costo por km" v=${sum(rs, r => r.km) ? "US$ " + nf2.format(sum(rs, r => r.usdKm * r.km) / sum(rs, r => r.km)) : "—"} />
+    </div>
+    <div class="card"><h3>Por mes</h3>
+      <${Columnas} meses=${meses} fmt=${v => nf0.format(v / 1000) + "k"} series=${[{ n: "Gasto USD", c: "var(--s2)", vals: mensual.map(m => m.usd) }]} linea=${{ n: u + " cargados", c: "var(--s1)", vals: mensual.map(m => m.q) }} />
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Consumo por tractor (${u}/100 km)</h3><${Barras} fmt=${v => nf1.format(v)} color="var(--s5)" items=${porTractor.map(g => ({ l: g.g, v: g.cons, s: num(g.km) + " km" }))} /></div>
+      <div class="card"><h3>Consumo por chofer (${u}/100 km)</h3><${Barras} fmt=${v => nf1.format(v)} color="var(--s5)" items=${porChofer.map(g => ({ l: g.g, v: g.cons, s: num(g.km) + " km" }))} /></div>
+      <div class="card"><h3>Precio promedio por país (US$/${u})</h3><${Barras} fmt=${v => "US$ " + nf2.format(v)} color="var(--s2)" items=${porPais} /></div>
+      <div class="card"><h3>Rendiciones con consumo fuera de lo normal</h3>
+        ${tipo === "GNC" ? html`<div class="dim">Sin umbral definido para GNC.</div>` : fueraRango.length === 0 ? html`<div class="dim">Ninguna fuera de 20–60 L/100 km.</div>` :
+          html`<${Tabla} alto="260px" filas=${fueraRango} cols=${[{ k: "id", t: "Rendición" }, { k: "chofer", t: "Chofer" }, { k: "km", t: "Km", n: 1, f: num }, { k: "q", t: "L", n: 1, f: num }, { k: "cons", t: "L/100", n: 1, f: v => nf1.format(v) }]} />`}
+        <div class="nota">Suele ser un dato mal cargado: km o litros de menos, o una carga en otra rendición.</div>
+      </div>
+    </div>
+    <div class="card" style=${{ marginTop: 16 }}><h3>Por rendición</h3>
+      <${Tabla} csv="consumo_por_rendicion" filas=${rs} orden=${{ k: "fecha", d: "desc" }} cols=${[
+        { k: "fecha", t: "Inicio" }, { k: "id", t: "Rendición" }, { k: "estado", t: "Estado" }, { k: "chofer", t: "Chofer" }, { k: "tractor", t: "Tractor" },
+        { k: "km", t: "Km recorridos", n: 1, f: num }, { k: "kmPrev", t: "Km previstos", n: 1, f: num }, { k: "desvio", t: "Desvío km", n: 1, f: pct, cls: v => v != null && Math.abs(v) > 10 ? "neg" : "" },
+        { k: "q", t: u, n: 1, f: num }, { k: "cons", t: u + "/100 km", n: 1, f: v => nf1.format(v) }, { k: "usdKm", t: "US$/km", n: 1, f: v => nf2.format(v) }]} />
+    </div>
+    <div class="card"><h3>Por estación</h3>
+      <${Tabla} csv="combustible_por_estacion" filas=${estaciones} orden=${{ k: "q", d: "desc" }} cols=${[
+        { k: "est", t: "Estación" }, { k: "pais", t: "País" }, { k: "n", t: "Cargas", n: 1, f: num }, { k: "q", t: u, n: 1, f: num }, { k: "usd", t: "Gasto", n: 1, f: usd },
+        { k: "pUSD", t: "US$/" + u, n: 1, f: v => v == null ? "—" : nf2.format(v) }, { k: "pLoc", t: "Precio local/" + u, n: 1, f: (v, r) => v == null ? "—" : nf2.format(v) + " " + (r.mon || "") }]} />
+    </div>
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLERO 4 — GASTOS GENERALES (bolsa: el tipo es texto libre)
+// ═════════════════════════════════════════════════════════════════════════════
+function GastosGenerales({ M, enRango, meses }) {
+  const [q, setQ] = useState("");
+  const g = M.gg.filter(x => enRango(x.mes) && (!q || (x.tipo + " " + x.obs + " " + x.patente + " " + x.chofer + " " + x.responsable).toUpperCase().includes(q.toUpperCase())));
+  const tot = sum(g, x => x.usd);
+  const por = (clave, vacio) => [...agrupar(g, x => clave(x) || vacio)].map(([k, l]) => ({ l: k, v: sum(l, x => x.usd), s: l.length + "" })).sort((a, b) => b.v - a.v);
+  const porTipo = por(x => x.tipo, "(sin tipo)");
+  return html`<div>
+    <h2>Gastos generales</h2>
+    <div class="nota">El tipo de gasto es texto libre: se agrupa tal como está escrito (en mayúsculas). Usá el buscador para juntar variantes, por ejemplo "gomer" o "lavad".</div>
+    <div class="toolbar"><input type="text" placeholder="Buscar en tipo, observaciones, patente, chofer, responsable…" value=${q} onInput=${e => setQ(e.target.value)} style=${{ minWidth: 340 }} />${q && html`<button class="btn" onClick=${() => setQ("")}>Limpiar</button>`}</div>
+    <div class="kpis">
+      <${Kpi} l="Total" v=${usd(tot)} s=${g.length + " gastos"} />
+      <${Kpi} l="Promedio mensual" v=${usd(meses.length ? tot / meses.length : 0)} s=${meses.length + " meses"} />
+      <${Kpi} l="Con patente" v=${pct(g.length ? g.filter(x => x.patente).length / g.length * 100 : null)} s=${usd(sum(g.filter(x => x.patente), x => x.usd))} />
+      <${Kpi} l="Con chofer" v=${pct(g.length ? g.filter(x => x.chofer).length / g.length * 100 : null)} />
+    </div>
+    <div class="card"><h3>Por mes</h3><${Columnas} meses=${meses} fmt=${v => nf0.format(v / 1000) + "k"} series=${[{ n: "Gastos generales", c: "var(--s4)", vals: meses.map(m => sum(g.filter(x => x.mes === m), x => x.usd)) }]} /></div>
+    <div class="grid2">
+      <div class="card"><h3>Por tipo (los 15 mayores)</h3><${Barras} fmt=${usd} color="var(--s4)" items=${porTipo.slice(0, 15)} /></div>
+      <div class="card"><h3>Por responsable del pago</h3><${Barras} fmt=${usd} color="var(--s4)" items=${por(x => x.responsable, "—").slice(0, 15)} /></div>
+      <div class="card"><h3>Por patente</h3><${Barras} fmt=${usd} color="var(--s5)" items=${por(x => x.patente, "(sin patente)").slice(0, 15)} /></div>
+      <div class="card"><h3>Por chofer</h3><${Barras} fmt=${usd} color="var(--s5)" items=${por(x => x.chofer, "(sin chofer)").slice(0, 15)} /></div>
+    </div>
+    <div class="card" style=${{ marginTop: 16 }}><h3>Todos los tipos</h3>
+      <${Tabla} alto="320px" filas=${porTipo} orden=${{ k: "v", d: "desc" }} cols=${[{ k: "l", t: "Tipo de gasto" }, { k: "s", t: "Cantidad", n: 1, v: r => Number(r.s), f: num }, { k: "v", t: "Total", n: 1, f: usd }, { k: "p", t: "% del total", n: 1, v: r => tot ? r.v / tot * 100 : 0, f: pct }]} />
+    </div>
+    <div class="card"><h3>Gastos</h3>
+      <${Tabla} csv="gastos_generales" filas=${g} orden=${{ k: "fecha", d: "desc" }} cols=${[
+        { k: "fecha", t: "Fecha" }, { k: "tipo", t: "Tipo" }, { k: "obs", t: "Observaciones" }, { k: "monto", t: "Monto", n: 1, f: (v, r) => nf2.format(v) + " " + r.divisa },
+        { k: "usd", t: "USD", n: 1, f: usd }, { k: "patente", t: "Patente" }, { k: "chofer", t: "Chofer" }, { k: "responsable", t: "Responsable" }]} />
+    </div>
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLERO 5 — ACTIVIDAD DE USUARIOS
+// ═════════════════════════════════════════════════════════════════════════════
+const ACCIONES = { LOGIN: "Ingresos", CREATE_TRIP: "Viajes creados", EDIT_TRIP: "Viajes editados", CREATE_ENTREGA: "Entregas", CREATE_RENDICION: "Rendiciones creadas",
+  EDIT_RENDICION: "Rendiciones editadas", SAVE_COMBUSTIBLE: "Combustible", CREATE_FACTURACION: "Facturas", EDIT_FACTURACION: "Facturas editadas",
+  CREATE_GASTO_GENERAL: "Gastos generales", CREATE_LIQUIDACION: "Liquidaciones", CREATE_CAJA: "Caja" };
+function Actividad({ M, raw, enRango }) {
+  const log = (raw.audit || []).map(l => ({ ...l, d: dt(l.timestamp) })).filter(l => l.d && enRango(mesDe(iso(l.d))));
+  const usuarios = [...new Set(log.map(l => l.user))].sort();
+  const porUser = usuarios.map(u => {
+    const l = log.filter(x => x.user === u);
+    const fr = {}; l.forEach(x => fr[x.action] = (fr[x.action] || 0) + 1);
+    const top = Object.entries(fr).sort((a, b) => b[1] - a[1])[0];
+    return { u, n: l.length, logins: fr.LOGIN || 0, ultima: l.reduce((m, x) => x.d > m ? x.d : m, new Date(0)), top: top ? (ACCIONES[top[0]] || top[0]) + " (" + top[1] + ")" : "—", dias: new Set(l.map(x => iso(x.d))).size, fr };
+  });
+  const tipos = Object.keys(ACCIONES).filter(a => log.some(l => l.action === a));
+  const horas = Array.from({ length: 24 }, (_, h) => h);
+  const maxHora = Math.max(1, ...usuarios.flatMap(u => horas.map(h => log.filter(l => l.user === u && l.d.getHours() === h).length)));
+  // Demoras administrativas
+  const demRend = M.rends.filter(r => r.estado === "cerrada" && r.cerradaAt).map(r => {
+    const fin = r.tramos.map(t => iso(t.fechaLlegadaReal) || iso(t.fechaLlegadaPrevista)).filter(Boolean).sort().pop();
+    return { id: r.id, chofer: r.chofer, por: r.cerradaPor || "—", fin, cierre: iso(r.cerradaAt), dias: diasEntre(fin, iso(r.cerradaAt)) };
+  }).filter(x => x.dias != null && enRango(mesDe(x.cierre)));
+  const viajesFin = {};
+  M.tramos.forEach(x => { if (!viajesFin[x.tripId] || x.fecha > viajesFin[x.tripId]) viajesFin[x.tripId] = x.fecha; });
+  const demFac = (raw.facturacion || []).map(f => ({ tripId: f.tripId, fac: iso(f.fechaFcCliente), cobro: iso(f.fechaCobro), estado: f.estadoCliente, ini: viajesFin[f.tripId] }))
+    .filter(x => x.fac && x.ini && enRango(mesDe(x.fac))).map(x => ({ ...x, dias: diasEntre(x.ini, x.fac), diasCobro: x.cobro ? diasEntre(x.fac, x.cobro) : null }));
+  const prom = (l, k) => { const v = l.map(x => x[k]).filter(x => x != null); return v.length ? sum(v) / v.length : null; };
+  return html`<div>
+    <h2>Actividad de usuarios</h2>
+    <div class="nota">Del registro de auditoría de SIGT (${num(raw.audit.length)} acciones leídas${raw.auditTotal ? " de " + num(raw.auditTotal) : ""}).${raw.auditTotal == null && raw.audit.length <= 500 ? " El servidor todavía devuelve solo las últimas 500: después de publicar la nueva versión del backend se ve la historia completa." : ""}</div>
+    <div class="kpis">
+      <${Kpi} l="Acciones en el período" v=${num(log.length)} s=${usuarios.length + " usuarios"} />
+      <${Kpi} l="Días de rendición a cierre" v=${prom(demRend, "dias") == null ? "—" : nf1.format(prom(demRend, "dias")) + " días"} s="del fin del último tramo al cierre" />
+      <${Kpi} l="Días de fin de viaje a factura" v=${prom(demFac, "dias") == null ? "—" : nf1.format(prom(demFac, "dias")) + " días"} s="desde el inicio del último tramo" />
+      <${Kpi} l="Días de factura a cobro" v=${prom(demFac, "diasCobro") == null ? "—" : nf1.format(prom(demFac, "diasCobro")) + " días"} s=${demFac.filter(x => x.diasCobro != null).length + " facturas cobradas"} />
+    </div>
+    <div class="card"><h3>Por usuario</h3>
+      <${Tabla} filas=${porUser} orden=${{ k: "n", d: "desc" }} cols=${[{ k: "u", t: "Usuario" }, { k: "n", t: "Acciones", n: 1, f: num }, { k: "dias", t: "Días activos", n: 1, f: num },
+        { k: "logins", t: "Ingresos", n: 1, f: num }, { k: "top", t: "Lo que más hace" }, { k: "ultima", t: "Última actividad", v: r => r.ultima.getTime(), f: (v, r) => r.ultima.toLocaleString("es-AR") }]} />
+    </div>
+    <div class="card"><h3>Qué hace cada uno</h3>
+      <div class="tw"><table><thead><tr><th>Acción</th>${usuarios.map(u => html`<th class="n">${u}</th>`)}</tr></thead>
+        <tbody>${tipos.map(a => html`<tr><td>${ACCIONES[a]}</td>${porUser.map(p => html`<td class="n">${p.fr[a] ? num(p.fr[a]) : html`<span class="dim">·</span>`}</td>`)}</tr>`)}</tbody></table></div>
+    </div>
+    <div class="card"><h3>A qué hora trabaja cada uno</h3>
+      <div class="tw"><table class="heat"><thead><tr><th>Usuario</th>${horas.map(h => html`<th class="n">${h}</th>`)}</tr></thead>
+        <tbody>${usuarios.map(u => html`<tr><td style=${{ textAlign: "left" }}>${u}</td>${horas.map(h => { const n = log.filter(l => l.user === u && l.d.getHours() === h).length; return html`<td title=${n + " acciones"} style=${{ background: n ? `color-mix(in srgb, var(--s1) ${Math.round(15 + n / maxHora * 70)}%, transparent)` : "transparent" }}>${n || ""}</td>`; })}</tr>`)}</tbody></table></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Demora en cerrar rendiciones</h3>
+        <${Tabla} alto="340px" csv="demora_rendiciones" filas=${demRend} orden=${{ k: "dias", d: "desc" }} cols=${[{ k: "id", t: "Rendición" }, { k: "chofer", t: "Chofer" }, { k: "por", t: "Cerró" }, { k: "fin", t: "Fin viaje" }, { k: "cierre", t: "Cierre" }, { k: "dias", t: "Días", n: 1, f: num, cls: v => v > 15 ? "neg" : "" }]} />
+      </div>
+      <div class="card"><h3>Demora en facturar y cobrar</h3>
+        <${Tabla} alto="340px" csv="demora_facturas" filas=${demFac} orden=${{ k: "dias", d: "desc" }} cols=${[{ k: "tripId", t: "Viaje" }, { k: "ini", t: "Último tramo" }, { k: "fac", t: "Factura" }, { k: "dias", t: "Días a factura", n: 1, f: num, cls: v => v > 15 ? "neg" : "" }, { k: "cobro", t: "Cobro" }, { k: "diasCobro", t: "Días a cobro", n: 1, f: num }, { k: "estado", t: "Estado" }]} />
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CALIDAD DE DATOS
+// ═════════════════════════════════════════════════════════════════════════════
+function Calidad({ M, enRango, meses }) {
+  const C = M.calidad;
+  const vsf = C.viajesSinFactura.filter(x => enRango(mesDe(x.fecha)));
+  const tsr = C.tramosSinRendir.filter(x => enRango(x.mes));
+  const mesesSinBasico = meses.filter(m => !M.mesesBasico.has(m) && M.tramos.some(x => x.mes === m));
+  const Bloque = ({ t, n, d, children }) => html`<div class="card"><h3>${t} <span class=${"tag" + (n ? " w" : "")}>${n}</span></h3>${d && html`<div class="nota" style=${{ marginTop: -4 }}>${d}</div>`}${n ? children : html`<div class="dim">Nada pendiente.</div>`}</div>`;
+  return html`<div>
+    <h2>Calidad de datos</h2>
+    <div class="nota">Lo que falta o parece mal cargado y distorsiona los tableros. Se corrige en SIGT; acá solo se muestra.</div>
+    <${Bloque} t="Tramos propios sin rendición" n=${tsr.length} d="Ya empezaron pero no están en ninguna rendición: no suman ingreso ni costo en Resumen ni en Viajes.">
+      <${Tabla} alto="300px" csv="tramos_sin_rendir" filas=${tsr} cols=${[{ k: "fecha", t: "Fecha" }, { k: "tripId", t: "Viaje" }, { k: "ruta", t: "Tramo" }, { k: "chofer", t: "Chofer" }, { k: "tractor", t: "Tractor" }, { k: "ingreso", t: "Ingreso estimado", n: 1, f: usd }]} />
+    <//>
+    <${Bloque} t="Viajes propios sin factura al cliente" n=${vsf.length} d="Sin factura no hay ingreso: el viaje aparece con margen negativo.">
+      <${Tabla} alto="300px" csv="viajes_sin_factura" filas=${vsf} cols=${[{ k: "fecha", t: "Inicio" }, { k: "tripId", t: "Viaje" }, { k: "cliente", t: "Cliente" }, { k: "tramos", t: "Tramos", n: 1 }, { k: "status", t: "Estado" }]} />
+    <//>
+    <${Bloque} t="Meses con viajes y sin liquidación de RRHH" n=${mesesSinBasico.length} d="En esos meses el Resumen no resta los básicos de los choferes.">
+      <div>${mesesSinBasico.map(m => html`<span class="tag w">${mesLabel(m)}</span>`)}</div>
+    <//>
+    <${Bloque} t="Gastos generales que parecen de un camión y no tienen patente" n=${C.ggSinPatente.filter(g => enRango(g.mes)).length} d="Detectados por palabras como gomería, cubierta, neumático, repuesto, aceite, filtro, taller, lona.">
+      <${Tabla} alto="300px" csv="gastos_sin_patente" filas=${C.ggSinPatente.filter(g => enRango(g.mes))} cols=${[{ k: "fecha", t: "Fecha" }, { k: "tipo", t: "Tipo" }, { k: "obs", t: "Observaciones" }, { k: "usd", t: "USD", n: 1, f: usd }, { k: "responsable", t: "Responsable" }, { k: "id", t: "ID" }]} />
+    <//>
+    <${Bloque} t="Cargas de combustible sin «pagado con»" n=${C.cargasSinPago.length}>
+      <${Tabla} alto="240px" filas=${C.cargasSinPago} cols=${[{ k: "fecha", t: "Fecha" }, { k: "rendicionId", t: "Rendición" }, { k: "chofer", t: "Chofer" }, { k: "estacion", t: "Estación" }, { k: "usd", t: "USD", n: 1, f: usd }, { k: "id", t: "ID" }]} />
+    <//>
+    <${Bloque} t="Rendiciones cerradas sin km recorridos" n=${C.rendSinKm.length} d="Sin odómetro ni km reales no se puede calcular el consumo.">
+      <${Tabla} alto="240px" filas=${C.rendSinKm} cols=${[{ k: "id", t: "Rendición" }, { k: "fecha", t: "Inicio" }, { k: "chofer", t: "Chofer" }, { k: "tractor", t: "Tractor" }]} />
+    <//>
+    <${Bloque} t="Rendiciones con GAS-OIL en gastos y sin cargas en COMBUSTIBLE" n=${C.rendSinCargas.length} d="Se toma el GAS-OIL de gastos como combustible, pero sin litros: no entran en el consumo.">
+      <${Tabla} alto="240px" filas=${C.rendSinCargas} cols=${[{ k: "id", t: "Rendición" }, { k: "fecha", t: "Inicio" }, { k: "chofer", t: "Chofer" }]} />
+    <//>
+    <${Bloque} t="Viajes idénticos (mismo cliente, carga, MIC, CRT y tramos)" n=${C.duplicados.length} d="Posibles duplicados: cuentan dos veces.">
+      <ul class="qlist">${C.duplicados.map(d => html`<li>${d.join("  =  ")}</li>`)}</ul>
+    <//>
+  </div>`;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// APP
+// ═════════════════════════════════════════════════════════════════════════════
+function Login({ onOk, msg }) {
+  const [u, setU] = useState(""), [p, setP] = useState(""), [err, setErr] = useState(msg || ""), [busy, setBusy] = useState(false);
+  async function enviar(e) {
+    e.preventDefault(); if (busy) return;
+    setBusy(true); setErr("");
+    const r = await gasCall("login", { username: u.trim(), password: p });
+    setBusy(false);
+    if (!r.ok) return setErr(r.error || "No se pudo ingresar.");
+    const s = { username: r.user.username, token: r.token }; lsSet("sigt_session", s); onOk(s);
+  }
+  return html`<div class="center"><form class="login" onSubmit=${enviar}>
+    <div class="brand">SIGT <small>Tableros</small></div>
+    <div class="dim" style=${{ fontSize: 12 }}>Mismo usuario y contraseña que SIGT.</div>
+    ${err && html`<div class="err">${err}</div>`}
+    <input placeholder="Usuario" value=${u} onInput=${e => setU(e.target.value)} autocomplete="username" />
+    <input placeholder="Contraseña" type="password" value=${p} onInput=${e => setP(e.target.value)} autocomplete="current-password" />
+    <button class="btn pri" disabled=${busy}>${busy ? "Ingresando…" : "Ingresar"}</button>
+  </form></div>`;
+}
+
+const TABS = [["resumen", "Resumen"], ["viajes", "Rentabilidad por viaje"], ["comb", "Combustible"], ["gg", "Gastos generales"], ["act", "Actividad"], ["cal", "Calidad de datos"]];
+
+function App() {
+  const [ses, setSes] = useState(() => lsGet("sigt_session"));
+  const [raw, setRaw] = useState(null), [fx, setFx] = useState(null), [err, setErr] = useState(""), [paso, setPaso] = useState("");
+  const [tab, setTab] = useState(() => lsGet("tab_activa", "resumen"));
+  const [desde, setDesde] = useState(""), [hasta, setHasta] = useState("");
+  const [inclAbiertas, setInclAbiertas] = useState(false);
+  const [tema, setTema] = useState(() => lsGet("tab_tema", window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+  useEffect(() => { document.documentElement.setAttribute("data-theme", tema); lsSet("tab_tema", tema); }, [tema]);
+  useEffect(() => { lsSet("tab_activa", tab); }, [tab]);
+
+  async function cargar() {
+    setErr(""); setRaw(null); setPaso("Leyendo datos de SIGT…");
+    const acc = ["getTrips", "getFacturacion", "getRendiciones", "getCombustible", "getGastosGenerales", "getRRHH", "getDropdowns"];
+    const rs = await Promise.all(acc.map(a => gasCall(a)).concat([gasCall("getAuditLog", { limite: 50000 })]));
+    if (rs.some(r => r.expired)) { setSes(null); return; }
+    const mal = rs.findIndex(r => !r.ok);
+    if (mal >= 0) { setErr("No se pudo leer " + (acc[mal] || "getAuditLog") + ": " + (rs[mal].error || "error")); return; }
+    const d = { trips: rs[0].data, facturacion: rs[1].data, rendiciones: rs[2].data, combustible: rs[3].data, gastosGenerales: rs[4].data, rrhh: rs[5].data, dropdowns: rs[6].data, audit: rs[7].data || [], auditTotal: rs[7].total };
+    const anios = new Set([String(new Date().getFullYear())]);
+    (d.trips || []).forEach(t => (t.segments || []).forEach(s => { const f = iso(s.fechaInicio); if (f) anios.add(f.slice(0, 4)); }));
+    setPaso("Bajando cotizaciones…");
+    const f = await cargarCotizaciones([...anios].filter(a => a >= "2024").sort());
+    setFx(f); setRaw(d); setPaso("");
+  }
+  useEffect(() => { if (ses && USUARIOS_TABLEROS.includes(ses.username)) cargar(); }, [ses]);
+
+  const M = useMemo(() => raw && fx ? construirModelo(raw, fx) : null, [raw, fx]);
+  const todosMeses = useMemo(() => {
+    if (!M) return [];
+    const s = new Set(); M.tramos.forEach(x => x.mes && s.add(x.mes)); M.gg.forEach(g => g.mes && s.add(g.mes)); M.cargas.forEach(c => c.mes && s.add(c.mes));
+    const hoy = mesDe(hoyISO());
+    return [...s].filter(m => m >= "2024-01" && m <= hoy).sort();
+  }, [M]);
+  useEffect(() => { if (todosMeses.length && !desde) { setDesde(todosMeses[0]); setHasta(todosMeses[todosMeses.length - 1]); } }, [todosMeses]);
+
+  if (!ses) return html`<${Login} onOk=${setSes} />`;
+  if (!USUARIOS_TABLEROS.includes(ses.username)) return html`<div class="center"><div>El usuario <b>${ses.username}</b> no tiene acceso a los tableros.</div><button class="btn" onClick=${() => { lsSet("sigt_session", null); setSes(null); }}>Ingresar con otro usuario</button></div>`;
+  if (err) return html`<div class="center"><div class="err">${err}</div><button class="btn" onClick=${cargar}>Reintentar</button></div>`;
+  if (!M) return html`<div class="center"><div>${paso || "Cargando…"}</div></div>`;
+
+  const meses = todosMeses.filter(m => m >= desde && m <= hasta);
+  const enRango = m => !!m && m >= desde && m <= hasta;
+  const fuentes = "Blue promedio compra/venta (ArgentinaDatos) · dólar observado Chile (mindicador.cl) · bajadas " + new Date(fx.ts).toLocaleString("es-AR");
+  return html`<div>
+    <div class="top">
+      <div class="brand">SIGT <small>Tableros</small></div>
+      <div class="tabs">${TABS.map(([k, t]) => html`<button class=${"tab" + (tab === k ? " on" : "")} onClick=${() => setTab(k)}>${t}${k === "cal" && (M.calidad.tramosSinRendir.length + M.calidad.viajesSinFactura.length) ? html`<span class="tag w">!</span>` : ""}</button>`)}</div>
+      <span class="sp"></span>
+      <label class="ctl">Desde <select value=${desde} onChange=${e => setDesde(e.target.value)}>${todosMeses.map(m => html`<option value=${m}>${mesLabel(m)}</option>`)}</select></label>
+      <label class="ctl">Hasta <select value=${hasta} onChange=${e => setHasta(e.target.value)}>${todosMeses.map(m => html`<option value=${m}>${mesLabel(m)}</option>`)}</select></label>
+      ${(tab === "resumen" || tab === "viajes") && html`<label class="ctl" title="Las rendiciones abiertas pueden cambiar"><input type="checkbox" checked=${inclAbiertas} onChange=${e => setInclAbiertas(e.target.checked)} /> incluir rendiciones abiertas</label>`}
+      <button class="btn" onClick=${cargar} title="Volver a leer los datos">↻</button>
+      <button class="btn" onClick=${() => setTema(tema === "dark" ? "light" : "dark")} title="Cambiar tema">${tema === "dark" ? "☀" : "☾"}</button>
+      <span class="ctl">${ses.username}</span>
+    </div>
+    <main>
+      <div class="aviso">Solo operación propia (sin fleteros). Todo en USD. <b>No incluye</b> repuestos, recapados de cubiertas, sueldos administrativos ni otros costos que hoy no se cargan en SIGT: la rentabilidad real es menor.
+        ${(fx.errores.length || M.calidad.fallosFx.length) ? html` <b class="neg">Faltan cotizaciones (${fx.errores.concat(M.calidad.fallosFx).join(", ")}): esos montos se convirtieron con el tipo de cambio fijo de SIGT.</b>` : ""}</div>
+      ${tab === "resumen" && html`<${Resumen} M=${M} enRango=${enRango} meses=${meses} inclAbiertas=${inclAbiertas} />`}
+      ${tab === "viajes" && html`<${Viajes} M=${M} enRango=${enRango} inclAbiertas=${inclAbiertas} />`}
+      ${tab === "comb" && html`<${Combustible} M=${M} enRango=${enRango} meses=${meses} />`}
+      ${tab === "gg" && html`<${GastosGenerales} M=${M} enRango=${enRango} meses=${meses} />`}
+      ${tab === "act" && html`<${Actividad} M=${M} raw=${raw} enRango=${enRango} />`}
+      ${tab === "cal" && html`<${Calidad} M=${M} enRango=${enRango} meses=${meses} />`}
+      <div class="nota" style=${{ marginTop: 24 }}>${fuentes}</div>
+    </main>
+  </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+</script>
+</body>
+</html>
