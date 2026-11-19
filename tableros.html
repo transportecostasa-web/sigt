@@ -429,7 +429,7 @@ function Columnas({ meses, series, fmt, linea }) {
   const todos = series.flatMap(s => s.vals).concat(linea ? linea.vals : []);
   // escala con cortes redondos (0, 25k, 50k…)
   const crudoMax = Math.max(...todos, 0), crudoMin = Math.min(...todos, 0);
-  const bruto = ((crudoMax - crudoMin) || 1) / 4;
+  const bruto = ((crudoMax - crudoMin) || 1) / 6;
   const mag = Math.pow(10, Math.floor(Math.log10(bruto)));
   const paso = [1, 2, 2.5, 5, 10].map(f => f * mag).find(p => p >= bruto);
   const min = Math.floor(crudoMin / paso) * paso, max = Math.ceil(crudoMax / paso) * paso;
